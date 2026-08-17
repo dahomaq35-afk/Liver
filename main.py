@@ -1,32 +1,43 @@
 import discord
+from discord import app_commands
 from discord.ext import commands
 from discord.ui import Select, View, Button
 import asyncio
+import random
+import os
 
 intents = discord.Intents.default()
 intents.message_content = True
 intents.guilds = True
 
-bot = commands.Bot(command_prefix="!", intents=intents)
+class MyBot(commands.Bot):
+    def __init__(self):
+        super().__init__(command_prefix="!", intents=intents)
+
+    async def setup_hook(self):
+        # مزامنة أوامر السلاش (/) مع الديسكورد لكي تظهر قائمة الأوامر عند كتابة /
+        await self.tree.sync()
+        print("تمت مزامنة أوامر السلاش (/) بنجاح!")
+
+bot = MyBot()
 
 # ==========================================
 # ⚙️ الإعدادات المخصصة
 # ==========================================
-GAME_CHANNEL_NAME = "👾-ألعاب-liver"       # اسم الروم المخصص لأوامر الألعاب
-TICKET_CATEGORY_NAME = "👑-تذاكر-VIP-LIVER"  # التصنيف الذي ستفتح تحته التذاكر
-STAFF_ROLE_NAME = "الدعم الفني"            # اسم رتبة الدعم الفني
+TICKET_CATEGORY_NAME = "👑-تذاكر-الدعم"  # التصنيف الذي ستفتح تحته التذاكر
+STAFF_ROLE_NAME = "الدعم الفني"         # اسم رتبة الدعم الفني
 
 # ==========================================
 # 🛑 لوحة التحكم المتقدمة داخل التذكرة المفتوحة
 # ==========================================
-class AdvancedTicketControlView(View):
+class TicketControlView(View):
     def __init__(self):
         super().__init__(timeout=None)
 
     @discord.ui.button(label="استلام التذكرة (Claim)", style=discord.ButtonStyle.success, emoji="👑", custom_id="claim_ticket")
     async def claim_ticket(self, interaction: discord.Interaction, button: Button):
         staff_role = discord.utils.get(interaction.guild.roles, name=STAFF_ROLE_NAME)
-        if staff_role not in interaction.user.roles and not interaction.user.guild_permissions.administrator:
+        if staff_role and staff_role not in interaction.user.roles and not interaction.user.guild_permissions.administrator:
             await interaction.response.send_message("❌ هذا الخيار مخصص لطاقم الإدارة والدعم الفني فقط.", ephemeral=True)
             return
         
@@ -45,32 +56,32 @@ class AdvancedTicketControlView(View):
         role_mention = staff_role.mention if staff_role else "@الدعم الفني"
         await interaction.response.send_message(f"🔔 {role_mention} | قام {interaction.user.mention} بطلب مساعدة عاجلة داخل التذكرة!")
 
-    @discord.ui.button(label="إغلاق التذكرة", style=discord.ButtonStyle.danger, emoji="🔒", custom_id="close_vip_ticket")
+    @discord.ui.button(label="إغلاق التذكرة", style=discord.ButtonStyle.danger, emoji="🔒", custom_id="close_ticket")
     async def close_ticket(self, interaction: discord.Interaction, button: Button):
         embed = discord.Embed(
-            title="✨ نظام الإغلاق الـ VVvVIP",
-            description="```yaml\nسيتم أرشفة وحذف هذه التذكرة الفاخرة خلال 5 ثوانٍ...\n```",
-            color=discord.Color.gold()
+            title="🔒 نظام الإغلاق",
+            description="```yaml\nسيتم حذف وأرشفة هذه التذكرة خلال 5 ثوانٍ...\n```",
+            color=discord.Color.red()
         )
         await interaction.response.send_message(embed=embed)
         await asyncio.sleep(5)
         await interaction.channel.delete()
 
 # ==========================================
-# 👑 القائمة المنسدلة الفاخرة لفتح التذاكر (VVvVIP)
+# 👑 القائمة المنسدلة لفتح التذاكر
 # ==========================================
-class VipTicketSelect(Select):
+class TicketSelect(Select):
     def __init__(self):
         options = [
             discord.SelectOption(
-                label="👑 التذكرة الملكية الـ VIP",
-                description="لطلب الخدمات الخاصة، الرتب الـ VIP، والخدمات الحصرية",
+                label="👑 التذكرة الملكية VIP",
+                description="لطلب الخدمات الخاصة والرتب الحصرية",
                 emoji="💎",
                 value="royal_vip"
             ),
             discord.SelectOption(
-                label="🏆 قسم البطولات والسكريمات",
-                description="التسجيل في بطولات فورتنايت وقراند والمنافسات الكبرى",
+                label="🏆 البطولات والمنافسات",
+                description="التسجيل في بطولات فورتنايت وقراند والمنافسات",
                 emoji="🥇",
                 value="tournaments"
             ),
@@ -82,17 +93,17 @@ class VipTicketSelect(Select):
             ),
             discord.SelectOption(
                 label="🛠️ الدعم الفني العام والاستفسارات",
-                description="لأي مشاكل تقنية أو مساعدة خاصة بالألعاب والسيرفر",
+                description="لأي مشاكل تقنية أو مساعدة خاصة بالسيرفر",
                 emoji="⚙️",
                 value="general_tech"
             )
         ]
         super().__init__(
-            placeholder="─── ⚡ اضغط هنا لاختيار نوع التذكرة الـ VIP ⚡ ───",
+            placeholder="─── ⚡ اضغط هنا لاختيار نوع التذكرة ⚡ ───",
             min_values=1,
             max_values=1,
             options=options,
-            custom_id="vip_ticket_dropdown"
+            custom_id="ticket_dropdown"
         )
 
     async def callback(self, interaction: discord.Interaction):
@@ -104,7 +115,7 @@ class VipTicketSelect(Select):
         if not category:
             category = await guild.create_category(TICKET_CATEGORY_NAME)
 
-        channel_name = f"vip-{ticket_type}-{user.name.lower()}"
+        channel_name = f"ticket-{ticket_type}-{user.name.lower()}"
         existing_channel = discord.utils.get(category.channels, name=channel_name)
         if existing_channel:
             await interaction.response.send_message(f"⚠️ **لديك تذكرة مفتوحة بالفعل لهذا القسم:** {existing_channel.mention}", ephemeral=True)
@@ -122,130 +133,177 @@ class VipTicketSelect(Select):
         channel = await guild.create_text_channel(name=channel_name, category=category, overwrites=overwrites)
 
         embed = discord.Embed(
-            title="✨ VIP TICKET SYSTEM | LIVER GAMING ✨",
+            title="✨ TICKET SUPPORT SYSTEM ✨",
             description=(
-                f"أهلاً بك يا {user.mention} في **قصر الدعم الـ VIP** الخاص بـ **Liver**!\n\n"
-                f"```fix\nنوع التذكرة: [{ticket_type.upper()}]\nحالة الطلب: قيد المعالجة الأولية\n```\n"
-                f"📌 **يرجى كتابة جميع التفاصيل الخاصة بطلبك هنا وسيتم استلام التذكرة فوراً من قبل طاقم الدعم.**"
+                f"أهلاً بك يا {user.mention} في مركز الدعم الفني!\n\n"
+                f"```fix\nنوع التذكرة: [{ticket_type.upper()}]\nحالة الطلب: قيد الانتظار\n```\n"
+                f"📌 **يرجى كتابة تفاصيل استفسارك أو طلبك هنا وسيقوم فريق الدعم بالرد عليك فوراً.**"
             ),
-            color=discord.Color.from_rgb(255, 215, 0)
+            color=discord.Color.gold()
         )
         embed.set_thumbnail(url=user.display_avatar.url)
-        embed.add_field(
-            name="⚡ مميزات خيارات التحكم بالأسفل:",
-            value="• 👑 **Claim:** لاستلام التذكرة من قبل الإداري.\n• 🔔 **Ping:** لنداء طاقم الدعم حالة التأخر.\n• 🔒 **Close:** لإغلاق وأرشفة التذكرة.",
-            inline=False
-        )
-        embed.set_footer(text="Liver Elite Support • VIP Experience", icon_url=bot.user.display_avatar.url if bot.user.avatar else None)
+        embed.set_footer(text="Elite Support System")
 
-        await channel.send(content=f"{user.mention} | مرحباً بك!", embed=embed, view=AdvancedTicketControlView())
-        await interaction.response.send_message(f"👑 **تم إنشاء تذكرتك الملكية بنجاح:** {channel.mention}", ephemeral=True)
+        await channel.send(content=f"{user.mention} | مرحباً بك!", embed=embed, view=TicketControlView())
+        await interaction.response.send_message(f"👑 **تم إنشاء تذكرتك بنجاح:** {channel.mention}", ephemeral=True)
 
-class VipTicketMainView(View):
+class TicketMainView(View):
     def __init__(self):
         super().__init__(timeout=None)
-        self.add_item(VipTicketSelect())
+        self.add_item(TicketSelect())
 
 # ==========================================
-# 🕹️ نظام الألعاب (نفس أسلوب Fizbo)
+# 🎮 لعبة حجر ورقة مقص (RPS) بالأزرار
 # ==========================================
-class GamesDropdown(Select):
-    def __init__(self):
-        options = [
-            discord.SelectOption(label="فورتنايت (Fortnite)", description="بطولات، سكريمات، وإعدادات المابات", emoji="🔫", value="fortnite"),
-            discord.SelectOption(label="قراند الحياة الواقعية (GTA V RP)", description="سيرفرات الرول بلاي والكتائب", emoji="🚗", value="gta"),
-            discord.SelectOption(label="ألعاب المحاكاة (Simulators)", description="Supermarket & Gas Station Sim", emoji="🏪", value="sims"),
-            discord.SelectOption(label="روبلوكس (Roblox)", description="سيرفرات خاصة وفعاليات مجتمعية", emoji="🧱", value="roblox"),
-            discord.SelectOption(label="ألعاب تفاعلية (Mini-Games)", description="تخمين، ألغاز، وتحديات سريعة", emoji="🎲", value="minigames")
-        ]
-        super().__init__(placeholder="اختر لعبة لرؤية التفاصيل والفعاليات...", min_values=1, max_values=1, options=options)
+class RPSView(View):
+    def __init__(self, author):
+        super().__init__(timeout=30)
+        self.author = author
 
-    async def callback(self, interaction: discord.Interaction):
-        choice = self.values[0]
-        if choice == "fortnite":
-            embed = discord.Embed(title="🎯 قسم فورتنايت | Liver Gaming", description="• **البطولات:** سكريمات أسبوعية مع جوائز متجددة.\n• **الفعاليات:** مابات Custom وتحديات بناء.", color=discord.Color.blue())
-        elif choice == "gta":
-            embed = discord.Embed(title="🎭 قسم GTA V RP | Liver Gaming", description="• **السيرفرات:** سيناريوهات رول بلاي احترافية.\n• **الفصائل:** انضمام للعصابات والكتائب.", color=discord.Color.red())
-        elif choice == "sims":
-            embed = discord.Embed(title="🛒 ألعاب المحاكاة | Liver Gaming", description="• **Supermarket & Gas Station:** تحديات المتجر وبناء المحطات.", color=discord.Color.gold())
-        elif choice == "roblox":
-            embed = discord.Embed(title="🧱 قسم روبلوكس | Liver Gaming", description="• **سيرفرات خاصة:** رومات VIP ومسابقات هدايا.", color=discord.Color.purple())
-        elif choice == "minigames":
-            embed = discord.Embed(title="🎲 الألعاب التفاعلية السريعة", description="• **أسئلة وألغاز (Trivia):** اختبر معلوماتك واجمع النقاط.", color=discord.Color.green())
+    @discord.ui.button(label="حجر 🪨", style=discord.ButtonStyle.primary)
+    async def rock(self, interaction: discord.Interaction, button: Button):
+        await self.play(interaction, "حجر")
 
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+    @discord.ui.button(label="ورقة 📄", style=discord.ButtonStyle.success)
+    async def paper(self, interaction: discord.Interaction, button: Button):
+        await self.play(interaction, "ورقة")
 
-class GamesView(View):
-    def __init__(self):
-        super().__init__(timeout=None)
-        self.add_item(GamesDropdown())
+    @discord.ui.button(label="مقص ✂️", style=discord.ButtonStyle.danger)
+    async def scissors(self, interaction: discord.Interaction, button: Button):
+        await self.play(interaction, "مقص")
 
-def is_game_channel():
-    async def predicate(ctx):
-        if ctx.channel.name != GAME_CHANNEL_NAME:
-            msg = await ctx.send(f"⚠️ هذه الأوامر تعمل فقط داخل الروم المخصص: #{GAME_CHANNEL_NAME}")
-            await asyncio.sleep(5)
-            await ctx.message.delete()
-            await msg.delete()
-            return False
-        return True
-    return commands.check(predicate)
+    async def play(self, interaction: discord.Interaction, user_choice: str):
+        if interaction.user != self.author:
+            await interaction.response.send_message("❌ هذه اللعبة ليست لك!", ephemeral=True)
+            return
+
+        bot_choice = random.choice(["حجر", "ورقة", "مقص"])
+        
+        if user_choice == bot_choice:
+            result = "تعادل! 🤝"
+        elif (user_choice == "حجر" and bot_choice == "مقص") or \
+             (user_choice == "ورقة" and bot_choice == "حجر") or \
+             (user_choice == "مقص" and bot_choice == "ورقة"):
+            result = "فزت على البوت! 🎉"
+        else:
+            result = "خسرت، البوت فاز عليك! 🤖"
+
+        embed = discord.Embed(title="🎮 نتائج لعبة حجر ورقة مقص", color=discord.Color.purple())
+        embed.add_field(name="اختيارك", value=user_choice, inline=True)
+        embed.add_field(name="اختيار البوت", value=bot_choice, inline=True)
+        embed.add_field(name="النتيجة", value=f"**{result}**", inline=False)
+
+        await interaction.response.edit_message(embed=embed, view=None)
 
 # ==========================================
-# 🤖 أحداث وأوامر البوت
+# 🤖 أحداث وأوامر السلاش (/) والبوت
 # ==========================================
 @bot.event
 async def on_ready():
     print(f'تم تشغيل البوت بنجاح باسم: {bot.user.name}')
-    await bot.change_presence(activity=discord.Game(name="Liver VIP | !العاب"))
+    await bot.change_presence(activity=discord.Game(name="اكتب / لرؤية جميع الألعاب والأوامر!"))
 
-@bot.command(name="العاب")
-@is_game_channel()
-async def show_games(ctx):
+# 1. أمر السلاش قائمة الألعاب
+@bot.tree.command(name="games", description="عرض جميع الألعاب التفاعلية المتاحة في البوت")
+async def slash_games(interaction: discord.Interaction):
     embed = discord.Embed(
-        title="✨ مركز ألعاب Liver Gaming ✨",
-        description="استعرض الألعاب والخدمات التفاعلية المتاحة بالسيرفر من القائمة أسفله.",
+        title="✨ مركز ألعاب البوت التفاعلي ✨",
+        description="استمتع بالألعاب التالية عبر كتابة الأوامر أو استخدام الأزرار في أي روم!",
         color=discord.Color.dark_theme()
     )
-    embed.add_field(
-        name="🎮 الألعاب المدعومة حالياً:",
-        value="• 🔫 **Fortnite**\n• 🚗 **GTA V RP**\n• 🏪 **Supermarket & Sims**\n• 🧱 **Roblox**\n• 🎲 **Mini-Games**",
-        inline=False
-    )
-    embed.set_thumbnail(url=bot.user.display_avatar.url if bot.user.avatar else None)
-    embed.set_footer(text="Liver Bot - Fizbo Style Games")
-    await ctx.send(embed=embed, view=GamesView())
+    embed.add_field(name="🎲 الألعاب التفاعلية المتاحة:", value=(
+        "• `/rps` - لعبة حجر ورقة مقص بالضغط على الأزرار 🪨📄✂️\name"
+        "• `/guess` - لعبة تخمين الرقم السري من 1 إلى 10 🔢\name"
+        "• `/trivia` - لعبة أسئلة وألغاز عامة واختبار معلومات 🧠\name"
+        "• `/roll` - لعبة رمي النرد والحظ 🎲"
+    ), inline=False)
+    embed.set_footer(text="يمكنك استخدام الأوامر في أي روم بالسيرفر!")
+    await interaction.response.send_message(embed=embed)
 
-@bot.command(name="تذاكر")
-@commands.has_permissions(administrator=True)
-async def setup_tickets(ctx):
-    await ctx.message.delete()
-    
+# 2. أمر حجر ورقة مقص
+@bot.tree.command(name="rps", description="لعبة حجر ورقة مقص تفاعلية بالأزرار")
+async def slash_rps(interaction: discord.Interaction):
+    embed = discord.Embed(title="🎮 لعبة حجر ورقة مقص", description="اختر إما حجر أو ورقة أو مقص من الأزرار بالأسفل:", color=discord.Color.blue())
+    view = RPSView(interaction.user)
+    await interaction.response.send_message(embed=embed, view=view)
+
+# 3. أمر تخمين الرقم
+@bot.tree.command(name="guess", description="لعبة تخمين رقم سري بين 1 و 10")
+async def slash_guess(interaction: discord.Interaction):
+    secret_number = random.randint(1, 10)
+    await interaction.response.send_message(f"🎲 **{interaction.user.mention} لقد اخترت رقماً سرّياً بين 1 و 10!**\nاكتب رقمك الآن في الروم (لديك 15 ثانية):")
+
+    def check(m):
+        return m.author == interaction.user and m.channel == interaction.channel and m.content.isdigit()
+
+    try:
+        msg = await bot.wait_for('message', check=check, timeout=15.0)
+        guess = int(msg.content)
+        if guess == secret_number:
+            await interaction.followup.send(f"🎉 **كفووو! إجابة صحيحة!** الرقم هو `{secret_number}`.")
+        else:
+            await interaction.followup.send(f"❌ **إجابة خاطئة!** الرقم الصحيح كان `{secret_number}`.")
+    except asyncio.TimeoutError:
+        await interaction.followup.send(f"⏰ **انتهى الوقت!** الرقم الصحيح كان `{secret_number}`.")
+
+# 4. أمر أسئلة وألغاز (Trivia)
+QUESTIONS = [
+    {"q": "ما هي عاصمة المملكة العربية السعودية؟", "a": "الرياض"},
+    {"q": "كم عدد أضلاع المثلث؟", "a": "3"},
+    {"q": "ما هو أكبر كوكب في المجموعة الشمسية؟", "a": "المشتري"},
+    {"q": "ما هو الحيوان الملقب بسفينة الصحراء؟", "a": "الجمل"}
+]
+
+@bot.tree.command(name="trivia", description="لعبة أسئلة وألغاز عامة واختبار المعلومات")
+async def slash_trivia(interaction: discord.Interaction):
+    item = random.choice(QUESTIONS)
+    await interaction.response.send_message(f"🧠 **سؤال:** {item['q']}\n*(أجب باللغة العربية خلال 15 ثانية)*")
+
+    def check(m):
+        return m.channel == interaction.channel and not m.author.bot
+
+    try:
+        msg = await bot.wait_for('message', check=check, timeout=15.0)
+        if msg.content.strip() == item['a']:
+            await interaction.followup.send(f"🎉 **إجابة صحيحة يا {msg.author.mention}!** الإجابة هي `{item['a']}`.")
+        else:
+            await interaction.followup.send(f"❌ **إجابة خاطئة!** الإجابة الصحيحة هي `{item['a']}`.")
+    except asyncio.TimeoutError:
+        await interaction.followup.send(f"⏰ **انتهى الوقت!** الإجابة الصحيحة هي `{item['a']}`.")
+
+# 5. أمر رمي النرد
+@bot.tree.command(name="roll", description="رمي نرد عشوائي من 1 إلى 6")
+async def slash_roll(interaction: discord.Interaction):
+    dice = random.randint(1, 6)
+    await interaction.response.send_message(f"🎲 **{interaction.user.mention} رمى النرد وحصل على الرقم:** `{dice}`")
+
+# 6. أمر إنشاء لوحة التذاكر (للمشرفين)
+@bot.tree.command(name="tickets_setup", description="إرسال لوحة فتح التذاكر (للإدارة فقط)")
+@app_commands.checks.has_permissions(administrator=True)
+async def slash_setup_tickets(interaction: discord.Interaction):
     embed = discord.Embed(
-        title="👑 LIVER VVvVVVvVvvVIp SUPPORT CENTER 👑",
+        title="👑 LIVER SUPPORT & TICKETS CENTER 👑",
         description=(
-            "**أهلاً بك في نظام التذاكر الملكي الفاخر لـ Liver Gaming**\n\n"
-            "```ansi\n\u001b[1;33m[VIP System]: يتيح لك هذا النظام التواصل المباشر والسريع مع طاقم الدعم والمدراء.\u001b[0m\n```\n"
-            "👇 **اختر القسم المناسب من القائمة المنسدلة أسفله لفتح تذكرتك الملكية:**"
+            "**أهلاً بك في نظام التذاكر الملكي**\n\n"
+            "👇 **اختر القسم المناسب من القائمة المنسدلة أسفله لفتح تذكرتك:**"
         ),
-        color=discord.Color.from_rgb(255, 215, 0)
+        color=discord.Color.gold()
     )
-    
     embed.add_field(
         name="💎 الأقسام المتاحة للتواصل:",
         value=(
-            "• 👑 **التذكرة الملكية الـ VIP:** للخدمات والتسهيلات الخاصة.\n"
+            "• 👑 **التذكرة الملكية VIP:** للخدمات والتسهيلات الخاصة.\n"
             "• 🏆 **قسم البطولات:** السكريمات ومنافسات الجوائز.\n"
             "• 🏎️ **سيرفرات GTA V:** سيناريوهات قراند الحياة الواقعية.\n"
             "• ⚙️ **الدعم التقني:** استفسارات ومشاكل الألعاب."
         ),
         inline=False
     )
-    
-    embed.set_thumbnail(url=bot.user.display_avatar.url if bot.user.avatar else None)
-    embed.set_footer(text="Liver VIP System • خدمة مخصصة لأفضل تجربة ألعاب", icon_url=bot.user.display_avatar.url if bot.user.avatar else None)
+    embed.set_footer(text="VIP Elite Support System")
+    await interaction.response.send_message(embed=embed, view=TicketMainView())
 
-    await ctx.send(embed=embed, view=VipTicketMainView())
+# تشغيل البوت عبر توكن Render الآمن
+bot.run(os.getenv('DISCORD_TOKEN'))
 
 # ضع توكن البوت الخاص بك هنا
 bot.run('MTUzODgzNzI4Mjk3NzQ4ODkwNg.GNmbmm.mcn4EpaTLWxHL11Ssg3UM4bfoRvMShcE6lhKXk')
