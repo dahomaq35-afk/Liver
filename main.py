@@ -306,4 +306,4 @@ async def slash_setup_tickets(interaction: discord.Interaction):
 bot.run(os.getenv('DISCORD_TOKEN'))
 
 # ضع توكن البوت الخاص بك هنا
-bot.run('MTUzODgzNzI4Mjk3NzQ4ODkwNg.GNmbmm.mcn4EpaTLWxHL11Ssg3UM4bfoRvMShcE6lhKXk')
+bot.run('MTUzODgzNzI4Mjk3NzQ4ODkwNg.GMxQ9w.xEd1wD144NqSUlilszKK5tqLAesndt_KwDzxP8')
