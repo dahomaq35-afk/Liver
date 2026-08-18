@@ -4,11 +4,9 @@ import asyncio
 import discord
 from discord.ext import commands
 
-# إعدادات البوت والـ Intents
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="-", intents=intents)
-
 
 # ==========================================
 #              نظام التذاكر (TICKETS)
@@ -67,179 +65,175 @@ class TicketView(discord.ui.View):
 async def setup_tickets(ctx):
     embed = discord.Embed(
         title="🎫 قسم التذاكر والدعم",
-        description="أهلاً بكم، في حال تريد المساعدة لا تتردد!\nاختر القسم المناسب من القائمة بالأسفل لفتح تذكرة.",
+        description="أهلاً بكم في حال تريد المساعدة لاتتردد!\nاختر القسم المناسب من القائمة بالأسفل لفتح تذكرة.",
         color=discord.Color.blue()
     )
     await ctx.send(embed=embed, view=TicketView())
 
-
 # ==========================================
-#              قائمة الألعاب
-# ==========================================
-
-@bot.command(name="العاب")
-async def games_menu(ctx):
-    embed = discord.Embed(title="🎮 قائمة الألعاب والفعاليات", color=discord.Color.gold())
-
-    server_games = (
-        "- روليت\n"
-        "- xo\n"
-        "- مافيا\n"
-        "- كراسي\n"
-        "- حجرة\n"
-        "- نرد\n"
-        "- عجلة\n"
-        "- hotxo\n"
-        "- غميضة\n"
-        "- ريبيلكا\n"
-        "- خمن\n"
-        "- رسمة 🆕"  # تم إزالة النجمة ✨
-    )
-
-    solo_games = (
-        "- زر\n"
-        "- اسرع\n"
-        "- فكك\n"
-        "- ادمج\n"
-        "- اعلام\n"
-        "- اعكس\n"
-        "- حرف\n"
-        "- صحح\n"
-        "- ترتيب\n"
-        "- الوان\n"
-        "- ايموجي\n"
-        "- اكشف"
-    )
-
-    embed.add_field(name="**العاب السيرفر**", value=server_games, inline=False)
-    embed.add_field(name="**العاب فردية**", value=solo_games, inline=False)
-    await ctx.send(embed=embed)
-
-
-# ==========================================
-#            أوامر ألعاب السيرفر
+#              لعبة الزر السريع
 # ==========================================
 
-@bot.command(name="روليت")
-async def roulette(ctx):
-    res = random.choice(["🎉 مبروك فزت بالروليت!", "💥 للأسف تم إقصاؤك!", "⚡ نجوت هذه الجولة!"])
-    await ctx.send(f"{ctx.author.mention} | {res}")
+class FastButtonGame(discord.ui.View):
+    def __init__(self, host):
+        super().__init__(timeout=60)
+        self.host = host
+        self.players = []
 
-@bot.command(name="xo")
-async def xo_game(ctx):
-    await ctx.send(f"🎮 لعبة XO: أرسل من تحدي للبدء! (استخدم `-xo @user`)")
+    @discord.ui.button(label="انضمام 🎮", style=discord.ButtonStyle.green)
+    async def join(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user in self.players:
+            await interaction.response.send_message("أنت منضم بالفعل!", ephemeral=True)
+            return
+        self.players.append(interaction.user)
+        await interaction.response.send_message(f"✅ انضم {interaction.user.mention} إلى اللعبة!")
 
-@bot.command(name="مافيا")
-async def mafia_game(ctx):
-    await ctx.send("🕵️‍♂️ تم بدء تسجيل لعبة المافيا! اكتب `انضمام` للوصول للحد الأدنى (4 لاعبين).")
+    @discord.ui.button(label="خروج ❌", style=discord.ButtonStyle.danger)
+    async def leave(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user not in self.players:
+            await interaction.response.send_message("أنت لست منضماً في اللعبة!", ephemeral=True)
+            return
+        self.players.remove(interaction.user)
+        await interaction.response.send_message(f"🚪 خرج {interaction.user.mention} من اللعبة.")
 
-@bot.command(name="كراسي")
-async def chairs_game(ctx):
-    await ctx.send("🪑 لعبة الكراسي الموسيقية: تجهزوا! اكتب `جلوس` فور ظهور الكرسي!")
+    @discord.ui.button(label="بدء اللعبة 🚀", style=discord.ButtonStyle.primary)
+    async def start(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user != self.host:
+            await interaction.response.send_message("صاحب الأمر فقط هو من يستطيع بدء اللعبة!", ephemeral=True)
+            return
+        if len(self.players) < 1:
+            await interaction.response.send_message("يجب أن ينضم لاعب واحد على الأقل!", ephemeral=True)
+            return
 
-@bot.command(name="حجرة")
-async def rps_game(ctx):
-    await ctx.send(f"{ctx.author.mention} اكتب: حجرة أو ورقة أو مقص!")
+        self.clear_items()
+        await interaction.response.edit_message(content="⏳ **تجهزوا! الزر سيظهر في أي لحظة...**", view=self)
 
-@bot.command(name="نرد")
-async def dice(ctx):
-    await ctx.send(f"🎲 النتيجة: **{random.randint(1, 6)}**")
+        await asyncio.sleep(random.randint(3, 7))
 
-@bot.command(name="عجلة")
-async def wheel_game(ctx):
-    items = ["جائزة 🎁", "حظ أوفر ❌", "نقاط مضاعفة 🌟", "عقاب 💀"]
-    await ctx.send(f"🎡 دارت العجلة والنتيجة هي: **{random.choice(items)}**")
-
-@bot.command(name="hotxo")
-async def hotxo_game(ctx):
-    await ctx.send("🔥 تم تشغيل لعبة HOT XO السريعة!")
-
-@bot.command(name="غميضة")
-async def hide_game(ctx):
-    await ctx.send("🙈 بدأت لعبة الغميضة! اختر مكاناً للاختباء خلال 10 ثوانٍ.")
-
-@bot.command(name="ريبيلكا")
-async def replica_game(ctx):
-    await ctx.send("📝 لعبة ريبيلكا: انسخ النص التالي بأسرع وقت!")
-
-@bot.command(name="خمن")
-async def guess_game(ctx):
-    num = random.randint(1, 10)
-    await ctx.send("🔢 خمن الرقم من 1 إلى 10!")
-
-@bot.command(name="رسمة")
-async def draw_game(ctx):
-    await ctx.send("🎨 لعبة رسمة: خمن ماذا تمثل هذه الرسمة!")
+        click_view = ClickButtonView(self.players)
+        await interaction.channel.send("🔴 **اضغط على الزر الآن بأسرع ما يمكن!!**", view=click_view)
 
 
-# ==========================================
-#            أوامر الألعاب الفردية
-# ==========================================
+class ClickButtonView(discord.ui.View):
+    def __init__(self, allowed_players):
+        super().__init__(timeout=15)
+        self.allowed_players = allowed_players
+        self.winner = None
+
+    @discord.ui.button(label="اضغط هناااا!! ⚡", style=discord.ButtonStyle.danger)
+    async def press(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user not in self.allowed_players:
+            await interaction.response.send_message("أنت لم تكن منضماً في اللعبة!", ephemeral=True)
+            return
+
+        if self.winner is None:
+            self.winner = interaction.user
+            button.disabled = True
+            button.label = f"الفائز: {self.winner.display_name}"
+            await interaction.response.edit_message(view=self)
+            await interaction.channel.send(f"🎉 **مبروووك! {self.winner.mention} ضغط على الزر أولاً وفاز باللعبة!**")
+
 
 @bot.command(name="زر")
-async def button_game(ctx):
-    await ctx.send("🔘 اضغط على الزر بأسرع ما يمكن!")
-
-@bot.command(name="اسرع")
-async def speed_game(ctx):
-    words = ["سيرفر", "فعاليات", "ديسكورد", "برمجة"]
-    word = random.choice(words)
-    await ctx.send(f"⚡ أسرع شخص يكتب الكلمة التالية يفوز: **{word}**")
-
-@bot.command(name="فكك")
-async def disassemble_game(ctx):
-    words = {"برمجة": "ب ر م ج ة", "ديسكورد": "د ي س ك و ر د", "فعالية": "ف ع ا ل ي ة"}
-    word, ans = random.choice(list(words.items()))
-    await ctx.send(f"🧩 فكك الكلمة التالية: **{word}**")
-
-@bot.command(name="ادمج")
-async def merge_game(ctx):
-    await ctx.send("🧩 ادمج الحروف التالية لتكوين كلمة: **س ي ر ف ر**")
-
-@bot.command(name="اعلام")
-async def flags_game(ctx):
-    flags = {"🇸🇦": "السعودية", "🇪🇬": "مصر", "🇦🇪": "الإمارات", "🇶🇦": "قطر"}
-    flag, country = random.choice(list(flags.items()))
-    await ctx.send(f"🏳️ ماهي دولة هذا العلم: {flag} ؟")
-
-@bot.command(name="اعكس")
-async def reverse_game(ctx):
-    words = ["سعودية", "تفاح", "مدرسة"]
-    w = random.choice(words)
-    await ctx.send(f"🔄 اعكس الكلمة التالية: **{w}**")
-
-@bot.command(name="حرف")
-async def letter_game(ctx):
-    letters = ["أ", "ب", "ت", "م", "ر"]
-    await ctx.send(f"🔤 اذكر كلمة تبدأ بحرف: **{random.choice(letters)}**")
-
-@bot.command(name="صحح")
-async def correct_game(ctx):
-    await ctx.send("✏️ صحح الكلمة التقديرية التالية: **دسكورد**")
-
-@bot.command(name="ترتيب")
-async def sort_game(ctx):
-    await ctx.send("🔀 رتب الحروف التالية: **ر د ك و س ي**")
-
-@bot.command(name="الوان")
-async def colors_game(ctx):
-    colors = ["🔴 أحمر", "🔵 أزرق", "🟢 أخضر", "🟡 أصفر"]
-    await ctx.send(f"🎨 ما هو هذا اللون: {random.choice(colors)} ؟")
-
-@bot.command(name="ايموجي")
-async def emoji_game(ctx):
-    await ctx.send("😀 خمن الايموجي المقصود!")
-
-@bot.command(name="اكشف")
-async def reveal_game(ctx):
-    await ctx.send("🔍 اكشف الصورة المخفية!")
-
+async def start_button_game(ctx):
+    view = FastButtonGame(host=ctx.author)
+    await ctx.send("🔘 **بدأت لعبة الزر السريع!**\nاضغط على **انضمام** للاشتراك، ثم اضغط **بدء اللعبة**.", view=view)
 
 # ==========================================
-#              تشغيل البوت
+#              لعبة المافيا
 # ==========================================
+
+class MafiaLobby(discord.ui.View):
+    def __init__(self, host):
+        super().__init__(timeout=120)
+        self.host = host
+        self.players = [host]
+
+    @discord.ui.button(label="انضمام 🕵️‍♂️", style=discord.ButtonStyle.success)
+    async def join(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user in self.players:
+            await interaction.response.send_message("أنت منضم بالفعل!", ephemeral=True)
+            return
+        self.players.append(interaction.user)
+        names = "\n".join([p.mention for p in self.players])
+        await interaction.response.edit_message(content=f"🕵️‍♂️ **تجميع لاعبين المافيا**\n\n**اللاعبين المنضمين ({len(self.players)}):**\n{names}")
+
+    @discord.ui.button(label="خروج 🚪", style=discord.ButtonStyle.secondary)
+    async def leave(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user not in self.players:
+            await interaction.response.send_message("أنت غير منضم أساساً!", ephemeral=True)
+            return
+        self.players.remove(interaction.user)
+        names = "\n".join([p.mention for p in self.players]) if self.players else "لا يوجد أحد"
+        await interaction.response.edit_message(content=f"🕵️‍♂️ **تجميع لاعبين المافيا**\n\n**اللاعبين المنضمين ({len(self.players)}):**\n{names}")
+
+    @discord.ui.button(label="بدء اللعبة 🎬", style=discord.ButtonStyle.danger)
+    async def start(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user != self.host:
+            await interaction.response.send_message("مُنشيء اللعبة فقط يمكنه البدء!", ephemeral=True)
+            return
+        if len(self.players) < 3:
+            await interaction.response.send_message("تحتاج 3 لاعبين على الأقل لبدء المافيا!", ephemeral=True)
+            return
+
+        mafia_player = random.choice(self.players)
+        self.clear_items()
+        await interaction.response.edit_message(content="🎭 **بدأت لعبة المافيا! تم توزيع الأدوار في الخاص لكل لاعب.**", view=self)
+
+        for p in self.players:
+            try:
+                if p == mafia_player:
+                    await p.send("🤫 أنت هو **المافيا**! حاول ألا يكتشفك أحد.")
+                else:
+                    await p.send("️‍🗨️ أنت **مواطن بريء**. ابحث عن المافيا!")
+            except:
+                pass
+
+
+@bot.command(name="مافيا")
+async def mafia_cmd(ctx):
+    view = MafiaLobby(host=ctx.author)
+    await ctx.send(f"🕵️‍♂️ **تجميع لاعبين المافيا**\n\n**اللاعبين المنضمين (1):**\n{ctx.author.mention}", view=view)
+
+# ==========================================
+#              لعبة الروليت
+# ==========================================
+
+class RouletteLobby(discord.ui.View):
+    def __init__(self, host):
+        super().__init__(timeout=60)
+        self.host = host
+        self.players = [host]
+
+    @discord.ui.button(label="انضمام 🎰", style=discord.ButtonStyle.primary)
+    async def join(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user in self.players:
+            await interaction.response.send_message("أنت منضم بالفعل!", ephemeral=True)
+            return
+        self.players.append(interaction.user)
+        await interaction.response.send_message(f"✅ انضم {interaction.user.mention} للروليت!")
+
+    @discord.ui.button(label="تدوير العجلة 💥", style=discord.ButtonStyle.danger)
+    async def spin(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user != self.host:
+            await interaction.response.send_message("صاحب الروليت فقط من يستطيع التدوير!", ephemeral=True)
+            return
+
+        loser = random.choice(self.players)
+        self.clear_items()
+        await interaction.response.edit_message(content=f"🎰 تدور العجلة الآن... 🎯\n\n💥 **الطلقة أصابت {loser.mention}! لقد تم إقصاؤك من الروليت!**", view=self)
+
+
+@bot.command(name="روليت")
+async def roulette_cmd(ctx):
+    view = RouletteLobby(host=ctx.author)
+    await ctx.send(f"🎰 **لعبة الروليت الجماعية**\nاضغط انضمام للدخول، وعند التدوير سيتم طرد شخص عشوائياً!", view=view)
+
 
 TOKEN = os.getenv("BOT_TOKEN")
+
+if __name__ == "__main__":
+    bot.run(TOKEN)
 
 if __name__ == "__main__":
     bot.run(TOKEN)
