@@ -7,7 +7,8 @@ from discord.ext import commands
 # إعدادات البوت والـ Intents
 intents = discord.Intents.default()
 intents.message_content = True
-bot = commands.Commands(command_prefix="-", intents=intents)
+bot = commands.Bot(command_prefix="-", intents=intents)
+
 
 # ==========================================
 #              نظام التذاكر (TICKETS)
