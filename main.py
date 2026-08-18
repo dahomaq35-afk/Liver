@@ -1,28 +1,39 @@
 # ==============================================================================
 #                               BOT CONFIGURATION
 # ==============================================================================
-# هذا الكود مصمم لإدارة سيرفر ديسكورد يحتوي على نظام تذاكر متكامل
-# بالإضافة إلى قائمة ألعاب واسعة وتفاعلية (سيرفر وفردية).
-# ==============================================================================
-
 import os
 import random
 import asyncio
 import discord
 from discord.ext import commands
+from flask import Flask
+from threading import Thread
 
-# إعداد الصلاحيات الخاصة بالبوت (Intents)
+# --- إعداد سيرفر Flask للتشغيل 24/7 على منصة Render ---
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Bot is alive!"
+
+def run():
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
+
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
+
+# --- إعداد الصلاحيات والبوت ---
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 intents.guilds = True
 
-# تعريف البوت مع البادئة (-)
 bot = commands.Bot(command_prefix="-", intents=intents)
 
-# قاموس لتتبع الألعاب النشطة داخل كل روم حتى لا تتداخل الألعاب
+# قاموس لتتبع الألعاب النشطة داخل كل روم
 active_games = {}
-
 
 # ==============================================================================
 #                            EVENT HANDLERS & READY
@@ -30,41 +41,38 @@ active_games = {}
 
 @bot.event
 async def on_ready():
-    """
-    حدث يعمل فور تشغيل البوت بنجاح
-    """
     print("==========================================")
     print(f"Logged in as: {bot.user.name} - {bot.user.id}")
     print("Bot is fully active and ready for games!")
     print("==========================================")
-    # تغيير حالة البوت في ديسكورد
+    
+    # تسجيل الواجهات الدائمة حتى تعمل التذاكر حتى لو أعيد تشغيل البوت
+    bot.add_view(TicketView())
+    bot.add_view(TicketControlView())
+    
     await bot.change_presence(
         activity=discord.Game(name="-العاب | -تذاكر")
     )
 
-
 # ==============================================================================
-#                             1. TICKETS SYSTEM
+#                             1. TICKETS SYSTEM (معدّل ومضمون)
 # ==============================================================================
 
 class TicketControlView(discord.ui.View):
-    """
-    واجهة الأزرار داخل روم التذكرة بعد فتحها (إغلاق التذكرة)
-    """
     def __init__(self):
-        super().__init__(timeout=None)
+        super().__init__(timeout=None)  # جعل الواجهة دائمة
 
     @discord.ui.button(label="إغلاق التذكرة 🔒", style=discord.ButtonStyle.danger, custom_id="close_ticket_btn")
     async def close_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_message("سيتم إغلاق التذكرة وحذف القناة خلال 5 ثوانٍ...")
         await asyncio.sleep(5)
-        await interaction.channel.delete()
+        try:
+            await interaction.channel.delete()
+        except discord.Forbidden:
+            await interaction.followup.send("❌ البوت لا يملك صلاحية حذف هذه القناة!", ephemeral=True)
 
 
 class TicketSelect(discord.ui.Select):
-    """
-    القائمة المنسدلة لاختيار قسم التذكرة
-    """
     def __init__(self):
         options = [
             discord.SelectOption(
@@ -103,7 +111,6 @@ class TicketSelect(discord.ui.Select):
     async def callback(self, interaction: discord.Interaction):
         selection = self.values[0]
 
-        # خيار الرستارت
         if selection == "restart":
             await interaction.response.send_message(
                 "تم إعادة تعيين الاختيارات. يمكنك الاختيار مجدداً من القائمة.",
@@ -119,15 +126,20 @@ class TicketSelect(discord.ui.Select):
 
         guild = interaction.guild
 
-        # إعداد صلاحيات القناة الخاصة بالتذكرة
+        # صلاحيات القناة
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(read_messages=False),
             interaction.user: discord.PermissionOverwrite(read_messages=True, send_messages=True),
-            guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
+            guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True, manage_channels=True)
         }
 
         channel_name = f"ticket-{selection}-{interaction.user.name}"
-        ticket_channel = await guild.create_text_channel(name=channel_name, overwrites=overwrites)
+        
+        try:
+            ticket_channel = await guild.create_text_channel(name=channel_name, overwrites=overwrites)
+        except discord.Forbidden:
+            await interaction.response.send_message("❌ البوت لا يملك صلاحية إنشاء قنوات (Manage Channels)!", ephemeral=True)
+            return
 
         embed = discord.Embed(
             title=f"🎫 تذكرة جديدة: {category_name}",
@@ -147,20 +159,14 @@ class TicketSelect(discord.ui.Select):
 
 
 class TicketView(discord.ui.View):
-    """
-    الواجهة الأساسية التي تحتوي على القائمة المنسدلة للتذاكر
-    """
     def __init__(self):
-        super().__init__(timeout=None)
+        super().__init__(timeout=None)  # جعل القائمة المنسدلة دائمة
         self.add_item(TicketSelect())
 
 
 @bot.command(name="تذاكر")
 @commands.has_permissions(administrator=True)
 async def setup_tickets_cmd(ctx):
-    """
-    أمر إداري لإنشاء لوحة التذاكر
-    """
     embed = discord.Embed(
         title="🎫 قسم التذاكر والدعم الفني",
         description=(
@@ -173,16 +179,12 @@ async def setup_tickets_cmd(ctx):
     embed.set_footer(text="نظام التذاكر التفاعلي")
     await ctx.send(embed=embed, view=TicketView())
 
-
 # ==============================================================================
 #                             2. MAIN GAMES MENU (-العاب)
 # ==============================================================================
 
 @bot.command(name="العاب")
 async def games_menu_cmd(ctx):
-    """
-    يعرض قائمة الألعاب المنسقة بدون النجمة عند رسمة
-    """
     embed = discord.Embed(
         title="🎮 قائمة الألعاب والفعاليات",
         description="اختر اللعبة وابدأ اللعب مباشرة باستخدام الأمر المناسب!",
@@ -226,9 +228,8 @@ async def games_menu_cmd(ctx):
 
     await ctx.send(embed=embed)
 
-
 # ==============================================================================
-#                             3. SERVER GAMES (تفاعلية)
+#                             3. SERVER GAMES
 # ==============================================================================
 
 # --- 1. لعبة الروليت ---
@@ -542,15 +543,11 @@ async def hide_game_cmd(ctx):
     chosen = random.choice(hiding_places)
     await ctx.send(f"🙈 {ctx.author.mention} اختبأ في: **{chosen}**! هل سيجده أحد؟")
 
-
 # ==============================================================================
-#                      4. SOLO & SPEED QUIZ GAMES (كتابية)
+#                      4. SOLO & SPEED QUIZ GAMES
 # ==============================================================================
 
 async def run_quiz_game(ctx, question_text: str, correct_answers: list, game_name: str):
-    """
-    دالة عامة لإدارة الألعاب الكتابية والسرعة
-    """
     channel_id = ctx.channel.id
     active_games[channel_id] = correct_answers
     
@@ -577,7 +574,7 @@ async def run_quiz_game(ctx, question_text: str, correct_answers: list, game_nam
         active_games.pop(channel_id, None)
 
 
-# --- 1. زر (الزر السريع) ---
+# --- 1. زر ---
 class FastButtonLobby(discord.ui.View):
     def __init__(self, host):
         super().__init__(timeout=60)
@@ -799,34 +796,16 @@ async def reveal_game_cmd(ctx):
     )
     await ctx.send(embed=embed)
 
-
 # ==============================================================================
 #                             5. BOT RUNNER
 # ==============================================================================
 
-# قراءة توكن البوت من متغيرات البيئة
-TOKEN = os.getenv("BOT_TOKEN")
+keep_alive()
+
+token = os.getenv("TOKEN")
 
 if __name__ == "__main__":
-    if TOKEN:
-        bot.run(TOKEN)
+    if token:
+        bot.run(token)
     else:
-        print("❌ خطأ: لم يتم العثور على BOT_TOKEN في متغيرات البيئة!")
-
-
-if __name__ == "__main__":
-    bot.run(TOKEN)
-
-
-if __name__ == "__main__":
-    bot.run(TOKEN)
-
-if __name__ == "__main__":
-    bot.run(TOKEN)
-
-import os
-
-TOKEN = os.getenv("BOT_TOKEN")
-
-if __name__ == "__main__":
-    bot.run(TOKEN)
+        print("❌ خطأ: لم يتم العثور على متغير البيئة TOKEN في Render!")
