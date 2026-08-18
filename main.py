@@ -117,5 +117,4 @@ async def start_button_game(ctx):
 
 # يمكنك إضافة باقي الألعاب بنفس الطريقة أعلاه
 
-# ضع التوكن الخاص بك بين التنصيص مباشرة
-bot.run("MTUzODgzNzI4Mjk3NzQ4ODkwNg.GHZCHi.RExw0dT7LJMxZqV78j31ImKZKZE7mSO7E7S9h8") 
+bot.run("MTUzODgzNzI4Mjk3NzQ4ODkwNg.GMJzD5.3nHZ2CpmT-ToX1RSRnDRFNYkS793yMAymIp6Gk")
