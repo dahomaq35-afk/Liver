@@ -117,4 +117,9 @@ async def start_button_game(ctx):
 
 # يمكنك إضافة باقي الألعاب بنفس الطريقة أعلاه
 
-bot.run("MTUzODgzNzI4Mjk3NzQ4ODkwNg.GMJzD5.3nHZ2CpmT-ToX1RSRnDRFNYkS793yMAymIp6Gk")
+import os
+
+TOKEN = os.getenv("BOT_TOKEN")
+
+if __name__ == "__main__":
+    bot.run(TOKEN)
