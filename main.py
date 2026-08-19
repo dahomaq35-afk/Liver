@@ -36,26 +36,7 @@ bot = commands.Bot(command_prefix="-", intents=intents)
 active_games = {}
 
 # ==============================================================================
-#                            EVENT HANDLERS & READY
-# ==============================================================================
-
-@bot.event
-async def on_ready():
-    print("==========================================")
-    print(f"Logged in as: {bot.user.name} - {bot.user.id}")
-    print("Bot is fully active and ready for games!")
-    print("==========================================")
-    
-    # تسجيل الواجهات الدائمة حتى تعمل التذاكر حتى لو أعيد تشغيل البوت
-    bot.add_view(TicketView())
-    bot.add_view(TicketControlView())
-    
-    await bot.change_presence(
-        activity=discord.Game(name="-العاب | -تذاكر")
-    )
-
-# ==============================================================================
-#                             1. TICKETS SYSTEM (معدّل ومضمون)
+#                             1. TICKETS SYSTEM
 # ==============================================================================
 
 class TicketControlView(discord.ui.View):
@@ -140,6 +121,9 @@ class TicketSelect(discord.ui.Select):
         except discord.Forbidden:
             await interaction.response.send_message("❌ البوت لا يملك صلاحية إنشاء قنوات (Manage Channels)!", ephemeral=True)
             return
+        except Exception as e:
+            await interaction.response.send_message(f"❌ حدث خطأ عند إنشاء القناة: {e}", ephemeral=True)
+            return
 
         embed = discord.Embed(
             title=f"🎫 تذكرة جديدة: {category_name}",
@@ -178,6 +162,25 @@ async def setup_tickets_cmd(ctx):
     )
     embed.set_footer(text="نظام التذاكر التفاعلي")
     await ctx.send(embed=embed, view=TicketView())
+
+# ==============================================================================
+#                            EVENT HANDLERS & READY
+# ==============================================================================
+
+@bot.event
+async def on_ready():
+    print("==========================================")
+    print(f"Logged in as: {bot.user.name} - {bot.user.id}")
+    print("Bot is fully active and ready for games!")
+    print("==========================================")
+    
+    # تسجيل الواجهات الدائمة لتستمر بالتفاعل بعد التشغيل
+    bot.add_view(TicketView())
+    bot.add_view(TicketControlView())
+    
+    await bot.change_presence(
+        activity=discord.Game(name="-العاب | -تذاكر")
+    )
 
 # ==============================================================================
 #                             2. MAIN GAMES MENU (-العاب)
@@ -513,7 +516,7 @@ async def wheel_game_cmd(ctx):
     res = random.choice(outcomes)
     embed = discord.Embed(
         title="🎡 عجلة الحظ",
-        description=f"دارت العجلة وكانت النتيجة لـ {ctx.author.mention}:\n\n✨ **{res}**",
+        description=f"دارت العجلة وكان النتيجة لـ {ctx.author.mention}:\n\n✨ **{res}**",
         color=discord.Color.gold()
     )
     await ctx.send(embed=embed)
@@ -800,12 +803,10 @@ async def reveal_game_cmd(ctx):
 #                             5. BOT RUNNER
 # ==============================================================================
 
-keep_alive()
-
-token = os.getenv("TOKEN")
-
 if __name__ == "__main__":
+    keep_alive()  # تشغيل سيرفر السيرفر المحلي لـ Render
+    token = os.environ.get("DISCORD_TOKEN")
     if token:
         bot.run(token)
     else:
-        print("❌ خطأ: لم يتم العثور على متغير البيئة TOKEN في Render!")
+        print("❌ لم يتم العثور على DISCORD_TOKEN في المتغيرات!")
