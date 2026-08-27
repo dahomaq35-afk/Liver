@@ -24,25 +24,24 @@ def keep_alive():
     t.start()
 
 # ---------------------------------------------------------
-# 2. إعداد الـ Intents وقائمة الحماية
+# 2. إعداد الـ Intents وقائمة الحماية (تم تصحيح الـ Intents)
 # ---------------------------------------------------------
 intents = discord.Intents.default()
 intents.messages = True
 intents.message_content = True
 intents.guilds = True
 intents.members = True
-intents.audit_logs = True
 
 bot = commands.Bot(command_prefix="-", intents=intents)
 
-# قائمة أيديات المصرح لهم فقط بإضافة بوتات (استبدل الأصفار بأيديات المشرفين)
+# قائمة أيديات المصرح لهم فقط بإضافة بوتات
 ALLOWED_USERS = [
-    1410703717539254373,  # ID حسابك الأساسي
-    716867342398914602,  # ID المشرف الأول
-    1498036019881054500,  # ID المشرف الثاني
-    1490406877782343843,  # ID المشرف الثالث
-    1148059857241518101,  # ID المشرف الرابع
-       # ID المشرف الخامس
+    1410703717539254373,  # 👈 ID حسابك الأساسي
+    716867342398914602,  # 👈 ID المشرف الأول
+    1498036019881054500,  # 👈 ID المشرف الثاني
+    1490406877782343843,  # 👈 ID المشرف الثالث
+    1148059857241518101,  # 👈 ID المشرف الرابع
+    000000000000000000   # 👈 ID المشرف الخامس
 ]
 
 # ---------------------------------------------------------
@@ -53,23 +52,27 @@ async def on_member_join(member: discord.Member):
     if member.bot:
         guild = member.guild
         
-        async for entry in guild.audit_logs(limit=1, action=discord.AuditLogAction.bot_add):
-            inviter = entry.user
+        try:
+            async for entry in guild.audit_logs(limit=1, action=discord.AuditLogAction.bot_add):
+                inviter = entry.user
 
-            if inviter.id not in ALLOWED_USERS and inviter.id != guild.owner_id:
-                try:
-                    await member.ban(reason="حماية تلقائية: بوت غير مصرح به من الإدارة.")
-                except Exception as e:
-                    print(f"❌ تعذر حظر البوت {member.name}: {e}")
-
-                if isinstance(inviter, discord.Member):
+                # إذا كان من أضاف البوت ليس ضمن القائمة ولا الأونر
+                if inviter.id not in ALLOWED_USERS and inviter.id != guild.owner_id:
                     try:
-                        await inviter.edit(roles=[], reason="حماية تلقائية: محاولة إضافة بوت مشبوه.")
-                    except discord.Forbidden:
-                        print(f"❌ لم يتم سحب رتب {inviter.name} بسبب نقص الصلاحيات.")
+                        await member.ban(reason="حماية تلقائية: بوت غير مصرح به من الإدارة.")
+                    except Exception as e:
+                        print(f"❌ تعذر حظر البوت {member.name}: {e}")
 
-                print(f"🚨 [حماية] تم حظر البوت المشبوه {member.name} وسحب رتب العضو {inviter.name}")
-                return
+                    if isinstance(inviter, discord.Member):
+                        try:
+                            await inviter.edit(roles=[], reason="حماية تلقائية: محاولة إضافة بوت مشبوه.")
+                        except discord.Forbidden:
+                            print(f"❌ لم يتم سحب رتب {inviter.name} بسبب نقص الصلاحيات.")
+
+                    print(f"🚨 [حماية] تم حظر البوت المشبوه {member.name} وسحب رتب العضو {inviter.name}")
+                    return
+        except discord.Forbidden:
+            print("❌ البوت لا يمتلك صلاحية قراءة سجل العمليات (View Audit Log)!")
 
 # ---------------------------------------------------------
 # 4. نظام التذاكر الكامل (Ticket System)
@@ -92,7 +95,7 @@ class TicketSelectView(discord.ui.View):
         placeholder="اختر قسم التذكرة...",
         custom_id="ticket_select",
         options=[
-            discord.SelectOption(label="دعم فني", description="للمساعدة التقنية والحلول البرمجية", emoji="🛠️"),
+            discord.SelectOption(label="دعم فني", description="لالمساعدة التقنية والحلول البرمجية", emoji="🛠️"),
             discord.SelectOption(label="استفسار عام", description="لأي سؤال متعلق بالسيرفر والأدوار", emoji="❓"),
             discord.SelectOption(label="بلاغ / شكوى", description="للإبلاغ عن مخالفة أو تقديم شكوى", emoji="🚨"),
             discord.SelectOption(label="طلب شراء / شحن", description="للخدمات المدفوعة والاشتراكات", emoji="💳"),
