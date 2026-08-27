@@ -35,14 +35,14 @@ intents.audit_logs = True
 
 bot = commands.Bot(command_prefix="-", intents=intents)
 
-# قائمة أيديات المصرح لهم فقط بإضافة بوتات
-ALLOWED_USERS = 
-    1410703717539254373,  # 👈 ضع ID حسابك الأساسي هنا
-    716867342398914602,  # 👈 ID المشرف الأول
-    1498036019881054500,  # 👈 ID المشرف الثاني
-    1148059857241518101,  # 👈 ID المشرف الثالث
-    1490406877782343843,  # 👈 ID المشرف الرابع
-    ,  # 👈 ID المشرف الخامس
+# قائمة أيديات المصرح لهم فقط بإضافة بوتات (استبدل الأصفار بأيديات المشرفين)
+ALLOWED_USERS = [
+    1410703717539254373,  # ID حسابك الأساسي
+    716867342398914602,  # ID المشرف الأول
+    1498036019881054500,  # ID المشرف الثاني
+    1490406877782343843,  # ID المشرف الثالث
+    1148059857241518101,  # ID المشرف الرابع
+       # ID المشرف الخامس
 ]
 
 # ---------------------------------------------------------
@@ -56,7 +56,6 @@ async def on_member_join(member: discord.Member):
         async for entry in guild.audit_logs(limit=1, action=discord.AuditLogAction.bot_add):
             inviter = entry.user
 
-            # إذا كان من أضاف البوت ليس ضمن القائمة ولا الأونر
             if inviter.id not in ALLOWED_USERS and inviter.id != guild.owner_id:
                 try:
                     await member.ban(reason="حماية تلقائية: بوت غير مصرح به من الإدارة.")
@@ -107,7 +106,6 @@ class TicketSelectView(discord.ui.View):
         if not category:
             category = await guild.create_category(category_name)
 
-        # إنشاء روم التذكرة وتحديد الصلاحيات
         ticket_channel = await guild.create_text_channel(
             name=f"ticket-{interaction.user.name}",
             category=category,
@@ -132,7 +130,6 @@ class TicketSelectView(discord.ui.View):
 @bot.command()
 @commands.has_permissions(administrator=True)
 async def setup_ticket(ctx):
-    """أمر تثبيت لوحة التذاكر"""
     await ctx.message.delete()
     embed = discord.Embed(
         title="🎫 مركز الدعم والخدمات",
@@ -144,11 +141,8 @@ async def setup_ticket(ctx):
 # ---------------------------------------------------------
 # 5. نظام الألعاب والفعاليات (Mini-Games System)
 # ---------------------------------------------------------
-
-# أ) لعبة حجر ورقة مقص
 @bot.command()
 async def rps(ctx, choice: str = None):
-    """لعبة حجر ورقة مقص"""
     options = ["حجر", "ورقة", "مقص"]
     if not choice or choice not in options:
         return await ctx.send("يرجى اختيار أحد الخيارات: `حجر` ، `ورقة` ، `مقص`\nمثال: `-rps حجر`")
@@ -169,10 +163,8 @@ async def rps(ctx, choice: str = None):
     embed.add_field(name="النتيجة", value=result, inline=False)
     await ctx.send(embed=embed)
 
-# ب) لعبة التخمين
 @bot.command()
 async def guess(ctx):
-    """لعبة تخمين الرقم"""
     secret_number = random.randint(1, 10)
     await ctx.send("🎲 اخترت رقماً بين **1 و 10**، معك 15 ثانية لتخمين الرقم!")
 
@@ -188,10 +180,8 @@ async def guess(ctx):
     except asyncio.TimeoutError:
         await ctx.send(f"⏰ انتهى الوقت! الرقم الصحيح كان **{secret_number}**.")
 
-# ج) لعبة الروليت (الحظ)
 @bot.command()
 async def roulette(ctx):
-    """لعبة الروليت"""
     outcomes = [
         "🎉 فزت بـ 500 نقطة!",
         "💥 خصرت! الحظ لم يكن بجانبك.",
@@ -202,10 +192,8 @@ async def roulette(ctx):
     result = random.choice(outcomes)
     await ctx.send(f"🎰 **عجلة الحظ تدور...**\nنتيجة {ctx.author.mention}: {result}")
 
-# د) لعبة السرعة والرياضيات
 @bot.command()
 async def math(ctx):
-    """مسابقة أسرع إجابة حسابية"""
     num1 = random.randint(10, 99)
     num2 = random.randint(1, 9)
     operator = random.choice(['+', '-', '*'])
@@ -230,7 +218,6 @@ async def math(ctx):
 # ---------------------------------------------------------
 @bot.event
 async def on_ready():
-    # تسجيل مكونات الـ Views لتبقى تعمل بعد إعادة تشغيل البوت
     bot.add_view(TicketSelectView())
     bot.add_view(TicketCloseView())
     print(f"✅ تم تسجيل الدخول باسم: {bot.user.name} ({bot.user.id})")
