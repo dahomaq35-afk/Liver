@@ -103,14 +103,48 @@ async def check_charges(interaction: discord.Interaction, target: discord.Member
     embed.set_footer(text="وزارة العدل - نظام السجلات الجنائية")
     await interaction.response.send_message(embed=embed)
 
-# معالجة الخطأ عند عدم وجود صلاحيات
+# ---------------------------------------------------------
+# 4. أمر مسح وتبرئة التهم من اللاعب (/remove-charges)
+# ---------------------------------------------------------
+@bot.tree.command(name="remove-charges", description="مسح كافة التهم والسوابق الجنائية عن لاعب (تبرئة)")
+@app_commands.describe(target="منشن اللاعب المراد مسح التهم عنه")
+@app_commands.checks.has_permissions(administrator=True)
+async def remove_charges(interaction: discord.Interaction, target: discord.Member):
+    user_id = target.id
+    
+    # التأكد ما إذا كان اللاعب يمتلك تهم مسبقة أم لا
+    if user_id not in criminal_records or len(criminal_records[user_id]) == 0:
+        embed = discord.Embed(
+            title="⚠️ تنبيه",
+            description=f"اللاعب {target.mention} لا يمتلك أي تهم مسجلة بالفعل حتى يتم مسحها!",
+            color=discord.Color.gold()
+        )
+        return await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    # تفريغ قائمة التهم الخاص باللاعب
+    criminal_records[user_id] = []
+
+    embed = discord.Embed(
+        title="✨ تم رد الاعتبار والتبرئة",
+        description=f"تم مسح جميع التهم والسوابق الجنائية المسجلة بحق اللاعب {target.mention} بنجاح.",
+        color=discord.Color.green(),
+        timestamp=datetime.datetime.utcnow()
+    )
+    embed.add_field(name="🛡️ المسؤول عن التبرئة", value=interaction.user.mention, inline=True)
+    embed.set_thumbnail(url=target.display_avatar.url)
+    embed.set_footer(text="وزارة العدل - نظام رد الاعتبار والتبرئة")
+
+    await interaction.response.send_message(embed=embed)
+
+# معالجة الخطأ عند عدم وجود صلاحيات للأوامر
 @add_charge.error
-async def add_charge_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+@remove_charges.error
+async def permissions_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
     if isinstance(error, app_commands.MissingPermissions):
         await interaction.response.send_message("❌ لا تملك صلاحيات إدارة لاستخدام هذا الأمر!", ephemeral=True)
 
 # ---------------------------------------------------------
-# 4. قراءة التوكن والتشغيل تلقائياً من المتغيرات البيئية
+# 5. قراءة التوكن والتشغيل تلقائياً من المتغيرات البيئية
 # ---------------------------------------------------------
 if __name__ == "__main__":
     TOKEN = os.getenv("DISCORD_TOKEN")
