@@ -8,7 +8,7 @@ from discord import app_commands
 from discord.ext import commands
 
 # ---------------------------------------------------------
-# 1. خادم الويب (Keep Alive)
+# 1. خادم الويب (Keep Alive 24/7)
 # ---------------------------------------------------------
 web_app = Flask('')
 
@@ -25,7 +25,7 @@ def keep_alive():
     t.start()
 
 # ---------------------------------------------------------
-# 2. إعداد البوت والـ Intents
+# 2. إعداد البوت وأسماء الرتب المعتمدة
 # ---------------------------------------------------------
 intents = discord.Intents.default()
 intents.message_content = True
@@ -34,11 +34,18 @@ intents.guilds = True
 
 bot = commands.Bot(command_prefix="-", intents=intents)
 
-ALLOWED_USERS = [
-    000000000000000000,  # 👈 ID المصرح لهم بالأوامر الإدارية
-]
+# 🏷️ أسماء الرتب المصرح لها لكل قطاع
+ROLE_JUSTICE = "عدل"
+ROLE_POLICE = "شرطة"
+ROLE_SWAT = "سوات"
+ROLE_HEALTH = "صحة"
 
+# قواعد البيانات المؤقتة
 criminal_records = {}
+
+# دالة التحقق من الرتبة فقط (بدون استثناء للأدمن/الأونر)
+def check_role(user: discord.Member, role_name: str) -> bool:
+    return any(role.name == role_name for role in user.roles)
 
 # ---------------------------------------------------------
 # 3. مكونات التذاكر (Interactive UI)
@@ -58,25 +65,25 @@ class TicketSelectView(discord.ui.View):
         super().__init__(timeout=None)
 
     @discord.ui.select(
-        placeholder="اختر نوع المعاملة العدلية...",
-        custom_id="justice_ticket_select",
+        placeholder="اختر القطاع أو الخدمة المطلوب التواصل معها...",
+        custom_id="main_ticket_select",
         options=[
-            discord.SelectOption(label="رفع دعوى قضائية", description="لتقديم شكوى أو قضية رسمية", emoji="⚖️"),
-            discord.SelectOption(label="طلب محامي دفاع", description="طلب توكيل محامي معتمد", emoji="📜"),
-            discord.SelectOption(label="استفسار أو توثيق", description="للتوثيق والصكوك والاستفسارات", emoji="📋"),
-            discord.SelectOption(label="رد اعتبار / تبرئة", description="لتقديم طلب مسح سوابق وتهم", emoji="✨"),
+            discord.SelectOption(label="⚖️ ديوان وزارة العدل", description="رفع دعوى، توكيل محامي، صكوك", value="عدل"),
+            discord.SelectOption(label="🚨 بلاغ للشرطة والأمن", description="تقديم بلاغ أمني أو شكوى", value="شرطة"),
+            discord.SelectOption(label="⚡ طلب قوة السوات SWAT", description="بلاغ عمليات خاصة وتدخل سريع", value="سوات"),
+            discord.SelectOption(label="🚑 طوارئ الإسعاف والصحة", description="طلب إسعاف أو فحص طبي", value="صحة"),
         ]
     )
     async def select_callback(self, interaction: discord.Interaction, select: discord.ui.Select):
         guild = interaction.guild
-        category_name = "📂 تذاكر وزارة العدل"
+        category_name = f"📂 تذاكر قطاع - {select.values[0]}"
         category = discord.utils.get(guild.categories, name=category_name)
         
         if not category:
             category = await guild.create_category(category_name)
 
         ticket_channel = await guild.create_text_channel(
-            name=f"قضية-{interaction.user.name}",
+            name=f"تذكرة-{select.values[0]}-{interaction.user.name}",
             category=category,
             overwrites={
                 guild.default_role: discord.PermissionOverwrite(read_messages=False),
@@ -86,18 +93,18 @@ class TicketSelectView(discord.ui.View):
         )
 
         embed = discord.Embed(
-            title=f"⚖️ معاملة: {select.values[0]}",
-            description=f"مرحباً بك {interaction.user.mention} في ديوان وزارة العدل 👋\n\nيرجى كتابة كافة التفاصيل والأدلة الخاصة بطلبك وسيقوم القاضي/المكلف بالمتابعة معك.",
+            title=f"📋 تذكرة جديدة - {select.values[0]}",
+            description=f"أهلاً بك {interaction.user.mention} 👋\nيرجى كتابة كافة التفاصيل والبلاغ وسيقوم المختص بالرد عليك.",
             color=discord.Color.gold(),
             timestamp=datetime.datetime.utcnow()
         )
-        embed.set_footer(text="وزارة العدل - لإغلاق التذكرة اضغط على الزر أدناه")
+        embed.set_footer(text="نظام التذاكر الموحد - لإغلاق التذكرة اضغط الزر أدناه")
 
         await ticket_channel.send(embed=embed, view=TicketCloseView())
         await interaction.response.send_message(f"✅ تم فتح تذكرتك بنجاح: {ticket_channel.mention}", ephemeral=True)
 
 # ---------------------------------------------------------
-# 4. الأحداث والمزامنة الفورية لكل السيرفرات
+# 4. الأحداث والمزامنة
 # ---------------------------------------------------------
 @bot.event
 async def on_ready():
@@ -105,152 +112,162 @@ async def on_ready():
     bot.add_view(TicketCloseView())
     try:
         synced = await bot.tree.sync()
-        print(f"✅ تم مزامنة {len(synced)} أمر Slash على مستوى العالم بنجاح!")
+        print(f"✅ تم مزامنة {len(synced)} أمر Slash بنجاح!")
     except Exception as e:
         print(f"❌ خطأ في المزامنة: {e}")
-    print(f"⚖️ البوت شغال باسم: {bot.user.name}")
-
-# مزامنة فورية عند دخول أي سيرفر جديد
-@bot.event
-async def on_guild_join(guild):
-    try:
-        await bot.tree.sync(guild=guild)
-        print(f"✅ تم مزامنة الأوامر فوراً في سيرفر: {guild.name}")
-    except Exception as e:
-        print(f"❌ تعذر المزامنة في السيرفر الجديد: {e}")
+    print(f"⚖️ البوت شغال بنجاح باسم: {bot.user.name}")
 
 # ---------------------------------------------------------
-# 5. الأوامر (ticket-panel / ticket-setup)
+# 5. أوامر وزارة العدل (تتطلب رتبة: عدل فقط)
 # ---------------------------------------------------------
-@bot.tree.command(name="ticket-panel", description="لارسال بانل فتح التذاكر")
-@app_commands.describe(channel="اختر القناة المراد إرسال البانل فيها (اختياري)")
-async def ticket_panel(interaction: discord.Interaction, channel: discord.TextChannel = None):
-    target_channel = channel or interaction.channel
+@bot.tree.command(name="create-deed", description="[عدل] تسجيل صك ملكية أو عقد رسمي بين طرفين")
+@app_commands.describe(owner="صاحب الملكية", property_type="نوع العقار/السيارة", details="تفاصيل الصك")
+async def create_deed(interaction: discord.Interaction, owner: discord.Member, property_type: str, details: str):
+    if not check_role(interaction.user, ROLE_JUSTICE):
+        return await interaction.response.send_message(f"❌ هذا الأمر مخصص لمن يحمل رتبة **{ROLE_JUSTICE}** فقط!", ephemeral=True)
 
-    embed = discord.Embed(
-        title="⚖️ مركز الخدمة العدلية وتلقي القضايا",
-        description="أهلاً بكم في بوابة وزارة العدل.\nيرجى اختيار نوع المعاملة أو القضية المراد فتحها من القائمة المنسدلة أسفله للتواصل مع الهيئة القضائية.",
-        color=discord.Color.dark_gold()
-    )
-    embed.set_footer(text="وزارة العدل - نظام التذاكر")
+    embed = discord.Embed(title="📜 صك ملكية رسمي", color=discord.Color.gold(), timestamp=datetime.datetime.utcnow())
+    embed.add_field(name="👤 المالـك:", value=owner.mention, inline=True)
+    embed.add_field(name="🏠 نوع العقار/الملكية:", value=property_type, inline=True)
+    embed.add_field(name="📝 تفاصيل الصك:", value=details, inline=False)
+    embed.add_field(name="⚖️ توثيق القاضي:", value=interaction.user.mention, inline=True)
+    embed.set_footer(text="وزارة العدل - ديوان الصكوك والعقود")
+    await interaction.response.send_message(embed=embed)
 
-    try:
-        await target_channel.send(embed=embed, view=TicketSelectView())
-        await interaction.response.send_message(f"✅ تم إرسال بانل فتح التذاكر بنجاح في {target_channel.mention}", ephemeral=True)
-    except Exception as e:
-        await interaction.response.send_message(f"❌ فشل إرسال البانل! تأكد أن البوت يمتلك صلاحية Send Messages و Embed Links في القناة.\nالخطأ: {e}", ephemeral=True)
+@bot.tree.command(name="set-trial", description="[عدل] تحديد موعد جلسة محاكمة وتنبيه المتهم")
+@app_commands.describe(target="المتهم", date_time="تاريخ ووقت الجلسة", room="اسم القاعة/الروم")
+async def set_trial(interaction: discord.Interaction, target: discord.Member, date_time: str, room: discord.TextChannel):
+    if not check_role(interaction.user, ROLE_JUSTICE):
+        return await interaction.response.send_message(f"❌ هذا الأمر مخصص لمن يحمل رتبة **{ROLE_JUSTICE}** فقط!", ephemeral=True)
 
-@bot.tree.command(name="ticket-setup", description="لتسطيب نظام التذاكر")
-async def ticket_setup(interaction: discord.Interaction):
-    guild = interaction.guild
-    category_name = "📂 تذاكر وزارة العدل"
-    category = discord.utils.get(guild.categories, name=category_name)
+    embed = discord.Embed(title="⚖️ استدعاء وجلسة محاكمة رسمية", color=discord.Color.dark_red(), timestamp=datetime.datetime.utcnow())
+    embed.add_field(name="👤 المتهم المستدعى:", value=target.mention, inline=True)
+    embed.add_field(name="📅 الموعد:", value=date_time, inline=True)
+    embed.add_field(name="📍 القاعة:", value=room.mention, inline=False)
+    embed.add_field(name="👨‍⚖️ الناظر في القضية:", value=interaction.user.mention, inline=True)
+    embed.set_footer(text="وزارة العدل - نظام الاستدعاءات القضائية")
+    await interaction.response.send_message(content=target.mention, embed=embed)
 
-    if not category:
-        await guild.create_category(category_name)
-        status_msg = "✅ تم تسطيب وتجهيز الفئة المخصصة لتذاكر وزارة العدل بنجاح!"
-    else:
-        status_msg = "ℹ️ نظام التذاكر مسطب ومجهز مسبقاً في السيرفر!"
-
-    embed = discord.Embed(
-        title="⚙️ إعداد نظام التذاكر",
-        description=f"{status_msg}\nيمكنك الان استخدام أمر `/ticket-panel` لإرسال البانل بأي روم.",
-        color=discord.Color.blue()
-    )
-    await interaction.response.send_message(embed=embed, ephemeral=True)
-
-# ---------------------------------------------------------
-# 6. الأوامر الإدارية الأخرى
-# ---------------------------------------------------------
-@bot.tree.command(name="send-embed", description="إرسال رسالة منسقة من البوت إلى روم محدد")
-@app_commands.describe(channel="اختر القناة المراد إرسال الرسالة فيها", message="اكتب نص الرسالة التي تريد إرسالها", title="عنوان الرسالة (اختياري)", color="اختر لون الإمبد")
-@app_commands.choices(color=[
-    app_commands.Choice(name="🔴 أحمر (رسمي / طارئ)", value="red"),
-    app_commands.Choice(name="🟢 أخضر (موافقة / إعلان)", value="green"),
-    app_commands.Choice(name="🔵 أزرق (تنبيه / معلومات)", value="blue"),
-    app_commands.Choice(name="🟡 ذهبي (توجيه / قرارات)", value="gold")
-])
-async def send_embed(interaction: discord.Interaction, channel: discord.TextChannel, message: str, color: app_commands.Choice[str], title: str = None):
-    if interaction.user.id not in ALLOWED_USERS:
-        return await interaction.response.send_message("❌ عذراً، هذا الأمر مخصص لأعضاء محددين فقط!", ephemeral=True)
-
-    color_map = {"red": discord.Color.red(), "green": discord.Color.green(), "blue": discord.Color.blue(), "gold": discord.Color.gold()}
-    embed = discord.Embed(
-        title=title if title else "⚖️ بيان صادر عن وزارة العدل",
-        description=message,
-        color=color_map.get(color.value, discord.Color.blue()),
-        timestamp=datetime.datetime.utcnow()
-    )
-    embed.set_footer(text=f"صادر بواسطة: {interaction.user.display_name}", icon_url=interaction.user.display_avatar.url)
-    await channel.send(embed=embed)
-    await interaction.response.send_message(f"✅ تم إرسال الرسالة بنجاح في القناة {channel.mention}", ephemeral=True)
-
-@bot.tree.command(name="add-charge", description="تسجيل تهمة جديدة في السجل الجنائي للاعب")
-@app_commands.describe(target="منشن اللاعب المراد تسجيل التهمة عليه", charge="اختر التهمة الموجهة للاعب")
-@app_commands.choices(charge=[
-    app_commands.Choice(name="⚖️ التمرد وعصيان الأوامر العدلية", value="التمرد وعصيان الأوامر العدلية"),
-    app_commands.Choice(name="📜 تقديم وثائق أو شهادة تزوير", value="تقديم وثائق أو شهادة تزوير"),
-    app_commands.Choice(name="🚨 التعطيل والاعتداء على جلسة محاكمة", value="التعطيل والاعتداء على جلسة محاكمة"),
-    app_commands.Choice(name="💼 الهروب من تنفيذ الحكم القضائي", value="الهروب من تنفيذ الحكم القضائي"),
-    app_commands.Choice(name="🔍 إهانة الهيئة القضائية أو المحامي", value="إهانة الهيئة القضائية أو المحامي")
-])
-async def add_charge(interaction: discord.Interaction, target: discord.Member, charge: app_commands.Choice[str]):
-    if interaction.user.id not in ALLOWED_USERS:
-        return await interaction.response.send_message("❌ هذا الأمر مخصص لأعضاء محددين فقط!", ephemeral=True)
+@bot.tree.command(name="add-charge", description="[عدل] تسجيل تهمة في السجل الجنائي")
+@app_commands.describe(target="المتهم", charge="نص التهمة الموجهة")
+async def add_charge(interaction: discord.Interaction, target: discord.Member, charge: str):
+    if not check_role(interaction.user, ROLE_JUSTICE):
+        return await interaction.response.send_message(f"❌ هذا الأمر مخصص لمن يحمل رتبة **{ROLE_JUSTICE}** فقط!", ephemeral=True)
 
     user_id = target.id
     if user_id not in criminal_records:
         criminal_records[user_id] = []
-        
+    
     date_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-    criminal_records[user_id].append({"charge": charge.value, "officer": interaction.user.display_name, "date": date_str})
+    criminal_records[user_id].append({"charge": charge, "officer": interaction.user.display_name, "date": date_str})
 
-    embed = discord.Embed(title="📂 تم تسجيل تهمة جديدة", color=discord.Color.red(), timestamp=datetime.datetime.utcnow())
-    embed.add_field(name="👤 المتهم", value=target.mention, inline=True)
-    embed.add_field(name="⚖️ التهمة المسجلة", value=f"**{charge.value}**", inline=False)
-    embed.add_field(name="🛡️ المسجل بواسطة", value=interaction.user.mention, inline=True)
-    embed.set_thumbnail(url=target.display_avatar.url)
-    embed.set_footer(text="وزارة العدل - نظام السجلات الجنائية")
+    embed = discord.Embed(title="📂 إدانة وتهمة مسجلة", color=discord.Color.red(), timestamp=datetime.datetime.utcnow())
+    embed.add_field(name="👤 المتهم:", value=target.mention, inline=True)
+    embed.add_field(name="⚖️ التهمة:", value=f"**{charge}**", inline=False)
+    embed.add_field(name="🛡️ القاضي/المسجل:", value=interaction.user.mention, inline=True)
     await interaction.response.send_message(embed=embed)
 
-@bot.tree.command(name="check-charges", description="عرض سجل التهم والسوابق الجنائية للاعب")
-@app_commands.describe(target="اختر اللاعب لرؤية سجله الجنائي")
+# ---------------------------------------------------------
+# 6. أوامر الشرطة والأمن (تتطلب رتبة: شرطة فقط)
+# ---------------------------------------------------------
+@bot.tree.command(name="911-dispatch", description="[شرطة] إرسال توجيه وتعميم لغرفة العمليات")
+@app_commands.describe(location="موقع الحادث", details="تفاصيل البلاغ والتعميم")
+async def dispatch_911(interaction: discord.Interaction, location: str, details: str):
+    if not check_role(interaction.user, ROLE_POLICE):
+        return await interaction.response.send_message(f"❌ هذا الأمر مخصص لمن يحمل رتبة **{ROLE_POLICE}** فقط!", ephemeral=True)
+
+    embed = discord.Embed(title="🚨 بلاغ وتوجيه عمليات 911", color=discord.Color.blue(), timestamp=datetime.datetime.utcnow())
+    embed.add_field(name="📍 الموقع:", value=location, inline=True)
+    embed.add_field(name="📝 التفاصيل:", value=details, inline=False)
+    embed.add_field(name="👮 الضابط المبلغ:", value=interaction.user.mention, inline=True)
+    embed.set_footer(text="الأمن العام - غرفة العمليات المركزية")
+    await interaction.response.send_message(embed=embed)
+
+@bot.tree.command(name="log-inspection", description="[شرطة] تسجيل مصادرة وأغراض مقبوضات أثناء التفتيش")
+@app_commands.describe(target="الشخص المفتش", items="الأغراض والمصادرات")
+async def log_inspection(interaction: discord.Interaction, target: discord.Member, items: str):
+    if not check_role(interaction.user, ROLE_POLICE):
+        return await interaction.response.send_message(f"❌ هذا الأمر مخصص لمن يحمل رتبة **{ROLE_POLICE}** فقط!", ephemeral=True)
+
+    embed = discord.Embed(title="🔍 محضر تفتيش ومصادرة", color=discord.Color.orange(), timestamp=datetime.datetime.utcnow())
+    embed.add_field(name="👤 الخاضع للتفتيش:", value=target.mention, inline=True)
+    embed.add_field(name="📦 المضبوطات والممنوعات:", value=items, inline=False)
+    embed.add_field(name="👮 القائم بالتفتيش:", value=interaction.user.mention, inline=True)
+    await interaction.response.send_message(embed=embed)
+
+# ---------------------------------------------------------
+# 7. أوامر قوات السوات SWAT (تتطلب رتبة: سوات فقط)
+# ---------------------------------------------------------
+@bot.tree.command(name="code-red", description="[سوات] إعلان حالة استنفار طارئة كبرى SWAT Code Red")
+@app_commands.describe(reason="سبب الاستنفار والموقع")
+async def code_red(interaction: discord.Interaction, reason: str):
+    if not check_role(interaction.user, ROLE_SWAT):
+        return await interaction.response.send_message(f"❌ هذا الأمر مخصص لمن يحمل رتبة **{ROLE_SWAT}** فقط!", ephemeral=True)
+
+    embed = discord.Embed(title="⚡ [CODE RED] إعلان استنفار وتدخل سريع", color=discord.Color.dark_red(), timestamp=datetime.datetime.utcnow())
+    embed.add_field(name="🚨 السبب والموقع:", value=f"**{reason}**", inline=False)
+    embed.add_field(name="🛡️ قائد العمليات:", value=interaction.user.mention, inline=True)
+    embed.set_footer(text="قوات التدخل السريع SWAT - حالة تأهب كبرى")
+    await interaction.response.send_message(content="@everyone ⚡ حالة استنفار سوات!", embed=embed)
+
+@bot.tree.command(name="raid-plan", description="[سوات] تجهيز وإرسال خطة مداهمة تكتيكية")
+@app_commands.describe(target_location="الموقع المستهدف", voice_channel="روم الصوت المخصص للعملية")
+async def raid_plan(interaction: discord.Interaction, target_location: str, voice_channel: discord.VoiceChannel):
+    if not check_role(interaction.user, ROLE_SWAT):
+        return await interaction.response.send_message(f"❌ هذا الأمر مخصص لمن يحمل رتبة **{ROLE_SWAT}** فقط!", ephemeral=True)
+
+    embed = discord.Embed(title="🎯 خطة تكتيكية ومداهمة", color=discord.Color.purple(), timestamp=datetime.datetime.utcnow())
+    embed.add_field(name="📍 الهدف والموقع:", value=target_location, inline=True)
+    embed.add_field(name="🔊 الروم التكتيكي الصوتي:", value=voice_channel.mention, inline=True)
+    embed.add_field(name="👮 المشرف:", value=interaction.user.mention, inline=False)
+    await interaction.response.send_message(embed=embed)
+
+# ---------------------------------------------------------
+# 8. أوامر وزارة الصحة (تتطلب رتبة: صحة فقط)
+# ---------------------------------------------------------
+@bot.tree.command(name="medical-triage", description="[صحة] تسجيل نتيجة الفحص والفرز الطبي للمصاب")
+@app_commands.describe(patient="المصاب", status="حالة المصاب (حرجة / مستقرة)", blood_type="فصيلة الدم (اختياري)")
+async def medical_triage(interaction: discord.Interaction, patient: discord.Member, status: str, blood_type: str = "غير محدد"):
+    if not check_role(interaction.user, ROLE_HEALTH):
+        return await interaction.response.send_message(f"❌ هذا الأمر مخصص لمن يحمل رتبة **{ROLE_HEALTH}** فقط!", ephemeral=True)
+
+    embed = discord.Embed(title="🚑 تقرير فرز ومعاينة طبية", color=discord.Color.teal(), timestamp=datetime.datetime.utcnow())
+    embed.add_field(name="👤 المريض:", value=patient.mention, inline=True)
+    embed.add_field(name="🩺 حالة المريض:", value=f"**{status}**", inline=True)
+    embed.add_field(name="🩸 فصيلة الدم:", value=blood_type, inline=True)
+    embed.add_field(name="👨‍⚕️ المسعف/الطبيب:", value=interaction.user.mention, inline=False)
+    await interaction.response.send_message(embed=embed)
+
+@bot.tree.command(name="check-charges", description="[الجميع] عرض سجل التهم الجنائية للاعب")
+@app_commands.describe(target="اللاعب المراد فحص سجله")
 async def check_charges(interaction: discord.Interaction, target: discord.Member):
     user_id = target.id
     records = criminal_records.get(user_id, [])
 
     if not records:
-        embed = discord.Embed(title="🔍 السجل الجنائي", description=f"السجل الجنائي للاعب {target.mention} **نظيف** ولا توجد أي تهم مسجلة بحقه.", color=discord.Color.green())
-        embed.set_thumbnail(url=target.display_avatar.url)
+        embed = discord.Embed(title="🔍 السجل الجنائي", description=f"السجل الجنائي للاعب {target.mention} **نظيف وخالٍ من السوابق**.", color=discord.Color.green())
         return await interaction.response.send_message(embed=embed)
 
-    embed = discord.Embed(title=f"📜 السجل الجنائي للاعب: {target.display_name}", description=f"إجمالي عدد التهم المسجلة: **{len(records)}**", color=discord.Color.orange())
-    embed.set_thumbnail(url=target.display_avatar.url)
+    embed = discord.Embed(title=f"📜 السجل الجنائي: {target.display_name}", color=discord.Color.orange())
     for i, item in enumerate(records, 1):
-        embed.add_field(name=f"التهمة رقم #{i}", value=f"> **التهمة:** {item['charge']}\n> **بواسطة:** {item['officer']}\n> **التاريخ:** {item['date']}", inline=False)
+        embed.add_field(name=f"قضية #{i}", value=f"> **التهمة:** {item['charge']}\n> **المسجل:** {item['officer']}\n> **التاريخ:** {item['date']}", inline=False)
 
-    embed.set_footer(text="وزارة العدل - نظام السجلات الجنائية")
     await interaction.response.send_message(embed=embed)
 
-@bot.tree.command(name="remove-charges", description="مسح كافة التهم والسوابق الجنائية عن لاعب (تبرئة)")
-@app_commands.describe(target="منشن اللاعب المراد مسح التهم عنه")
-async def remove_charges(interaction: discord.Interaction, target: discord.Member):
-    if interaction.user.id not in ALLOWED_USERS:
-        return await interaction.response.send_message("❌ هذا الأمر مخصص لأعضاء محددين فقط!", ephemeral=True)
-
-    user_id = target.id
-    if user_id not in criminal_records or len(criminal_records[user_id]) == 0:
-        return await interaction.response.send_message(f"⚠️ اللاعب {target.mention} لا يمتلك أي تهم مسجلة!", ephemeral=True)
-
-    criminal_records[user_id] = []
-    embed = discord.Embed(title="✨ تم رد الاعتبار والتبرئة", description=f"تم مسح جميع التهم بحق {target.mention} بنجاح.", color=discord.Color.green(), timestamp=datetime.datetime.utcnow())
-    embed.add_field(name="🛡️ المسؤول عن التبرئة", value=interaction.user.mention, inline=True)
-    embed.set_thumbnail(url=target.display_avatar.url)
-    embed.set_footer(text="وزارة العدل - نظام رد الاعتبار والتبرئة")
-    await interaction.response.send_message(embed=embed)
+@bot.tree.command(name="ticket-panel", description="إرسال لوحة فتح التذاكر الموحدة")
+@app_commands.describe(channel="القناة (اختياري)")
+async def ticket_panel(interaction: discord.Interaction, channel: discord.TextChannel = None):
+    target_channel = channel or interaction.channel
+    embed = discord.Embed(
+        title="🏙️ مركز الخدمات الحكومية والقطاعات RP",
+        description="مرحباً بكم في بوابة التذاكر الحكومية.\nاختر القطاع المطلوب للتواصل مع المسؤولين.",
+        color=discord.Color.blue()
+    )
+    await target_channel.send(embed=embed, view=TicketSelectView())
+    await interaction.response.send_message("✅ تم إرسال البانل بنجاح!", ephemeral=True)
 
 # ---------------------------------------------------------
-# 7. التشغيل
+# 9. التشغيل
 # ---------------------------------------------------------
 if __name__ == "__main__":
     keep_alive()
