@@ -1,235 +1,120 @@
 import os
-import random
-import asyncio
 import datetime
-from flask import Flask
-from threading import Thread
 import discord
+from discord import app_commands
 from discord.ext import commands
 
 # ---------------------------------------------------------
-# 1. إعدادات السيرفر البسيط (Keep Alive) لمنصة Render
-# ---------------------------------------------------------
-app = Flask('')
-
-@app.route('/')
-def home():
-    return "Bot is alive and running 24/7!"
-
-def run_flask():
-    app.run(host='0.0.0.0', port=8080)
-
-def keep_alive():
-    t = Thread(target=run_flask)
-    t.start()
-
-# ---------------------------------------------------------
-# 2. إعداد الـ Intents وقائمة الحماية (تم تصحيح الـ Intents)
+# 1. إعداد الـ Intents وشجرة الأوامر
 # ---------------------------------------------------------
 intents = discord.Intents.default()
-intents.messages = True
 intents.message_content = True
-intents.guilds = True
 intents.members = True
 
 bot = commands.Bot(command_prefix="-", intents=intents)
 
-# قائمة أيديات المصرح لهم فقط بإضافة بوتات
-ALLOWED_USERS = [
-    1410703717539254373,  # 👈 ID حسابك الأساسي
-    716867342398914602,  # 👈 ID المشرف الأول
-    1498036019881054500,  # 👈 ID المشرف الثاني
-    1490406877782343843,  # 👈 ID المشرف الثالث
-    1148059857241518101,  # 👈 ID المشرف الرابع
-    000000000000000000   # 👈 ID المشرف الخامس
-]
+# قاعدة بيانات مؤقتة لتخزين سجلات التهم
+criminal_records = {}
 
-# ---------------------------------------------------------
-# 3. حدث الحماية التلقائية من البوتات (Anti-Bot Guard)
-# ---------------------------------------------------------
-@bot.event
-async def on_member_join(member: discord.Member):
-    if member.bot:
-        guild = member.guild
-        
-        try:
-            async for entry in guild.audit_logs(limit=1, action=discord.AuditLogAction.bot_add):
-                inviter = entry.user
-
-                # إذا كان من أضاف البوت ليس ضمن القائمة ولا الأونر
-                if inviter.id not in ALLOWED_USERS and inviter.id != guild.owner_id:
-                    try:
-                        await member.ban(reason="حماية تلقائية: بوت غير مصرح به من الإدارة.")
-                    except Exception as e:
-                        print(f"❌ تعذر حظر البوت {member.name}: {e}")
-
-                    if isinstance(inviter, discord.Member):
-                        try:
-                            await inviter.edit(roles=[], reason="حماية تلقائية: محاولة إضافة بوت مشبوه.")
-                        except discord.Forbidden:
-                            print(f"❌ لم يتم سحب رتب {inviter.name} بسبب نقص الصلاحيات.")
-
-                    print(f"🚨 [حماية] تم حظر البوت المشبوه {member.name} وسحب رتب العضو {inviter.name}")
-                    return
-        except discord.Forbidden:
-            print("❌ البوت لا يمتلك صلاحية قراءة سجل العمليات (View Audit Log)!")
-
-# ---------------------------------------------------------
-# 4. نظام التذاكر الكامل (Ticket System)
-# ---------------------------------------------------------
-class TicketCloseView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
-
-    @discord.ui.button(label="إغلاق التذكرة 🔒", style=discord.ButtonStyle.red, custom_id="close_ticket")
-    async def close_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message("سيتم إغلاق التذكرة ومسح القناة خلال 5 ثوانٍ...")
-        await asyncio.sleep(5)
-        await interaction.channel.delete()
-
-class TicketSelectView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
-
-    @discord.ui.select(
-        placeholder="اختر قسم التذكرة...",
-        custom_id="ticket_select",
-        options=[
-            discord.SelectOption(label="دعم فني", description="لالمساعدة التقنية والحلول البرمجية", emoji="🛠️"),
-            discord.SelectOption(label="استفسار عام", description="لأي سؤال متعلق بالسيرفر والأدوار", emoji="❓"),
-            discord.SelectOption(label="بلاغ / شكوى", description="للإبلاغ عن مخالفة أو تقديم شكوى", emoji="🚨"),
-            discord.SelectOption(label="طلب شراء / شحن", description="للخدمات المدفوعة والاشتراكات", emoji="💳"),
-        ]
-    )
-    async def select_callback(self, interaction: discord.Interaction, select: discord.ui.Select):
-        guild = interaction.guild
-        category_name = "🎫 التذاكر"
-        category = discord.utils.get(guild.categories, name=category_name)
-        
-        if not category:
-            category = await guild.create_category(category_name)
-
-        ticket_channel = await guild.create_text_channel(
-            name=f"ticket-{interaction.user.name}",
-            category=category,
-            overwrites={
-                guild.default_role: discord.PermissionOverwrite(read_messages=False),
-                interaction.user: discord.PermissionOverwrite(read_messages=True, send_messages=True),
-                guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
-            }
-        )
-
-        embed = discord.Embed(
-            title=f"تذكرة قسم: {select.values[0]}",
-            description=f"مرحباً بك {interaction.user.mention} 👋\n\nيرجى كتابة تفاصيل طلبك أو المشكلة بالتفصيل وسيقوم فريق الدعم بالرد عليك في أقرب وقت.",
-            color=discord.Color.blue(),
-            timestamp=datetime.datetime.utcnow()
-        )
-        embed.set_footer(text="لإغلاق التذكرة اضغط على الزر أدناه")
-
-        await ticket_channel.send(embed=embed, view=TicketCloseView())
-        await interaction.response.send_message(f"تم إنشاء تذكرتك بنجاح: {ticket_channel.mention}", ephemeral=True)
-
-@bot.command()
-@commands.has_permissions(administrator=True)
-async def setup_ticket(ctx):
-    await ctx.message.delete()
-    embed = discord.Embed(
-        title="🎫 مركز الدعم والخدمات",
-        description="أهلاً بك! يرجى اختيار القسم المناسب لطلبك من القائمة المنسدلة أسفله لفتح تذكرة خاصة.",
-        color=discord.Color.green()
-    )
-    await ctx.send(embed=embed, view=TicketSelectView())
-
-# ---------------------------------------------------------
-# 5. نظام الألعاب والفعاليات (Mini-Games System)
-# ---------------------------------------------------------
-@bot.command()
-async def rps(ctx, choice: str = None):
-    options = ["حجر", "ورقة", "مقص"]
-    if not choice or choice not in options:
-        return await ctx.send("يرجى اختيار أحد الخيارات: `حجر` ، `ورقة` ، `مقص`\nمثال: `-rps حجر`")
-
-    bot_choice = random.choice(options)
-    if choice == bot_choice:
-        result = "تعادل! 🤝"
-    elif (choice == "حجر" and bot_choice == "مقص") or \
-         (choice == "ورقة" and bot_choice == "حجر") or \
-         (choice == "مقص" and bot_choice == "ورقة"):
-        result = "كفو! فزت أنت 🎉"
-    else:
-        result = "فاز البوت! 🤖"
-
-    embed = discord.Embed(title="🎮 لعبة حجر ورقة مقص", color=discord.Color.gold())
-    embed.add_field(name="اختيارك", value=choice, inline=True)
-    embed.add_field(name="اختيار البوت", value=bot_choice, inline=True)
-    embed.add_field(name="النتيجة", value=result, inline=False)
-    await ctx.send(embed=embed)
-
-@bot.command()
-async def guess(ctx):
-    secret_number = random.randint(1, 10)
-    await ctx.send("🎲 اخترت رقماً بين **1 و 10**، معك 15 ثانية لتخمين الرقم!")
-
-    def check(m):
-        return m.author == ctx.author and m.channel == ctx.channel and m.content.isdigit()
-
-    try:
-        msg = await bot.wait_for('message', check=check, timeout=15.0)
-        if int(msg.content) == secret_number:
-            await ctx.send(f"🎉 إجابة صحيحة يا {ctx.author.mention}! الرقم كان **{secret_number}**.")
-        else:
-            await ctx.send(f"❌ إجابة خاطئة! الرقم الصحيح كان **{secret_number}**.")
-    except asyncio.TimeoutError:
-        await ctx.send(f"⏰ انتهى الوقت! الرقم الصحيح كان **{secret_number}**.")
-
-@bot.command()
-async def roulette(ctx):
-    outcomes = [
-        "🎉 فزت بـ 500 نقطة!",
-        "💥 خصرت! الحظ لم يكن بجانبك.",
-        "👑 حصلت على لقب أسطورة اليوم!",
-        "💀 تم إقصاؤك من الجولة!",
-        "🪙 فزت بـ 1000 قطعة ذهبية!"
-    ]
-    result = random.choice(outcomes)
-    await ctx.send(f"🎰 **عجلة الحظ تدور...**\nنتيجة {ctx.author.mention}: {result}")
-
-@bot.command()
-async def math(ctx):
-    num1 = random.randint(10, 99)
-    num2 = random.randint(1, 9)
-    operator = random.choice(['+', '-', '*'])
-    
-    if operator == '+': answer = num1 + num2
-    elif operator == '-': answer = num1 - num2
-    else: answer = num1 * num2
-
-    await ctx.send(f"⚡ **أسرع شخص يحسب المسألة التالي:**\n> `{num1} {operator} {num2}`")
-
-    def check(m):
-        return m.channel == ctx.channel and m.content.strip() == str(answer)
-
-    try:
-        msg = await bot.wait_for('message', check=check, timeout=12.0)
-        await ctx.send(f"🏆 مبروك {msg.author.mention}! إجابتك صحيحة (`{answer}`).")
-    except asyncio.TimeoutError:
-        await ctx.send(f"⏰ انتهى الوقت دون إجابة! الناتج الصحيح كان: `{answer}`")
-
-# ---------------------------------------------------------
-# 6. الأحداث والتشغيل
-# ---------------------------------------------------------
 @bot.event
 async def on_ready():
-    bot.add_view(TicketSelectView())
-    bot.add_view(TicketCloseView())
-    print(f"✅ تم تسجيل الدخول باسم: {bot.user.name} ({bot.user.id})")
-    print("🛡️ نظام الحماية والتذاكر والألعاب المكتملة تعمل بنجاح!")
+    try:
+        synced = await bot.tree.sync()
+        print(f"✅ تم مزامنة {len(synced)} أمر slash لوزارة العدل بنجاح!")
+    except Exception as e:
+        print(f"❌ خطأ في مزامنة الأوامر: {e}")
+    print(f"⚖️ بوت وزارة العدل يعمل بنجاح باسم: {bot.user.name}")
 
+# ---------------------------------------------------------
+# 2. أمر تسجيل تهمة على لاعب (/add-charge)
+# ---------------------------------------------------------
+@bot.tree.command(name="add-charge", description="تسجيل تهمة جديدة في السجل الجنائي للاعب")
+@app_commands.describe(
+    target="منشن اللاعب المراد تسجيل التهمة عليه",
+    charge="اختر التهمة الموجهة للاعب"
+)
+@app_commands.choices(charge=[
+    app_commands.Choice(name="⚖️ التمرد وعصيان الأوامر العدلية", value="التمرد وعصيان الأوامر العدلية"),
+    app_commands.Choice(name="📜 تقديم وثائق أو شهادة تزوير", value="تقديم وثائق أو شهادة تزوير"),
+    app_commands.Choice(name="🚨 التعطيل والاعتداء على جلسة محاكمة", value="التعطيل والاعتداء على جلسة محاكمة"),
+    app_commands.Choice(name="💼 الهروب من تنفيذ الحكم القضائي", value="الهروب من تنفيذ الحكم القضائي"),
+    app_commands.Choice(name="🔍 إهانة الهيئة القضائية أو المحامي", value="إهانة الهيئة القضائية أو المحامي")
+])
+@app_commands.checks.has_permissions(administrator=True)
+async def add_charge(interaction: discord.Interaction, target: discord.Member, charge: app_commands.Choice[str]):
+    user_id = target.id
+    
+    if user_id not in criminal_records:
+        criminal_records[user_id] = []
+        
+    date_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    
+    criminal_records[user_id].append({
+        "charge": charge.value,
+        "officer": interaction.user.display_name,
+        "date": date_str
+    })
+
+    embed = discord.Embed(
+        title="📂 تم تسجيل تهمة جديدة",
+        color=discord.Color.red(),
+        timestamp=datetime.datetime.utcnow()
+    )
+    embed.add_field(name="👤 المتهم", value=target.mention, inline=True)
+    embed.add_field(name="⚖️ التهمة المسجلة", value=f"**{charge.value}**", inline=False)
+    embed.add_field(name="🛡️ المسجل بواسطة", value=interaction.user.mention, inline=True)
+    embed.set_thumbnail(url=target.display_avatar.url)
+    embed.set_footer(text="وزارة العدل - نظام السجلات الجنائية")
+
+    await interaction.response.send_message(embed=embed)
+
+# ---------------------------------------------------------
+# 3. أمر الاستعلام عن سوابق لاعب (/check-charges)
+# ---------------------------------------------------------
+@bot.tree.command(name="check-charges", description="عرض سجل التهم والسوابق الجنائية للاعب")
+@app_commands.describe(target="اختر اللاعب لرؤية سجله الجنائي")
+async def check_charges(interaction: discord.Interaction, target: discord.Member):
+    user_id = target.id
+    records = criminal_records.get(user_id, [])
+
+    if not records:
+        embed = discord.Embed(
+            title="🔍 السجل الجنائي",
+            description=f"السجل الجنائي للاعب {target.mention} **نظيف** ولا توجد أي تهم مسجلة بحقه.",
+            color=discord.Color.green()
+        )
+        embed.set_thumbnail(url=target.display_avatar.url)
+        return await interaction.response.send_message(embed=embed)
+
+    embed = discord.Embed(
+        title=f"📜 السجل الجنائي للاعب: {target.display_name}",
+        description=f"إجمالي عدد التهم المسجلة: **{len(records)}**",
+        color=discord.Color.orange()
+    )
+    embed.set_thumbnail(url=target.display_avatar.url)
+
+    for i, item in enumerate(records, 1):
+        embed.add_field(
+            name=f"التهمة رقم #{i}",
+            value=f"> **التهمة:** {item['charge']}\n> **بواسطة:** {item['officer']}\n> **التاريخ:** {item['date']}",
+            inline=False
+        )
+
+    embed.set_footer(text="وزارة العدل - نظام السجلات الجنائية")
+    await interaction.response.send_message(embed=embed)
+
+# معالجة الخطأ عند عدم وجود صلاحيات
+@add_charge.error
+async def add_charge_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+    if isinstance(error, app_commands.MissingPermissions):
+        await interaction.response.send_message("❌ لا تملك صلاحيات إدارة لاستخدام هذا الأمر!", ephemeral=True)
+
+# ---------------------------------------------------------
+# 4. قراءة التوكن والتشغيل تلقائياً من المتغيرات البيئية
+# ---------------------------------------------------------
 if __name__ == "__main__":
-    keep_alive()
     TOKEN = os.getenv("DISCORD_TOKEN")
     if TOKEN:
         bot.run(TOKEN)
     else:
-        print("❌ لم يتم العثور على DISCORD_TOKEN في المتغيرات البيئية!")
+        print("❌ لم يتم العثور على DISCORD_TOKEN في المتغيرات البيئية (Environment Variables)!")
