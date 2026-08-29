@@ -1,12 +1,31 @@
 import os
 import asyncio
 import datetime
+from threading import Thread
+from flask import Flask
 import discord
 from discord import app_commands
 from discord.ext import commands
 
 # ---------------------------------------------------------
-# 1. إعداد الـ Intents وشجرة الأوامر
+# 1. خادم الويب (Keep Alive)
+# ---------------------------------------------------------
+web_app = Flask('')
+
+@web_app.route('/')
+def home():
+    return "Bot is alive 24/7!"
+
+def run_web():
+    port = int(os.environ.get("PORT", 8080))
+    web_app.run(host='0.0.0.0', port=port)
+
+def keep_alive():
+    t = Thread(target=run_web)
+    t.start()
+
+# ---------------------------------------------------------
+# 2. إعداد البوت والـ Intents
 # ---------------------------------------------------------
 intents = discord.Intents.default()
 intents.message_content = True
@@ -15,20 +34,14 @@ intents.guilds = True
 
 bot = commands.Bot(command_prefix="-", intents=intents)
 
-# قائمة الـ 5 أيديات المصرح لهم بالأوامر الإدارية الأخرى (المحكمة والرسائل)
 ALLOWED_USERS = [
-    1410703717539254373,  # 👈 ID الشخص الأول
-    1490406877782343843,  # 👈 ID الشخص الثاني
-    1498036019881054500,  # 👈 ID الشخص الثالث
-    000000000000000000,  # 👈 ID الشخص الرابع
-    000000000000000000   # 👈 ID الشخص الخامس
+    000000000000000000,  # 👈 ID المصرح لهم بالأوامر الإدارية
 ]
 
-# قاعدة بيانات مؤقتة لتخزين سجلات التهم
 criminal_records = {}
 
 # ---------------------------------------------------------
-# 2. مكونات نظام التذاكر (Interactive UI Component)
+# 3. مكونات التذاكر (Interactive UI)
 # ---------------------------------------------------------
 class TicketCloseView(discord.ui.View):
     def __init__(self):
@@ -84,7 +97,7 @@ class TicketSelectView(discord.ui.View):
         await interaction.response.send_message(f"✅ تم فتح تذكرتك بنجاح: {ticket_channel.mention}", ephemeral=True)
 
 # ---------------------------------------------------------
-# 3. أحداث البوت والمزامنة
+# 4. الأحداث والمزامنة الفورية لكل السيرفرات
 # ---------------------------------------------------------
 @bot.event
 async def on_ready():
@@ -92,19 +105,28 @@ async def on_ready():
     bot.add_view(TicketCloseView())
     try:
         synced = await bot.tree.sync()
-        print(f"✅ تم مزامنة {len(synced)} أمر slash لوزارة العدل بنجاح!")
+        print(f"✅ تم مزامنة {len(synced)} أمر Slash على مستوى العالم بنجاح!")
     except Exception as e:
-        print(f"❌ خطأ في مزامنة الأوامر: {e}")
-    print(f"⚖️ بوت وزارة العدل يعمل بنجاح باسم: {bot.user.name}")
+        print(f"❌ خطأ في المزامنة: {e}")
+    print(f"⚖️ البوت شغال باسم: {bot.user.name}")
+
+# مزامنة فورية عند دخول أي سيرفر جديد
+@bot.event
+async def on_guild_join(guild):
+    try:
+        await bot.tree.sync(guild=guild)
+        print(f"✅ تم مزامنة الأوامر فوراً في سيرفر: {guild.name}")
+    except Exception as e:
+        print(f"❌ تعذر المزامنة في السيرفر الجديد: {e}")
 
 # ---------------------------------------------------------
-# 4. أوامر التذاكر (بدون حماية الأيديات - متاحة للجميع)
+# 5. الأوامر (ticket-panel / ticket-setup)
 # ---------------------------------------------------------
-
-# أمر إرسال بانل التذاكر
 @bot.tree.command(name="ticket-panel", description="لارسال بانل فتح التذاكر")
-@app_commands.describe(channel="اختر القناة المراد إرسال بانل التذاكر فيها")
-async def ticket_panel(interaction: discord.Interaction, channel: discord.TextChannel):
+@app_commands.describe(channel="اختر القناة المراد إرسال البانل فيها (اختياري)")
+async def ticket_panel(interaction: discord.Interaction, channel: discord.TextChannel = None):
+    target_channel = channel or interaction.channel
+
     embed = discord.Embed(
         title="⚖️ مركز الخدمة العدلية وتلقي القضايا",
         description="أهلاً بكم في بوابة وزارة العدل.\nيرجى اختيار نوع المعاملة أو القضية المراد فتحها من القائمة المنسدلة أسفله للتواصل مع الهيئة القضائية.",
@@ -112,11 +134,12 @@ async def ticket_panel(interaction: discord.Interaction, channel: discord.TextCh
     )
     embed.set_footer(text="وزارة العدل - نظام التذاكر")
 
-    await channel.send(embed=embed, view=TicketSelectView())
-    await interaction.response.send_message(f"✅ تم إرسال بانل فتح التذاكر بنجاح في {channel.mention}", ephemeral=True)
+    try:
+        await target_channel.send(embed=embed, view=TicketSelectView())
+        await interaction.response.send_message(f"✅ تم إرسال بانل فتح التذاكر بنجاح في {target_channel.mention}", ephemeral=True)
+    except Exception as e:
+        await interaction.response.send_message(f"❌ فشل إرسال البانل! تأكد أن البوت يمتلك صلاحية Send Messages و Embed Links في القناة.\nالخطأ: {e}", ephemeral=True)
 
-
-# أمر تسطيب نظام التذاكر
 @bot.tree.command(name="ticket-setup", description="لتسطيب نظام التذاكر")
 async def ticket_setup(interaction: discord.Interaction):
     guild = interaction.guild
@@ -137,38 +160,21 @@ async def ticket_setup(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 # ---------------------------------------------------------
-# 5. أمر إرسال رسالة منسقة (/send-embed)
+# 6. الأوامر الإدارية الأخرى
 # ---------------------------------------------------------
 @bot.tree.command(name="send-embed", description="إرسال رسالة منسقة من البوت إلى روم محدد")
-@app_commands.describe(
-    channel="اختر القناة المراد إرسال الرسالة فيها",
-    message="اكتب نص الرسالة التي تريد إرسالها",
-    title="عنوان الرسالة (اختياري)",
-    color="اختر لون الإمبد"
-)
+@app_commands.describe(channel="اختر القناة المراد إرسال الرسالة فيها", message="اكتب نص الرسالة التي تريد إرسالها", title="عنوان الرسالة (اختياري)", color="اختر لون الإمبد")
 @app_commands.choices(color=[
     app_commands.Choice(name="🔴 أحمر (رسمي / طارئ)", value="red"),
     app_commands.Choice(name="🟢 أخضر (موافقة / إعلان)", value="green"),
     app_commands.Choice(name="🔵 أزرق (تنبيه / معلومات)", value="blue"),
     app_commands.Choice(name="🟡 ذهبي (توجيه / قرارات)", value="gold")
 ])
-async def send_embed(
-    interaction: discord.Interaction, 
-    channel: discord.TextChannel, 
-    message: str, 
-    color: app_commands.Choice[str],
-    title: str = None
-):
+async def send_embed(interaction: discord.Interaction, channel: discord.TextChannel, message: str, color: app_commands.Choice[str], title: str = None):
     if interaction.user.id not in ALLOWED_USERS:
         return await interaction.response.send_message("❌ عذراً، هذا الأمر مخصص لأعضاء محددين فقط!", ephemeral=True)
 
-    color_map = {
-        "red": discord.Color.red(),
-        "green": discord.Color.green(),
-        "blue": discord.Color.blue(),
-        "gold": discord.Color.gold()
-    }
-
+    color_map = {"red": discord.Color.red(), "green": discord.Color.green(), "blue": discord.Color.blue(), "gold": discord.Color.gold()}
     embed = discord.Embed(
         title=title if title else "⚖️ بيان صادر عن وزارة العدل",
         description=message,
@@ -176,16 +182,9 @@ async def send_embed(
         timestamp=datetime.datetime.utcnow()
     )
     embed.set_footer(text=f"صادر بواسطة: {interaction.user.display_name}", icon_url=interaction.user.display_avatar.url)
+    await channel.send(embed=embed)
+    await interaction.response.send_message(f"✅ تم إرسال الرسالة بنجاح في القناة {channel.mention}", ephemeral=True)
 
-    try:
-        await channel.send(embed=embed)
-        await interaction.response.send_message(f"✅ تم إرسال الرسالة بنجاح في القناة {channel.mention}", ephemeral=True)
-    except Exception as e:
-        await interaction.response.send_message(f"❌ تعذر إرسال الرسالة: {e}", ephemeral=True)
-
-# ---------------------------------------------------------
-# 6. أمر تسجيل تهمة على لاعب (/add-charge)
-# ---------------------------------------------------------
 @bot.tree.command(name="add-charge", description="تسجيل تهمة جديدة في السجل الجنائي للاعب")
 @app_commands.describe(target="منشن اللاعب المراد تسجيل التهمة عليه", charge="اختر التهمة الموجهة للاعب")
 @app_commands.choices(charge=[
@@ -204,11 +203,7 @@ async def add_charge(interaction: discord.Interaction, target: discord.Member, c
         criminal_records[user_id] = []
         
     date_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-    criminal_records[user_id].append({
-        "charge": charge.value,
-        "officer": interaction.user.display_name,
-        "date": date_str
-    })
+    criminal_records[user_id].append({"charge": charge.value, "officer": interaction.user.display_name, "date": date_str})
 
     embed = discord.Embed(title="📂 تم تسجيل تهمة جديدة", color=discord.Color.red(), timestamp=datetime.datetime.utcnow())
     embed.add_field(name="👤 المتهم", value=target.mention, inline=True)
@@ -216,12 +211,8 @@ async def add_charge(interaction: discord.Interaction, target: discord.Member, c
     embed.add_field(name="🛡️ المسجل بواسطة", value=interaction.user.mention, inline=True)
     embed.set_thumbnail(url=target.display_avatar.url)
     embed.set_footer(text="وزارة العدل - نظام السجلات الجنائية")
-
     await interaction.response.send_message(embed=embed)
 
-# ---------------------------------------------------------
-# 7. أمر الاستعلام عن سوابق لاعب (/check-charges)
-# ---------------------------------------------------------
 @bot.tree.command(name="check-charges", description="عرض سجل التهم والسوابق الجنائية للاعب")
 @app_commands.describe(target="اختر اللاعب لرؤية سجله الجنائي")
 async def check_charges(interaction: discord.Interaction, target: discord.Member):
@@ -229,34 +220,18 @@ async def check_charges(interaction: discord.Interaction, target: discord.Member
     records = criminal_records.get(user_id, [])
 
     if not records:
-        embed = discord.Embed(
-            title="🔍 السجل الجنائي",
-            description=f"السجل الجنائي للاعب {target.mention} **نظيف** ولا توجد أي تهم مسجلة بحقه.",
-            color=discord.Color.green()
-        )
+        embed = discord.Embed(title="🔍 السجل الجنائي", description=f"السجل الجنائي للاعب {target.mention} **نظيف** ولا توجد أي تهم مسجلة بحقه.", color=discord.Color.green())
         embed.set_thumbnail(url=target.display_avatar.url)
         return await interaction.response.send_message(embed=embed)
 
-    embed = discord.Embed(
-        title=f"📜 السجل الجنائي للاعب: {target.display_name}",
-        description=f"إجمالي عدد التهم المسجلة: **{len(records)}**",
-        color=discord.Color.orange()
-    )
+    embed = discord.Embed(title=f"📜 السجل الجنائي للاعب: {target.display_name}", description=f"إجمالي عدد التهم المسجلة: **{len(records)}**", color=discord.Color.orange())
     embed.set_thumbnail(url=target.display_avatar.url)
-
     for i, item in enumerate(records, 1):
-        embed.add_field(
-            name=f"التهمة رقم #{i}",
-            value=f"> **التهمة:** {item['charge']}\n> **بواسطة:** {item['officer']}\n> **التاريخ:** {item['date']}",
-            inline=False
-        )
+        embed.add_field(name=f"التهمة رقم #{i}", value=f"> **التهمة:** {item['charge']}\n> **بواسطة:** {item['officer']}\n> **التاريخ:** {item['date']}", inline=False)
 
     embed.set_footer(text="وزارة العدل - نظام السجلات الجنائية")
     await interaction.response.send_message(embed=embed)
 
-# ---------------------------------------------------------
-# 8. أمر مسح وتبرئة التهم (/remove-charges)
-# ---------------------------------------------------------
 @bot.tree.command(name="remove-charges", description="مسح كافة التهم والسوابق الجنائية عن لاعب (تبرئة)")
 @app_commands.describe(target="منشن اللاعب المراد مسح التهم عنه")
 async def remove_charges(interaction: discord.Interaction, target: discord.Member):
@@ -265,33 +240,22 @@ async def remove_charges(interaction: discord.Interaction, target: discord.Membe
 
     user_id = target.id
     if user_id not in criminal_records or len(criminal_records[user_id]) == 0:
-        embed = discord.Embed(
-            title="⚠️ تنبيه",
-            description=f"اللاعب {target.mention} لا يمتلك أي تهم مسجلة بالفعل!",
-            color=discord.Color.gold()
-        )
-        return await interaction.response.send_message(embed=embed, ephemeral=True)
+        return await interaction.response.send_message(f"⚠️ اللاعب {target.mention} لا يمتلك أي تهم مسجلة!", ephemeral=True)
 
     criminal_records[user_id] = []
-
-    embed = discord.Embed(
-        title="✨ تم رد الاعتبار والتبرئة",
-        description=f"تم مسح جميع التهم والسوابق الجنائية المسجلة بحق اللاعب {target.mention} بنجاح.",
-        color=discord.Color.green(),
-        timestamp=datetime.datetime.utcnow()
-    )
+    embed = discord.Embed(title="✨ تم رد الاعتبار والتبرئة", description=f"تم مسح جميع التهم بحق {target.mention} بنجاح.", color=discord.Color.green(), timestamp=datetime.datetime.utcnow())
     embed.add_field(name="🛡️ المسؤول عن التبرئة", value=interaction.user.mention, inline=True)
     embed.set_thumbnail(url=target.display_avatar.url)
     embed.set_footer(text="وزارة العدل - نظام رد الاعتبار والتبرئة")
-
     await interaction.response.send_message(embed=embed)
 
 # ---------------------------------------------------------
-# 9. التشغيل التلقائي عبر المتغيرات البيئية
+# 7. التشغيل
 # ---------------------------------------------------------
 if __name__ == "__main__":
+    keep_alive()
     TOKEN = os.getenv("DISCORD_TOKEN")
     if TOKEN:
         bot.run(TOKEN)
     else:
-        print("❌ لم يتم العثور على DISCORD_TOKEN في المتغيرات البيئية!")
+        print("❌ لم يتم العثور على DISCORD_TOKEN!")
