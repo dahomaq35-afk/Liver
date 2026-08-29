@@ -44,7 +44,7 @@ ROLE_SWAT = "𝗠𝗧 | S.W.A.T"
 ROLE_HEALTH = "𝗠𝗧 | PHMC"
 
 # 🛡️ رتب القائمة البيضاء (الاستثناء من الحماية)
-WHITELIST_ROLES = ["#", "MT | Owner", "MT | COowner", "MT | Ceo"]
+WHITELIST_ROLES = ["#", "MT | Owner", "MT | COowner", "MT | Ceo", "MT | Founders"]
 
 # 📂 اسم روم الحماية والبلاغات
 SECURITY_CHANNEL_NAME = "📑┃حماية"
@@ -58,7 +58,7 @@ def normalize_text(text: str) -> str:
     text = unicodedata.normalize('NFKD', text)
     return "".join(c for c in text if not unicodedata.combining(c)).strip().lower()
 
-# دالة التحقق من الاستثناء (تتجاهل الخطوط والزخارف)
+# دالة التحقق من الاستثناء (تتجاهل الخطوط والزخارف وحالة الأحرف)
 def is_whitelisted(user: discord.Member) -> bool:
     if user.id == user.guild.owner_id:
         return True
@@ -70,7 +70,7 @@ def is_whitelisted(user: discord.Member) -> bool:
             return True
     return False
 
-# دالة التحقق من رتبة القطاع (تتجاهل الخطوط والزخارف)
+# دالة التحقق من رتبة القطاع (تتجاهل الخطوط والزخارف وحالة الأحرف)
 def check_role(user: discord.Member, role_name: str) -> bool:
     clean_target = normalize_text(role_name)
     for role in user.roles:
