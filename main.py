@@ -1,6 +1,7 @@
 import os
 import asyncio
 import datetime
+import unicodedata
 from collections import defaultdict
 from threading import Thread
 from flask import Flask
@@ -26,7 +27,7 @@ def keep_alive():
     t.start()
 
 # ---------------------------------------------------------
-# 2. إعداد البوت ورتب القطاعات والقائمة البيضاء
+# 2. إعداد البوت والدوال الأساسية لتنظيف النصوص والأدوار
 # ---------------------------------------------------------
 intents = discord.Intents.default()
 intents.message_content = True
@@ -52,15 +53,30 @@ SECURITY_CHANNEL_NAME = "📑┃حماية"
 criminal_records = {}
 user_message_logs = defaultdict(list)
 
-# دالة التحقق من الاستثناء
+def normalize_text(text: str) -> str:
+    """تنظيف النص وإزالة الزخارف والحروف الخاصة لتسهيل المطابقة"""
+    text = unicodedata.normalize('NFKD', text)
+    return "".join(c for c in text if not unicodedata.combining(c)).strip().lower()
+
+# دالة التحقق من الاستثناء (تتجاهل الخطوط والزخارف)
 def is_whitelisted(user: discord.Member) -> bool:
     if user.id == user.guild.owner_id:
         return True
-    return any(role.name in WHITELIST_ROLES for role in user.roles)
+    
+    clean_whitelist = [normalize_text(r) for r in WHITELIST_ROLES]
+    for role in user.roles:
+        clean_user_role = normalize_text(role.name)
+        if any(w_role in clean_user_role for w_role in clean_whitelist):
+            return True
+    return False
 
-# دالة التحقق من رتبة القطاع
+# دالة التحقق من رتبة القطاع (تتجاهل الخطوط والزخارف)
 def check_role(user: discord.Member, role_name: str) -> bool:
-    return any(role.name == role_name for role in user.roles)
+    clean_target = normalize_text(role_name)
+    for role in user.roles:
+        if clean_target in normalize_text(role.name):
+            return True
+    return False
 
 # دالة جلب/إنشاء روم الحماية
 async def get_security_channel(guild: discord.Guild):
@@ -173,12 +189,11 @@ async def on_message(message: discord.Message):
             await sec_channel.send(embed=embed)
         return
 
-    # 3. نظام الإسبام المعدل (5 رسائل خلال ثانيتين)
+    # 3. نظام الإسبام (5 رسائل خلال ثانيتين)
     now_time = datetime.datetime.now(datetime.timezone.utc)
     user_id = member.id
     user_message_logs[user_id].append(now_time)
 
-    # فلترة الرسائل في آخر ثانيتين فقط
     user_message_logs[user_id] = [
         t for t in user_message_logs[user_id]
         if (now_time - t).total_seconds() <= 2
@@ -191,7 +206,6 @@ async def on_message(message: discord.Message):
             await member.timeout(timeout_until, reason="🛡️ إسبام: 5 رسائل خلال ثانيتين")
             await message.channel.send(f"🔇 تم إعطاء {member.mention} ميوت لمدة دقيقتين بسبب الإسبام.", delete_after=5)
             
-            # مسح آخر 5 رسائل
             def is_user_msg(m): return m.author.id == user_id
             await message.channel.purge(limit=5, check=is_user_msg)
 
@@ -276,7 +290,6 @@ async def on_ready():
 # ---------------------------------------------------------
 # 6. أوامر القطاعات (Justice, LSPD, SWAT, PHMC)
 # ---------------------------------------------------------
-# --- وزارة العدل ---
 @bot.tree.command(name="create-deed", description="[Justice] تسجيل صك ملكية أو عقد رسمي بين طرفين")
 @app_commands.describe(owner="صاحب الملكية", property_type="نوع العقار/السيارة", details="تفاصيل الصك", target_channel="القناة (اختياري)")
 async def create_deed(interaction: discord.Interaction, owner: discord.Member, property_type: str, details: str, target_channel: discord.TextChannel = None):
@@ -328,7 +341,6 @@ async def add_charge(interaction: discord.Interaction, target: discord.Member, c
     await dest.send(embed=embed)
     await interaction.response.send_message(f"✅ تم تسجيل التهمة في {dest.mention}", ephemeral=True)
 
-# --- وزارة الداخلية والشرطة ---
 @bot.tree.command(name="911-dispatch", description="[LSPD] إرسال توجيه وتعميم لغرفة العمليات")
 @app_commands.describe(location="موقع الحادث", details="تفاصيل البلاغ", target_channel="القناة (اختياري)")
 async def dispatch_911(interaction: discord.Interaction, location: str, details: str, target_channel: discord.TextChannel = None):
@@ -357,7 +369,6 @@ async def log_inspection(interaction: discord.Interaction, target: discord.Membe
     await dest.send(embed=embed)
     await interaction.response.send_message(f"✅ تم تسجيل المحضر في {dest.mention}", ephemeral=True)
 
-# --- قوات السوات ---
 @bot.tree.command(name="code-red", description="[SWAT] إعلان حالة استنفار طارئة SWAT Code Red")
 @app_commands.describe(reason="سبب الاستنفار والموقع", target_channel="القناة (اختياري)")
 async def code_red(interaction: discord.Interaction, reason: str, target_channel: discord.TextChannel = None):
@@ -385,7 +396,6 @@ async def raid_plan(interaction: discord.Interaction, target_location: str, voic
     await dest.send(embed=embed)
     await interaction.response.send_message(f"✅ تم إرسال الخطة إلى {dest.mention}", ephemeral=True)
 
-# --- وزارة الصحة ---
 @bot.tree.command(name="medical-triage", description="[PHMC] تسجيل نتيجة الفحص والفرز الطبي للمصاب")
 @app_commands.describe(patient="المصاب", status="الحالة (حرجة / مستقرة)", blood_type="فصيلة الدم", target_channel="القناة (اختياري)")
 async def medical_triage(interaction: discord.Interaction, patient: discord.Member, status: str, blood_type: str = "غير محدد", target_channel: discord.TextChannel = None):
@@ -401,7 +411,6 @@ async def medical_triage(interaction: discord.Interaction, patient: discord.Memb
     await dest.send(embed=embed)
     await interaction.response.send_message(f"✅ تم إرسال التقرير إلى {dest.mention}", ephemeral=True)
 
-# --- أوامر عامة ---
 @bot.tree.command(name="check-charges", description="[الجميع] عرض سجل التهم الجنائية للاعب")
 @app_commands.describe(target="اللاعب المراد فحص سجله")
 async def check_charges(interaction: discord.Interaction, target: discord.Member):
