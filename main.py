@@ -35,7 +35,61 @@ async def on_ready():
     print(f"⚖️ بوت وزارة العدل يعمل بنجاح باسم: {bot.user.name}")
 
 # ---------------------------------------------------------
-# 2. أمر تسجيل تهمة على لاعب (/add-charge)
+# 2. أمر إرسال رسالة منسقة في روم محدد (/send-embed)
+# ---------------------------------------------------------
+@bot.tree.command(name="send-embed", description="إرسال رسالة منسقة من البوت إلى روم محدد")
+@app_commands.describe(
+    channel="اختر القناة المراد إرسال الرسالة فيها",
+    message="اكتب نص الرسالة التي تريد إرسالها",
+    title="عنوان الرسالة (اختياري)",
+    color="اختر لون الإمبد"
+)
+@app_commands.choices(color=[
+    app_commands.Choice(name="🔴 أحمر (رسمي / طارئ)", value="red"),
+    app_commands.Choice(name="🟢 أخضر (موافقة / إعلان)", value="green"),
+    app_commands.Choice(name="🔵 أزرق (تنبيه / معلومات)", value="blue"),
+    app_commands.Choice(name="🟡 ذهبي (توجيه / قرارات)", value="gold")
+])
+async def send_embed(
+    interaction: discord.Interaction, 
+    channel: discord.TextChannel, 
+    message: str, 
+    color: app_commands.Choice[str],
+    title: str = None
+):
+    # التحقق من أن المستخدم ضمن قائمة الـ 5 المصرح لهم
+    if interaction.user.id not in ALLOWED_USERS:
+        return await interaction.response.send_message(
+            "❌ **عذراً، هذا الأمر مخصص لأعضاء محددين في إدارة وزارة العدل فقط!**", 
+            ephemeral=True
+        )
+
+    # تحديد اللون بناءً على الاختيار الإجباري
+    color_map = {
+        "red": discord.Color.red(),
+        "green": discord.Color.green(),
+        "blue": discord.Color.blue(),
+        "gold": discord.Color.gold()
+    }
+    embed_color = color_map.get(color.value, discord.Color.blue())
+
+    # إنشاء الإمبد
+    embed = discord.Embed(
+        title=title if title else "⚖️ بيان صادر عن وزارة العدل",
+        description=message,
+        color=embed_color,
+        timestamp=datetime.datetime.utcnow()
+    )
+    embed.set_footer(text=f"صادر بواسطة: {interaction.user.display_name}", icon_url=interaction.user.display_avatar.url)
+
+    try:
+        await channel.send(embed=embed)
+        await interaction.response.send_message(f"✅ تم إرسال الرسالة بنجاح في القناة {channel.mention}", ephemeral=True)
+    except Exception as e:
+        await interaction.response.send_message(f"❌ تعذر إرسال الرسالة في القناة: {e}", ephemeral=True)
+
+# ---------------------------------------------------------
+# 3. أمر تسجيل تهمة على لاعب (/add-charge)
 # ---------------------------------------------------------
 @bot.tree.command(name="add-charge", description="تسجيل تهمة جديدة في السجل الجنائي للاعب")
 @app_commands.describe(
@@ -50,7 +104,6 @@ async def on_ready():
     app_commands.Choice(name="🔍 إهانة الهيئة القضائية أو المحامي", value="إهانة الهيئة القضائية أو المحامي")
 ])
 async def add_charge(interaction: discord.Interaction, target: discord.Member, charge: app_commands.Choice[str]):
-    # التحقق من أن المستخدم ضمن قائمة الـ 5 المصرح لهم
     if interaction.user.id not in ALLOWED_USERS:
         return await interaction.response.send_message(
             "❌ **عذراً، هذا الأمر مخصص لأعضاء محددين في وزارة العدل فقط!**", 
@@ -84,7 +137,7 @@ async def add_charge(interaction: discord.Interaction, target: discord.Member, c
     await interaction.response.send_message(embed=embed)
 
 # ---------------------------------------------------------
-# 3. أمر الاستعلام عن سوابق لاعب (/check-charges) - متاح للجميع
+# 4. أمر الاستعلام عن سوابق لاعب (/check-charges)
 # ---------------------------------------------------------
 @bot.tree.command(name="check-charges", description="عرض سجل التهم والسوابق الجنائية للاعب")
 @app_commands.describe(target="اختر اللاعب لرؤية سجله الجنائي")
@@ -119,12 +172,11 @@ async def check_charges(interaction: discord.Interaction, target: discord.Member
     await interaction.response.send_message(embed=embed)
 
 # ---------------------------------------------------------
-# 4. أمر مسح وتبرئة التهم من اللاعب (/remove-charges)
+# 5. أمر مسح وتبرئة التهم من اللاعب (/remove-charges)
 # ---------------------------------------------------------
 @bot.tree.command(name="remove-charges", description="مسح كافة التهم والسوابق الجنائية عن لاعب (تبرئة)")
 @app_commands.describe(target="منشن اللاعب المراد مسح التهم عنه")
 async def remove_charges(interaction: discord.Interaction, target: discord.Member):
-    # التحقق من أن المستخدم ضمن قائمة الـ 5 المصرح لهم
     if interaction.user.id not in ALLOWED_USERS:
         return await interaction.response.send_message(
             "❌ **عذراً، هذا الأمر مخصص لأعضاء محددين في وزارة العدل فقط!**", 
@@ -156,7 +208,7 @@ async def remove_charges(interaction: discord.Interaction, target: discord.Membe
     await interaction.response.send_message(embed=embed)
 
 # ---------------------------------------------------------
-# 5. قراءة التوكن والتشغيل تلقائياً من المتغيرات البيئية
+# 6. قراءة التوكن والتشغيل تلقائياً من المتغيرات البيئية
 # ---------------------------------------------------------
 if __name__ == "__main__":
     TOKEN = os.getenv("DISCORD_TOKEN")
