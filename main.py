@@ -13,6 +13,15 @@ intents.members = True
 
 bot = commands.Bot(command_prefix="-", intents=intents)
 
+# قائمة الـ 5 أيديات المصرح لهم باستخدام الأوامر الإدارية لوزارة العدل
+ALLOWED_USERS = [
+    1410703717539254373,  # 👈 ID الشخص الأول
+    1490406877782343843,  # 👈 ID الشخص الثاني
+    000000000000000000,  # 👈 ID الشخص الثالث
+    000000000000000000,  # 👈 ID الشخص الرابع
+    000000000000000000   # 👈 ID الشخص الخامس
+]
+
 # قاعدة بيانات مؤقتة لتخزين سجلات التهم
 criminal_records = {}
 
@@ -40,8 +49,14 @@ async def on_ready():
     app_commands.Choice(name="💼 الهروب من تنفيذ الحكم القضائي", value="الهروب من تنفيذ الحكم القضائي"),
     app_commands.Choice(name="🔍 إهانة الهيئة القضائية أو المحامي", value="إهانة الهيئة القضائية أو المحامي")
 ])
-@app_commands.checks.has_permissions(administrator=True)
 async def add_charge(interaction: discord.Interaction, target: discord.Member, charge: app_commands.Choice[str]):
+    # التحقق من أن المستخدم ضمن قائمة الـ 5 المصرح لهم
+    if interaction.user.id not in ALLOWED_USERS:
+        return await interaction.response.send_message(
+            "❌ **عذراً، هذا الأمر مخصص لأعضاء محددين في وزارة العدل فقط!**", 
+            ephemeral=True
+        )
+
     user_id = target.id
     
     if user_id not in criminal_records:
@@ -69,7 +84,7 @@ async def add_charge(interaction: discord.Interaction, target: discord.Member, c
     await interaction.response.send_message(embed=embed)
 
 # ---------------------------------------------------------
-# 3. أمر الاستعلام عن سوابق لاعب (/check-charges)
+# 3. أمر الاستعلام عن سوابق لاعب (/check-charges) - متاح للجميع
 # ---------------------------------------------------------
 @bot.tree.command(name="check-charges", description="عرض سجل التهم والسوابق الجنائية للاعب")
 @app_commands.describe(target="اختر اللاعب لرؤية سجله الجنائي")
@@ -108,11 +123,16 @@ async def check_charges(interaction: discord.Interaction, target: discord.Member
 # ---------------------------------------------------------
 @bot.tree.command(name="remove-charges", description="مسح كافة التهم والسوابق الجنائية عن لاعب (تبرئة)")
 @app_commands.describe(target="منشن اللاعب المراد مسح التهم عنه")
-@app_commands.checks.has_permissions(administrator=True)
 async def remove_charges(interaction: discord.Interaction, target: discord.Member):
+    # التحقق من أن المستخدم ضمن قائمة الـ 5 المصرح لهم
+    if interaction.user.id not in ALLOWED_USERS:
+        return await interaction.response.send_message(
+            "❌ **عذراً، هذا الأمر مخصص لأعضاء محددين في وزارة العدل فقط!**", 
+            ephemeral=True
+        )
+
     user_id = target.id
     
-    # التأكد ما إذا كان اللاعب يمتلك تهم مسبقة أم لا
     if user_id not in criminal_records or len(criminal_records[user_id]) == 0:
         embed = discord.Embed(
             title="⚠️ تنبيه",
@@ -121,7 +141,6 @@ async def remove_charges(interaction: discord.Interaction, target: discord.Membe
         )
         return await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    # تفريغ قائمة التهم الخاص باللاعب
     criminal_records[user_id] = []
 
     embed = discord.Embed(
@@ -136,13 +155,6 @@ async def remove_charges(interaction: discord.Interaction, target: discord.Membe
 
     await interaction.response.send_message(embed=embed)
 
-# معالجة الخطأ عند عدم وجود صلاحيات للأوامر
-@add_charge.error
-@remove_charges.error
-async def permissions_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
-    if isinstance(error, app_commands.MissingPermissions):
-        await interaction.response.send_message("❌ لا تملك صلاحيات إدارة لاستخدام هذا الأمر!", ephemeral=True)
-
 # ---------------------------------------------------------
 # 5. قراءة التوكن والتشغيل تلقائياً من المتغيرات البيئية
 # ---------------------------------------------------------
@@ -151,4 +163,4 @@ if __name__ == "__main__":
     if TOKEN:
         bot.run(TOKEN)
     else:
-        print("❌ لم يتم العثور على DISCORD_TOKEN في المتغيرات البيئية (Environment Variables)!")
+        print("❌ لم يتم العثور على DISCORD_TOKEN في المتغيرات البيئية!")
