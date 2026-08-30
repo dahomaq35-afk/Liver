@@ -9,13 +9,13 @@ from discord import app_commands
 from discord.ext import commands
 
 # ---------------------------------------------------------
-# 1. خادم الويب (Keep Alive)
+# 1. خادم الويب (Keep Alive 24/7)
 # ---------------------------------------------------------
 web_app = Flask('')
 
 @web_app.route('/')
 def home():
-    return "Bot is active!"
+    return "Roleplay & Security Bot is active 24/7!"
 
 def run_web():
     port = int(os.environ.get("PORT", 8080))
@@ -23,6 +23,7 @@ def run_web():
 
 def keep_alive():
     t = Thread(target=run_web)
+    t.daemon = True
     t.start()
 
 # ---------------------------------------------------------
@@ -32,17 +33,18 @@ intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 intents.guilds = True
+intents.bans = True
 intents.moderation = True
 
 bot = commands.Bot(command_prefix="-", intents=intents)
 
-# 🏷️ أسماء رتب القطاعات
+# 🏷️ أسماء رتب القطاعات الحكومية
 ROLE_JUSTICE = "𝗠𝗧 | Justice"
 ROLE_POLICE = "𝗠𝗧 | LSPD"
 ROLE_SWAT = "𝗠𝗧 | S.W.A.T"
 ROLE_HEALTH = "𝗠𝗧 | PHMC"
 
-# 🛡️ أسماء الرتب المستثناة من الحماية (مكتوبة بالرمز الدقيق من الصورة)
+# 🛡️ أسماء الرتب المستثناة من الحماية (Whitelist)
 WHITELIST_ROLES = [
     "#", 
     "MT | Owner ↔", 
@@ -54,18 +56,11 @@ WHITELIST_ROLES = [
     "bot"
 ]
 
-# 🆔 أرقام الـ IDs للرتب (ضِع أرقامك هنا متى ما استخرجتها)
-WHITELIST_ROLE_IDS = [
-    111111111111111111,
-    222222222222222222,
-    333333333333333333,
-]
+# 🆔 أرقام الـ IDs للرتب (اختياري - ضعه مستقبلاً إن أردت)
+WHITELIST_ROLE_IDS = []
 
 # 🆔 أرقام البوتات الموثوقة المستثناة من الحظر
-ALLOWED_BOT_IDS = [
-    101010101010101010,
-    202020202020202020,
-]
+ALLOWED_BOT_IDS = []
 
 SECURITY_CHANNEL_NAME = "📑┃حماية"
 
@@ -73,6 +68,7 @@ criminal_records = {}
 user_message_logs = defaultdict(list)
 
 def is_whitelisted(user: discord.User | discord.Member, guild: discord.Guild = None) -> bool:
+    """التحقق الحقيقي والدقيق من استثناء العضو (مالك، أدمن، أو رتبة مستثناة)"""
     if not user:
         return False
     
@@ -111,12 +107,12 @@ async def get_security_channel(guild: discord.Guild):
     return channel
 
 # ---------------------------------------------------------
-# 3. أحداث الحماية
+# 3. أحداث الحماية الأمنية المتقدمة (Anti-Nuke / Anti-Spam)
 # ---------------------------------------------------------
 
 @bot.event
 async def on_member_ban(guild: discord.Guild, user: discord.User):
-    await asyncio.sleep(0.1)
+    await asyncio.sleep(0.3)
     sec_channel = await get_security_channel(guild)
     actor = None
 
@@ -135,27 +131,35 @@ async def on_member_ban(guild: discord.Guild, user: discord.User):
         except Exception:
             pass
 
-    if actor:
+    if actor and actor.id != bot.user.id:
         if is_whitelisted(actor, guild):
+            if sec_channel:
+                embed = discord.Embed(
+                    title="ℹ️ تنبيه: حظر معتمد",
+                    description=f"**المبند:** {actor.mention}\n**المحظور:** {user.mention}",
+                    color=discord.Color.blue(),
+                    timestamp=datetime.datetime.now(datetime.timezone.utc)
+                )
+                await sec_channel.send(embed=embed)
             return
-
-        try:
-            await guild.ban(actor, reason="🛡️ حماية: حظر عضو بدون تصريح")
-        except Exception:
-            pass
 
         try:
             await guild.unban(user, reason="🛡️ حماية: فك حظر تلقائي")
         except Exception:
             pass
 
+        try:
+            await guild.ban(actor, reason="🛡️ حماية: محاولة تخريب وحظر بدون صلاحية")
+        except Exception:
+            pass
+
         if sec_channel:
             embed = discord.Embed(
-                title="🚨 [حماية فورية] محاولة حظر تخريبية", 
+                title="🚨 [حماية فورية] كشف تخريب وتبنيد الفاعل", 
                 color=discord.Color.red(), 
                 timestamp=datetime.datetime.now(datetime.timezone.utc)
             )
-            embed.add_field(name="👤 المخالف (تم تبنيده):", value=f"{actor.mention} (`{actor.id}`)", inline=False)
+            embed.add_field(name="👤 المخالف (تم تبنيده فوراً):", value=f"{actor.mention} (`{actor.id}`)", inline=False)
             embed.add_field(name="👤 العضو (تم فك حظره):", value=f"{user.mention} (`{user.id}`)", inline=False)
             await sec_channel.send(embed=embed)
 
@@ -167,7 +171,7 @@ async def on_member_join(member: discord.Member):
         if member.id in ALLOWED_BOT_IDS:
             return
 
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(0.3)
         actor = None
         try:
             async for entry in member.guild.audit_logs(limit=1, action=discord.AuditLogAction.bot_add):
@@ -175,7 +179,7 @@ async def on_member_join(member: discord.Member):
         except Exception:
             pass
 
-        if actor:
+        if actor and actor.id != bot.user.id:
             if not is_whitelisted(actor, member.guild):
                 try:
                     await member.ban(reason="🛡️ حماية: دخول بوت غير مصرح")
@@ -184,9 +188,9 @@ async def on_member_join(member: discord.Member):
                     pass
                 
                 if sec_channel:
-                    embed = discord.Embed(title="🛡️ [حماية البوتات] طرد وتدعيم", color=discord.Color.dark_red(), timestamp=datetime.datetime.now(datetime.timezone.utc))
-                    embed.add_field(name="🤖 البوت (تبنيد):", value=member.mention, inline=False)
-                    embed.add_field(name="👤 المسؤول (تبنيد):", value=actor.mention, inline=False)
+                    embed = discord.Embed(title="🛡️ [حماية البوتات] طرد وتبنيد", color=discord.Color.dark_red(), timestamp=datetime.datetime.now(datetime.timezone.utc))
+                    embed.add_field(name="🤖 البوت:", value=member.mention, inline=False)
+                    embed.add_field(name="👤 المسؤول:", value=actor.mention, inline=False)
                     await sec_channel.send(embed=embed)
                 return
 
@@ -197,10 +201,10 @@ async def on_member_join(member: discord.Member):
 
     if account_age < 1 or has_forbidden_name:
         try:
-            await member.ban(reason="🛡️ حماية: حساب مشبوه")
+            await member.ban(reason="🛡️ حماية: حساب وهمي أو مشبوه")
             if sec_channel:
                 embed = discord.Embed(title="🚨 [حماية الحسابات] تبنيد حساب مشبوه", color=discord.Color.orange(), timestamp=datetime.datetime.now(datetime.timezone.utc))
-                embed.add_field(name="👤 الحساب (تبنيد):", value=f"{member.mention} ({member.id})", inline=False)
+                embed.add_field(name="👤 الحساب:", value=f"{member.mention} (`{member.id}`)", inline=False)
                 embed.add_field(name="📝 السبب:", value=f"عمر الحساب ({account_age} يوم) أو الاسم مخالف", inline=False)
                 await sec_channel.send(embed=embed)
         except Exception:
@@ -219,7 +223,10 @@ async def on_message(message: discord.Message):
     sec_channel = await get_security_channel(message.guild)
 
     if ("@everyone" in message.content or "@here" in message.content) and not member.guild_permissions.administrator:
-        await message.delete()
+        try:
+            await message.delete()
+        except Exception:
+            pass
         if sec_channel:
             embed = discord.Embed(title="⚠️ [منع المنشن] منشن العام بدون صلاحية", color=discord.Color.gold())
             embed.add_field(name="👤 العضو:", value=member.mention, inline=True)
@@ -228,9 +235,12 @@ async def on_message(message: discord.Message):
         return
 
     if "discord.gg/" in message.content or "http://" in message.content or "https://" in message.content:
-        await message.delete()
+        try:
+            await message.delete()
+        except Exception:
+            pass
         if sec_channel:
-            embed = discord.Embed(title="🔗 [حظر الروابط] مسح رابط مخالف", color=discord.Color.red())
+            embed = discord.Embed(title="🔗 [حظر الروابط] مسح رابط خارجي مخالف", color=discord.Color.red())
             embed.add_field(name="👤 العضو:", value=member.mention, inline=True)
             embed.add_field(name="📝 النص:", value=message.content, inline=False)
             await sec_channel.send(embed=embed)
@@ -249,7 +259,7 @@ async def on_message(message: discord.Message):
         user_message_logs[user_id].clear()
         timeout_until = now_time + datetime.timedelta(minutes=2)
         try:
-            await member.timeout(timeout_until, reason="🛡️ إسبام: 5 رسائل خلال ثانيتين")
+            await member.timeout(timeout_until, reason="🛡️ إسبام: إرسال 5 رسائل خلال ثانيتين")
             await message.channel.send(f"🔇 تم إعطاء {member.mention} ميوت لمدة دقيقتين بسبب الإسبام.", delete_after=5)
             
             def is_user_msg(m): return m.author.id == user_id
@@ -258,7 +268,7 @@ async def on_message(message: discord.Message):
             if sec_channel:
                 embed = discord.Embed(title="🔇 [ميوت سبام] تايم آوت تلقائي", color=discord.Color.blue())
                 embed.add_field(name="👤 العضو:", value=member.mention, inline=True)
-                embed.add_field(name="⏱️ السبب:", value="5 رسائل في ثانيتين", inline=True)
+                embed.add_field(name="⏱️ السبب:", value="إرسال رسائل متكررة بسرعة عالية", inline=True)
                 await sec_channel.send(embed=embed)
         except Exception:
             pass
@@ -266,7 +276,7 @@ async def on_message(message: discord.Message):
     await bot.process_commands(message)
 
 # ---------------------------------------------------------
-# 4. التذاكر وأوامر السلاش
+# 4. نظام التذاكر والقطاعات والأزرار
 # ---------------------------------------------------------
 class TicketCloseView(discord.ui.View):
     def __init__(self):
@@ -274,16 +284,19 @@ class TicketCloseView(discord.ui.View):
 
     @discord.ui.button(label="إغلاق التذكرة 🔒", style=discord.ButtonStyle.red, custom_id="close_ticket_btn")
     async def close_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message("سيتم إغلاق التذكرة خلال 5 ثوانٍ...")
+        await interaction.response.send_message("🔒 سيتم إغلاق التذكرة وحذف القناة خلال 5 ثوانٍ...")
         await asyncio.sleep(5)
-        await interaction.channel.delete()
+        try:
+            await interaction.channel.delete()
+        except Exception:
+            pass
 
 class TicketSelectView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
     @discord.ui.select(
-        placeholder="اختر القطاع أو الخدمة...",
+        placeholder="اختر القطاع أو الخدمة الحكومية...",
         custom_id="main_ticket_select",
         options=[
             discord.SelectOption(label="⚖️ ديوان وزارة العدل (DOJ)", description="رفع دعوى، توكيل محامي، صكوك", value=ROLE_JUSTICE),
@@ -298,49 +311,62 @@ class TicketSelectView(discord.ui.View):
         category = discord.utils.get(guild.categories, name=category_name)
         
         if not category:
-            category = await guild.create_category(category_name)
+            try:
+                category = await guild.create_category(category_name)
+            except Exception:
+                category = None
 
-        ticket_channel = await guild.create_text_channel(
-            name=f"تذكرة-{interaction.user.name}",
-            category=category,
-            overwrites={
-                guild.default_role: discord.PermissionOverwrite(read_messages=False),
-                interaction.user: discord.PermissionOverwrite(read_messages=True, send_messages=True),
-                guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
-            }
-        )
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(read_messages=False),
+            interaction.user: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+            guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
+        }
+
+        try:
+            ticket_channel = await guild.create_text_channel(
+                name=f"تذكرة-{interaction.user.name}",
+                category=category,
+                overwrites=overwrites
+            )
+        except Exception as e:
+            await interaction.response.send_message(f"❌ حدث خطأ أثناء إنشاء التذكرة: {e}", ephemeral=True)
+            return
 
         embed = discord.Embed(
             title=f"📋 تذكرة جديدة - {select.values[0]}",
-            description=f"أهلاً بك {interaction.user.mention} 👋\nيرجى كتابة التفاصيل وسيقوم المختص بالرد عليك.",
+            description=f"أهلاً بك {interaction.user.mention} 👋\nيرجى كتابة تفاصيل طلبك أو بلاغك وسيتم خدمتك في أقرب وقت.",
             color=discord.Color.gold(),
             timestamp=datetime.datetime.now(datetime.timezone.utc)
         )
         await ticket_channel.send(embed=embed, view=TicketCloseView())
         await interaction.response.send_message(f"✅ تم فتح تذكرتك بنجاح: {ticket_channel.mention}", ephemeral=True)
 
+# ---------------------------------------------------------
+# 5. تشغيل البوت وتسجيل الأوامر
+# ---------------------------------------------------------
 @bot.event
 async def on_ready():
     bot.add_view(TicketSelectView())
     bot.add_view(TicketCloseView())
     try:
         synced = await bot.tree.sync()
-        print(f"✅ تم مزامنة {len(synced)} أمر Slash!")
+        print(f"✅ تم مزامنة {len(synced)} أمر Slash بنجاح!")
     except Exception as e:
         print(f"❌ خطأ في المزامنة: {e}")
-    print(f"⚡ البوت يعمل بنجاح باسم: {bot.user.name}")
+    print(f"⚡ البوت يعمل بنجاح كـ: {bot.user.name}")
 
 @bot.tree.command(name="ticket-panel", description="إرسال لوحة فتح التذاكر الموحدة")
 async def ticket_panel(interaction: discord.Interaction, channel: discord.TextChannel = None):
     dest = channel or interaction.channel
     embed = discord.Embed(
         title="🏙️ مركز الخدمات الحكومية والقطاعات RP",
-        description="مرحباً بكم في بوابة التذاكر الحكومية.\nاختر القطاع المطلوب للتواصل مع المسؤولين.",
+        description="مرحباً بكم في بوابة التذاكر الحكومية.\nاختر القطاع المطلوب من القائمة أدناه للتواصل مع المسؤولين.",
         color=discord.Color.blue()
     )
     await dest.send(embed=embed, view=TicketSelectView())
     await interaction.response.send_message("✅ تم إرسال البانل بنجاح!", ephemeral=True)
 
+# --- أوامر وزارة العدل (DOJ) ---
 @bot.tree.command(name="create-deed", description="[DOJ] إصدار صك ملكية جديد")
 async def create_deed(interaction: discord.Interaction, owner: discord.Member, property_type: str, details: str):
     if not check_role(interaction.user, ROLE_JUSTICE):
@@ -388,8 +414,9 @@ async def check_charges(interaction: discord.Interaction, target: discord.Member
     embed = discord.Embed(title=f"📁 السجل الجنائي لـ {target.display_name}", color=discord.Color.dark_red())
     for idx, rec in enumerate(records, 1):
         embed.add_field(name=f"سابقة #{idx} ({rec['date']})", value=f"التهمة: {rec['charge']}\nالغرامة: ${rec['fine']:,}", inline=False)
-    await interaction.response.send_message(embed=embed)
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
+# --- أوامر الشرطة (LSPD) ---
 @bot.tree.command(name="911-dispatch", description="[LSPD] إرسال نداء عمليات أمني")
 async def dispatch_911(interaction: discord.Interaction, code: str, location: str, details: str):
     if not check_role(interaction.user, ROLE_POLICE):
@@ -399,7 +426,7 @@ async def dispatch_911(interaction: discord.Interaction, code: str, location: st
     embed.add_field(name="الموقع:", value=location, inline=True)
     embed.add_field(name="المنادي:", value=interaction.user.mention, inline=True)
     embed.add_field(name="التفاصيل:", value=details, inline=False)
-    await interaction.response.send_message(content=f"||@everyone||", embed=embed)
+    await interaction.response.send_message(content="||@everyone||", embed=embed)
 
 @bot.tree.command(name="log-inspection", description="[LSPD] محضر تفتيش شخص أو مركبة")
 async def log_inspection(interaction: discord.Interaction, suspect: discord.Member, items_found: str, status: str):
@@ -413,6 +440,7 @@ async def log_inspection(interaction: discord.Interaction, suspect: discord.Memb
     embed.set_footer(text=f"الضابط المسؤول: {interaction.user.name}")
     await interaction.response.send_message(embed=embed)
 
+# --- أوامر السوات (S.W.A.T) ---
 @bot.tree.command(name="code-red", description="[SWAT] إعلان حالة الاستنفار القصوى")
 async def code_red(interaction: discord.Interaction, zone: str, reason: str):
     if not check_role(interaction.user, ROLE_SWAT):
@@ -435,6 +463,7 @@ async def raid_plan(interaction: discord.Interaction, target_location: str, team
     embed.add_field(name="نقطة الاقتحام:", value=entry_point, inline=False)
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
+# --- أوامر الصحة (PHMC) ---
 @bot.tree.command(name="medical-triage", description="[PHMC] إصدار تقرير طبي وفحص")
 async def medical_triage(interaction: discord.Interaction, patient: discord.Member, condition: str, treatment: str):
     if not check_role(interaction.user, ROLE_HEALTH):
@@ -448,7 +477,7 @@ async def medical_triage(interaction: discord.Interaction, patient: discord.Memb
     await interaction.response.send_message(embed=embed)
 
 # ---------------------------------------------------------
-# 5. تشغيل البوت
+# 6. التشغيل النهائي
 # ---------------------------------------------------------
 if __name__ == "__main__":
     keep_alive()
