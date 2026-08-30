@@ -9,7 +9,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from discord.ui import Button, View, Select, Modal, TextInput
-from google import genai
+import google.generativeai as genai
 
 # ==========================================
 # 1. إعداد السجلات والنظام
@@ -35,14 +35,12 @@ EXEMPT_ROLES = {
 }
 
 def clean_text(text: str) -> str:
-    """إزالة الزخارف والرموز الخاصة وتحويل الحروف إلى صغيرة لتسهيل المقارنة"""
     cleaned = re.sub(r'[^a-zA-Z0-9\u0600-\u06FF]', '', text)
     return cleaned.lower()
 
 CLEANED_EXEMPT_ROLES = {clean_text(role) for role in EXEMPT_ROLES if clean_text(role)}
 
 def is_exempt(member: discord.Member) -> bool:
-    """فحص ما إذا كان العضو يملك إحدى الرتب المستثناة بغض النظر عن الزخارف أو الحروف"""
     if not isinstance(member, discord.Member):
         return False
     if member.guild_permissions.administrator:
@@ -75,17 +73,18 @@ def keep_alive():
     t.start()
 
 # ==========================================
-# 4. إعداد Google Gemini API (المكتبة الحديثة)
+# 4. إعداد Google Gemini API
 # ==========================================
 GEMINI_KEY = os.getenv("GEMINI_API_KEY")
 if GEMINI_KEY:
-    ai_client = genai.Client(api_key=GEMINI_KEY)
+    genai.configure(api_key=GEMINI_KEY)
+    ai_model = genai.GenerativeModel('gemini-2.5-flash')
 else:
-    ai_client = None
+    ai_model = None
     logger.warning("GEMINI_API_KEY environment variable is missing!")
 
 # ==========================================
-# 5. إعداد البوت والافتراضيات (تم تصحيح الـ Intents)
+# 5. إعداد البوت والافتراضيات
 # ==========================================
 intents = discord.Intents.default()
 intents.message_content = True
@@ -275,7 +274,7 @@ class TicketLauncher(View):
         self.add_item(TicketDropdown())
 
 # ==========================================
-# 10. باقي القطاعات
+# 10. باقي القطاعات واللوحات
 # ==========================================
 class CourtCaseModal(Modal, title="رفع دعوى قضائية لدى المحكمة العليا"):
     plaintiff = TextInput(label="اسم المدعي (أنت)", placeholder="اسم الشخصية بالكامل...", required=True)
@@ -387,12 +386,11 @@ class ChannelSelectView(View):
         await interaction.response.send_message(f"✅ تم تخصيص الرد التلقائي للذكاء الاصطناعي في القنوات: {ch_mentions}", ephemeral=True)
 
 # ==========================================
-# 11. أوامر السلاش المحدثة
+# 11. أوامر السلاش (Slash Commands) الشاملة
 # ==========================================
 @bot.tree.command(name="ai_security", description="فحص حالة الحماية والذكاء الاصطناعي للسيرفر")
 async def ai_security(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
-    
     roles_list = "\n".join([f"• `{role}`" for role in EXEMPT_ROLES])
     
     embed = discord.Embed(
@@ -407,8 +405,75 @@ async def ai_security(interaction: discord.Interaction):
     
     await interaction.followup.send(embed=embed, ephemeral=True)
 
+@bot.tree.command(name="setup_tickets", description="إرسال لوحة تذاكر الدعم الفني والخدمات العامة")
+@app_commands.checks.has_permissions(administrator=True)
+async def setup_tickets(interaction: discord.Interaction):
+    embed = discord.Embed(title="🎫 مركز الدعم الفني والخدمات العامة", description="اختر القسم المطلوب من القائمة بالأسفل.", color=discord.Color.blue())
+    await interaction.channel.send(embed=embed, view=TicketLauncher())
+    await interaction.response.send_message("✅ تم إنشاء لوحة التذاكر بنجاح.", ephemeral=True)
+
+@bot.tree.command(name="setup_justice", description="إرسال لوحة ديوان وزارة العدل والمحاكم العليا")
+@app_commands.checks.has_permissions(administrator=True)
+async def setup_justice(interaction: discord.Interaction):
+    embed = discord.Embed(title="⚖️ ديوان وزارة العدل والمحاكم العليا", description="تقديم الدعاوى القضائية والبلاغات القانونية.", color=discord.Color.gold())
+    await interaction.channel.send(embed=embed, view=JusticeView())
+    await interaction.response.send_message("✅ تم إنشاء لوحة وزارة العدل بنجاح.", ephemeral=True)
+
+@bot.tree.command(name="setup_police", description="إرسال لوحة القيادة العامة لشرطة LSPD")
+@app_commands.checks.has_permissions(administrator=True)
+async def setup_police(interaction: discord.Interaction):
+    embed = discord.Embed(title="🚔 القيادة العامة لشرطة LSPD", description="إرسال بلاغ أمني مباشر لغرفة العمليات.", color=discord.Color.dark_blue())
+    await interaction.channel.send(embed=embed, view=PoliceView())
+    await interaction.response.send_message("✅ تم إنشاء لوحة الشرطة بنجاح.", ephemeral=True)
+
+@bot.tree.command(name="setup_swat", description="إرسال لوحة وحدة التدخل السريع SWAT")
+@app_commands.checks.has_permissions(administrator=True)
+async def setup_swat(interaction: discord.Interaction):
+    embed = discord.Embed(title="⚡ وحدة التدخل السريع والقوات الخاصة SWAT", description="طلب الدعم التكتيكي للحالات الحرجية.", color=discord.Color.dark_purple())
+    await interaction.channel.send(embed=embed, view=SWATView())
+    await interaction.response.send_message("✅ تم إنشاء لوحة القوات الخاصة بنجاح.", ephemeral=True)
+
+@bot.tree.command(name="setup_health", description="إرسال لوحة الخدمات الطبية والإسعاف")
+@app_commands.checks.has_permissions(administrator=True)
+async def setup_health(interaction: discord.Interaction):
+    embed = discord.Embed(title="🚑 الهيئة العامة للخدمات الطبية والطب الطارئ", description="طلب الإسعاف الطارئ للحوادث والإصابات.", color=discord.Color.red())
+    await interaction.channel.send(embed=embed, view=HealthView())
+    await interaction.response.send_message("✅ تم إنشاء لوحة الخدمات الطبية بنجاح.", ephemeral=True)
+
+@bot.tree.command(name="setup_ai", description="تحديد قنوات الذكاء الاصطناعي")
+@app_commands.checks.has_permissions(administrator=True)
+async def setup_ai(interaction: discord.Interaction):
+    embed = discord.Embed(title="🤖 لوحة تحكم قنوات الذكاء الاصطناعي", description="اختر القنوات المسموح للذكاء الاصطناعي بالرد التلقائي فيها.", color=discord.Color.purple())
+    await interaction.channel.send(embed=embed, view=ChannelSelectView())
+    await interaction.response.send_message("✅ تم إنشاء لوحة إعدادات الذكاء الاصطناعي بنجاح.", ephemeral=True)
+
+@bot.tree.command(name="ai", description="محادثة الذكاء الاصطناعي الفورية")
+@app_commands.describe(prompt="اكتب سؤالك أو طلبك للذكاء الاصطناعي...")
+async def slash_ai(interaction: discord.Interaction, prompt: str):
+    if not ai_model:
+        await interaction.response.send_message("❌ مفتاح Gemini API غير معرف.", ephemeral=True)
+        return
+
+    await interaction.response.defer()
+    try:
+        loop = asyncio.get_event_loop()
+        response = await loop.run_in_executor(
+            None, 
+            lambda: ai_model.generate_content(prompt)
+        )
+        answer = response.text
+
+        if len(answer) <= 2000:
+            await interaction.followup.send(answer)
+        else:
+            await interaction.followup.send(answer[:1900])
+            for i in range(1900, len(answer), 1900):
+                await interaction.followup.send(answer[i:i + 1900])
+    except Exception as e:
+        await interaction.followup.send(f"⚠️ حدث خطأ:\n```{str(e)}```")
+
 # ==========================================
-# 12. الأحداث والأوامر الرئيسية
+# 12. الأحداث والتشغيل
 # ==========================================
 @bot.event
 async def on_ready():
@@ -430,71 +495,6 @@ async def on_ready():
 
     await bot.change_presence(activity=discord.Game(name="إدارة سيرفر الرول بلي والحماية 🛡️"))
 
-# --- أوامر التجهيز الإدارية ---
-@bot.command(name="setup_tickets")
-@commands.has_permissions(administrator=True)
-async def setup_tickets(ctx):
-    embed = discord.Embed(title="🎫 مركز الدعم الفني والخدمات العامة", description="اختر القسم المطلوب من القائمة بالأسفل.", color=discord.Color.blue())
-    await ctx.send(embed=embed, view=TicketLauncher())
-
-@bot.command(name="setup_justice")
-@commands.has_permissions(administrator=True)
-async def setup_justice(ctx):
-    embed = discord.Embed(title="⚖️ ديوان وزارة العدل والمحاكم العليا", description="تقديم الدعاوى القضائية والبلاغات القانونية.", color=discord.Color.gold())
-    await ctx.send(embed=embed, view=JusticeView())
-
-@bot.command(name="setup_police")
-@commands.has_permissions(administrator=True)
-async def setup_police(ctx):
-    embed = discord.Embed(title="🚔 القيادة العامة لشرطة LSPD", description="إرسال بلاغ أمني مباشر لغرفة العمليات.", color=discord.Color.dark_blue())
-    await ctx.send(embed=embed, view=PoliceView())
-
-@bot.command(name="setup_swat")
-@commands.has_permissions(administrator=True)
-async def setup_swat(ctx):
-    embed = discord.Embed(title="⚡ وحدة التدخل السريع والقوات الخاصة SWAT", description="طلب الدعم التكتيكي للحالات الحرجية.", color=discord.Color.dark_purple())
-    await ctx.send(embed=embed, view=SWATView())
-
-@bot.command(name="setup_health")
-@commands.has_permissions(administrator=True)
-async def setup_health(ctx):
-    embed = discord.Embed(title="🚑 الهيئة العامة للخدمات الطبية والطب الطارئ", description="طلب الإسعاف الطارئ للحوادث والإصابات.", color=discord.Color.red())
-    await ctx.send(embed=embed, view=HealthView())
-
-@bot.command(name="setup_ai")
-@commands.has_permissions(administrator=True)
-async def setup_ai(ctx):
-    embed = discord.Embed(title="🤖 لوحة تحكم قنوات الذكاء الاصطناعي", description="اختر القنوات المسموح للذكاء الاصطناعي بالرد التلقائي فيها.", color=discord.Color.purple())
-    await ctx.send(embed=embed, view=ChannelSelectView())
-
-# --- أمر الذكاء الاصطناعي ---
-@bot.command(name="ai")
-async def chat_ai(ctx, *, prompt: str):
-    if not ai_client:
-        await ctx.send("❌ مفتاح Gemini API غير معرف.")
-        return
-
-    async with ctx.typing():
-        try:
-            loop = asyncio.get_event_loop()
-            response = await loop.run_in_executor(
-                None, 
-                lambda: ai_client.models.generate_content(
-                    model='gemini-2.5-flash',
-                    contents=prompt
-                )
-            )
-            answer = response.text
-
-            if len(answer) <= 2000:
-                await ctx.send(answer)
-            else:
-                for i in range(0, len(answer), 1900):
-                    await ctx.send(answer[i:i + 1900])
-        except Exception as e:
-            await ctx.send(f"⚠️ حدث خطأ:\n```{str(e)}```")
-
-# --- معالجة الرسائل والمنشنات ---
 @bot.event
 async def on_message(message: discord.Message):
     if message.author.bot and message.author.id == bot.user.id:
@@ -510,16 +510,13 @@ async def on_message(message: discord.Message):
             return
 
         content = message.content.replace(f'<@{bot.user.id}>', '').strip()
-        if content and ai_client:
+        if content and ai_model:
             async with message.channel.typing():
                 try:
                     loop = asyncio.get_event_loop()
                     response = await loop.run_in_executor(
                         None, 
-                        lambda: ai_client.models.generate_content(
-                            model='gemini-2.5-flash',
-                            contents=content
-                        )
+                        lambda: ai_model.generate_content(content)
                     )
                     answer = response.text
 
@@ -535,7 +532,7 @@ async def on_message(message: discord.Message):
     await bot.process_commands(message)
 
 # ==========================================
-# 13. التشغيل
+# 13. التشغيل النهائي
 # ==========================================
 if __name__ == "__main__":
     keep_alive()
