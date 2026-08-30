@@ -9,7 +9,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from discord.ui import Button, View, Select, Modal, TextInput
-import google.generativeai as genai
+from google import genai
 
 # ==========================================
 # 1. إعداد السجلات والنظام
@@ -73,14 +73,13 @@ def keep_alive():
     t.start()
 
 # ==========================================
-# 4. إعداد Google Gemini API
+# 4. إعداد Google GenAI (المكتبة الجديدة)
 # ==========================================
 GEMINI_KEY = os.getenv("GEMINI_API_KEY")
 if GEMINI_KEY:
-    genai.configure(api_key=GEMINI_KEY)
-    ai_model = genai.GenerativeModel('gemini-2.5-flash')
+    ai_client = genai.Client(api_key=GEMINI_KEY)
 else:
-    ai_model = None
+    ai_client = None
     logger.warning("GEMINI_API_KEY environment variable is missing!")
 
 # ==========================================
@@ -450,7 +449,7 @@ async def setup_ai(interaction: discord.Interaction):
 @bot.tree.command(name="ai", description="محادثة الذكاء الاصطناعي الفورية")
 @app_commands.describe(prompt="اكتب سؤالك أو طلبك للذكاء الاصطناعي...")
 async def slash_ai(interaction: discord.Interaction, prompt: str):
-    if not ai_model:
+    if not ai_client:
         await interaction.response.send_message("❌ مفتاح Gemini API غير معرف.", ephemeral=True)
         return
 
@@ -459,7 +458,10 @@ async def slash_ai(interaction: discord.Interaction, prompt: str):
         loop = asyncio.get_event_loop()
         response = await loop.run_in_executor(
             None, 
-            lambda: ai_model.generate_content(prompt)
+            lambda: ai_client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=prompt
+            )
         )
         answer = response.text
 
@@ -510,13 +512,16 @@ async def on_message(message: discord.Message):
             return
 
         content = message.content.replace(f'<@{bot.user.id}>', '').strip()
-        if content and ai_model:
+        if content and ai_client:
             async with message.channel.typing():
                 try:
                     loop = asyncio.get_event_loop()
                     response = await loop.run_in_executor(
                         None, 
-                        lambda: ai_model.generate_content(content)
+                        lambda: ai_client.models.generate_content(
+                            model='gemini-2.5-flash',
+                            contents=content
+                        )
                     )
                     answer = response.text
 
