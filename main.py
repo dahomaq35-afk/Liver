@@ -54,6 +54,8 @@ user_message_logs = defaultdict(list)
 
 # دالة التحقق من الاستثناء
 def is_whitelisted(user: discord.Member) -> bool:
+    if not isinstance(user, discord.Member):
+        return False
     if user.id == user.guild.owner_id:
         return True
     
@@ -76,48 +78,68 @@ async def get_security_channel(guild: discord.Guild):
     return channel
 
 # ---------------------------------------------------------
-# 3. أحداث الحماية (Anti-Ban, Anti-Bot, Anti-Spam)
+# 3. أحداث الحماية المعدلة (Anti-Ban, Anti-Bot, Anti-Spam)
 # ---------------------------------------------------------
 
-# 🚨 حماية من حظر/طرد الأعضاء (من عضو واحد)
+# 🚨 حماية من حظر/طرد الأعضاء (معدلة ومضمونة)
 @bot.event
 async def on_member_ban(guild: discord.Guild, user: discord.User):
     sec_channel = await get_security_channel(guild)
-    await asyncio.sleep(0.2)
-    async for entry in guild.audit_logs(limit=1, action=discord.AuditLogAction.ban):
-        actor = entry.user
-        if actor and isinstance(actor, discord.Member):
-            if is_whitelisted(actor):
-                return
+    await asyncio.sleep(1)  # انتظار ثانية لضمان تسجيل الحدث في السجلات
 
-            try:
-                await guild.ban(actor, reason="🛡️ حماية: حظر عضو بدون تصريح")
-            except Exception:
-                pass
+    actor = None
+    try:
+        async for entry in guild.audit_logs(limit=1, action=discord.AuditLogAction.ban):
+            if entry.target.id == user.id:
+                actor = entry.user
+                break
+    except Exception as e:
+        print(f"❌ خطأ في قراءة الـ Audit Log: {e}")
 
-            try:
-                await guild.unban(user, reason="🛡️ حماية: إلغاء الحظر التلقائي")
-            except Exception:
-                pass
+    if actor and isinstance(actor, discord.Member):
+        # إذا كان الفاعل مصرحاً له (في القائمة البيضاء أو المالك)، يتجاهل الأمر
+        if is_whitelisted(actor):
+            return
 
-            if sec_channel:
-                embed = discord.Embed(title="🚨 [تنبيه أمني] محاولة حظر تخريبية", color=discord.Color.red(), timestamp=datetime.datetime.now(datetime.timezone.utc))
-                embed.add_field(name="👤 المخالف (تم تبنيده):", value=f"{actor.mention} ({actor.id})", inline=False)
-                embed.add_field(name="👤 العضو (تم فك حظره):", value=f"{user.mention} ({user.id})", inline=False)
-                await sec_channel.send(embed=embed)
+        # 1. تبنيد الشخص المخالف
+        try:
+            await guild.ban(actor, reason="🛡️ حماية: حظر عضو بدون تصريح")
+        except Exception as e:
+            print(f"❌ فشل حظر المخالف: {e}")
 
-# 🤖 / 👤 فحص الحسابات والبوتات عند الدخول (0.1ms)
+        # 2. فك الحظر عن العضو المظلوم
+        try:
+            await guild.unban(user, reason="🛡️ حماية: إلغاء الحظر التلقائي")
+        except Exception as e:
+            print(f"❌ فشل فك حظر العضو: {e}")
+
+        # 3. إرسال الإشعار لروم الحماية
+        if sec_channel:
+            embed = discord.Embed(
+                title="🚨 [تنبيه أمني] محاولة حظر تخريبية", 
+                color=discord.Color.red(), 
+                timestamp=datetime.datetime.now(datetime.timezone.utc)
+            )
+            embed.add_field(name="👤 المخالف (تم تبنيده):", value=f"{actor.mention} (`{actor.id}`)", inline=False)
+            embed.add_field(name="👤 العضو (تم فك حظره):", value=f"{user.mention} (`{user.id}`)", inline=False)
+            await sec_channel.send(embed=embed)
+
+# 🤖 / 👤 فحص الحسابات والبوتات عند الدخول
 @bot.event
 async def on_member_join(member: discord.Member):
     sec_channel = await get_security_channel(member.guild)
     
     # 1. فحص البوتات
     if member.bot:
+        await asyncio.sleep(1)
         async for entry in member.guild.audit_logs(limit=1, action=discord.AuditLogAction.bot_add):
             actor = entry.user
             if actor and isinstance(actor, discord.Member) and not is_whitelisted(actor):
-                await member.ban(reason="🛡️ حماية: بوت مشبوه")
-                await actor.ban(reason="🛡️ حماية: إدخال بوت مشبوه")
+                try:
+                    await member.ban(reason="🛡️ حماية: بوت غير مصرح به")
+                    await actor.ban(reason="🛡️ حماية: إدخال بوت مشبوه")
+                except Exception:
+                    pass
                 
                 if sec_channel:
                     embed = discord.Embed(title="🛡️ [حماية البوتات] طرد وتدعيم بوت", color=discord.Color.dark_red(), timestamp=datetime.datetime.now(datetime.timezone.utc))
@@ -126,7 +148,7 @@ async def on_member_join(member: discord.Member):
                     await sec_channel.send(embed=embed)
                 return
 
-    # 2. فحص الأشخاص والحسابات المشبوهة
+    # 2. فحص الحسابات المشبوهة
     now_utc = datetime.datetime.now(datetime.timezone.utc)
     account_age = (now_utc - member.created_at).days
     forbidden_keywords = ["hacked", "hack", "اختراق", "تفجير", "تخريب"]
@@ -143,7 +165,7 @@ async def on_member_join(member: discord.Member):
         except Exception:
             pass
 
-# 💬 حماية الشات، الروابط، السبام (5 رسائل / ثانيتين)، والمنشن
+# 💬 حماية الشات، الروابط، السبام، والمنشن
 @bot.event
 async def on_message(message: discord.Message):
     if message.author.bot or not message.guild:
@@ -156,7 +178,7 @@ async def on_message(message: discord.Message):
 
     sec_channel = await get_security_channel(message.guild)
 
-    # 1. منع @everyone و @here لغير الأدمن
+    # 1. منع @everyone و @here
     if ("@everyone" in message.content or "@here" in message.content) and not member.guild_permissions.administrator:
         await message.delete()
         if sec_channel:
