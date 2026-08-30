@@ -9,7 +9,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from discord.ui import Button, View, Select, Modal, TextInput
-import google.generativeai as genai
+from google import genai
 
 # ==========================================
 # 1. إعداد السجلات والنظام
@@ -36,25 +36,21 @@ EXEMPT_ROLES = {
 
 def clean_text(text: str) -> str:
     """إزالة الزخارف والرموز الخاصة وتحويل الحروف إلى صغيرة لتسهيل المقارنة"""
-    # الإبقاء فقط على الحروف والأرقام والمقاطع الأساسية
     cleaned = re.sub(r'[^a-zA-Z0-9\u0600-\u06FF]', '', text)
     return cleaned.lower()
 
-# تجهيز قائمة الرتب المنظفة مسبقاً لتسريع عملية الفحص
 CLEANED_EXEMPT_ROLES = {clean_text(role) for role in EXEMPT_ROLES if clean_text(role)}
 
 def is_exempt(member: discord.Member) -> bool:
-    """فحص ما إذا كان العضو يملك إحدى الرتب المستثناة بغض النظر عن الزخارف أو الحروف الكبيرة/الصغيرة"""
+    """فحص ما إذا كان العضو يملك إحدى الرتب المستثناة بغض النظر عن الزخارف أو الحروف"""
     if not isinstance(member, discord.Member):
         return False
     if member.guild_permissions.administrator:
         return True
 
     for role in member.roles:
-        # 1. المطابقة المباشرة بالنص الأصلي
         if role.name in EXEMPT_ROLES:
             return True
-        # 2. المطابقة بعد إزالة الزخارف وتوحيد حالة الحروف (Case-insensitive & Normalization)
         if clean_text(role.name) in CLEANED_EXEMPT_ROLES:
             return True
 
@@ -79,18 +75,17 @@ def keep_alive():
     t.start()
 
 # ==========================================
-# 4. إعداد Google Gemini API
+# 4. إعداد Google Gemini API (المكتبة الحديثة)
 # ==========================================
 GEMINI_KEY = os.getenv("GEMINI_API_KEY")
 if GEMINI_KEY:
-    genai.configure(api_key=GEMINI_KEY)
-    ai_model = genai.GenerativeModel('gemini-2.5-flash')
+    ai_client = genai.Client(api_key=GEMINI_KEY)
 else:
-    ai_model = None
+    ai_client = None
     logger.warning("GEMINI_API_KEY environment variable is missing!")
 
 # ==========================================
-# 5. إعداد البوت والافتراضيات
+# 5. إعداد البوت والافتراضيات (تم تصحيح الـ Intents)
 # ==========================================
 intents = discord.Intents.default()
 intents.message_content = True
@@ -98,19 +93,6 @@ intents.members = True
 intents.guilds = True
 intents.bans = True
 intents.moderation = True
-# ==========================================
-# 5. إعداد البوت والافتراضيات
-# ==========================================
-intents = discord.Intents.default()
-intents.message_content = True
-intents.members = True
-intents.guilds = True
-intents.bans = True
-intents.moderation = True
-# تم إزالة intents.audit_logs = True لأنه غير موجود بالمكتبة ويسبب كراش
-
-bot = commands.Bot(command_prefix="!", intents=intents)
-
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
@@ -159,13 +141,9 @@ async def on_member_ban(guild: discord.Guild, user: discord.User):
                 )
                 return
 
-            # 1. فك الحظر عن الشخص المتبند فوراً
             await guild.unban(user, reason="إلغاء حظر تلقائي بواسطة نظام الحماية")
-            
-            # 2. تبنيد الشخص الذي قام بالحظر
             await guild.ban(banner_user, reason=f"تبنيد تلقائي: قام بالحظر بدون استثناء حماية ({user.name})")
 
-            # 3. إرسال الإشعار لروم الحماية
             await send_security_alert(
                 guild,
                 "🚨 حماية عاجلة: حظر العضو وتبنيد الفاعل",
@@ -492,14 +470,20 @@ async def setup_ai(ctx):
 # --- أمر الذكاء الاصطناعي ---
 @bot.command(name="ai")
 async def chat_ai(ctx, *, prompt: str):
-    if not ai_model:
+    if not ai_client:
         await ctx.send("❌ مفتاح Gemini API غير معرف.")
         return
 
     async with ctx.typing():
         try:
             loop = asyncio.get_event_loop()
-            response = await loop.run_in_executor(None, lambda: ai_model.generate_content(prompt))
+            response = await loop.run_in_executor(
+                None, 
+                lambda: ai_client.models.generate_content(
+                    model='gemini-2.5-flash',
+                    contents=prompt
+                )
+            )
             answer = response.text
 
             if len(answer) <= 2000:
@@ -526,11 +510,17 @@ async def on_message(message: discord.Message):
             return
 
         content = message.content.replace(f'<@{bot.user.id}>', '').strip()
-        if content and ai_model:
+        if content and ai_client:
             async with message.channel.typing():
                 try:
                     loop = asyncio.get_event_loop()
-                    response = await loop.run_in_executor(None, lambda: ai_model.generate_content(content))
+                    response = await loop.run_in_executor(
+                        None, 
+                        lambda: ai_client.models.generate_content(
+                            model='gemini-2.5-flash',
+                            contents=content
+                        )
+                    )
                     answer = response.text
 
                     if len(answer) <= 2000:
