@@ -1,7 +1,6 @@
 import os
 import asyncio
 import datetime
-import unicodedata
 from collections import defaultdict
 from threading import Thread
 from flask import Flask
@@ -27,7 +26,7 @@ def keep_alive():
     t.start()
 
 # ---------------------------------------------------------
-# 2. إعداد البوت والدوال الأساسية لتنظيف النصوص والأدوار
+# 2. إعداد البوت والدوال الأساسية
 # ---------------------------------------------------------
 intents = discord.Intents.default()
 intents.message_content = True
@@ -44,7 +43,7 @@ ROLE_SWAT = "𝗠𝗧 | S.W.A.T"
 ROLE_HEALTH = "𝗠𝗧 | PHMC"
 
 # 🛡️ رتب القائمة البيضاء (الاستثناء من الحماية)
-WHITELIST_ROLES = ["#", "MT | Owner", "MT | COowner", "MT | Ceo", "MT | Founders"]
+WHITELIST_ROLES = ["#", "MT | Owner", "MT | COowner", "MT | Ceo", "MT | Founders", "bot", "Bot"]
 
 # 📂 اسم روم الحماية والبلاغات
 SECURITY_CHANNEL_NAME = "📑┃حماية"
@@ -53,30 +52,18 @@ SECURITY_CHANNEL_NAME = "📑┃حماية"
 criminal_records = {}
 user_message_logs = defaultdict(list)
 
-def normalize_text(text: str) -> str:
-    """تنظيف النص وإزالة الزخارف والحروف الخاصة لتسهيل المطابقة"""
-    text = unicodedata.normalize('NFKD', text)
-    return "".join(c for c in text if not unicodedata.combining(c)).strip().lower()
-
-# دالة التحقق من الاستثناء (تتجاهل الخطوط والزخارف وحالة الأحرف)
+# دالة التحقق من الاستثناء
 def is_whitelisted(user: discord.Member) -> bool:
     if user.id == user.guild.owner_id:
         return True
     
-    clean_whitelist = [normalize_text(r) for r in WHITELIST_ROLES]
-    for role in user.roles:
-        clean_user_role = normalize_text(role.name)
-        if any(w_role in clean_user_role for w_role in clean_whitelist):
-            return True
-    return False
+    user_role_names = [role.name for role in user.roles]
+    return any(w_role in user_role_names for w_role in WHITELIST_ROLES)
 
-# دالة التحقق من رتبة القطاع (تتجاهل الخطوط والزخارف وحالة الأحرف)
+# دالة التحقق من رتبة القطاع
 def check_role(user: discord.Member, role_name: str) -> bool:
-    clean_target = normalize_text(role_name)
-    for role in user.roles:
-        if clean_target in normalize_text(role.name):
-            return True
-    return False
+    user_role_names = [role.name for role in user.roles]
+    return role_name in user_role_names
 
 # دالة جلب/إنشاء روم الحماية
 async def get_security_channel(guild: discord.Guild):
