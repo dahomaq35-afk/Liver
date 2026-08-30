@@ -7,6 +7,7 @@ from flask import Flask
 import discord
 from discord import app_commands
 from discord.ext import commands
+import google.generativeai as genai
 
 # ================= =========================================
 # 1. خادم الويب لإبقاء البوت متصلاً 24/7 (Keep Alive)
@@ -35,6 +36,11 @@ intents.guilds = True
 intents.moderation = True
 
 bot = commands.Bot(command_prefix="-", intents=intents)
+
+# 🧠 تهيئة مفتاح الذكاء الاصطناعي Gemini API
+GEMINI_KEY = os.getenv("GEMINI_API_KEY")
+if GEMINI_KEY:
+    genai.configure(api_key=GEMINI_KEY)
 
 # 🏷️ أسماء رتب القطاعات الحكومية
 ROLE_JUSTICE = "𝗠𝗧 | Justice"
@@ -119,6 +125,24 @@ async def get_security_channel(guild: discord.Guild):
         except Exception:
             pass
     return channel
+
+async def ask_gemini_ai(prompt: str) -> str:
+    """دالة قراءة ومناقشة النصوص عبر موديل Gemini ذكي ومباشر"""
+    if not GEMINI_KEY:
+        return "⚠️ لم يتم إضافة `GEMINI_API_KEY` في متغيرات البيئة الخاصة بالاستضافة."
+    try:
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        system_instruction = (
+            "أنت مساعد ذكي ومرح في سيرفر ديسكورد رول بلاي (Roleplay). "
+            "أجب بشكل مختصر، واضح، ومنطقي للغاية بناءً على سؤال المستخدم."
+        )
+        response = await asyncio.to_thread(
+            model.generate_content, 
+            f"{system_instruction}\n\nسؤال المستخدم: {prompt}"
+        )
+        return response.text if response.text else "لم أستطع فهم الرسالة بشكل محدد، هل يمكنك التوضيح؟"
+    except Exception as e:
+        return f"حدث خطأ أثناء معالجة النص بواسطة الذكاء الاصطناعي: {e}"
 
 # ================= =========================================
 # 3. الأحداث الآلية (الحماية الفورية والردود)
@@ -229,20 +253,11 @@ async def on_message(message: discord.Message):
     if message.author.bot or not message.guild:
         return
 
-    # 🤖 نظام الرد التلقائي الذكي عند اختياره وتفعيله
+    # 🤖 نظام الرد التلقائي عبر الذكاء الاصطناعي التفاعلي
     if ai_settings["enabled"] and message.channel.id == ai_settings["channel_id"]:
         async with message.channel.typing():
-            prompt = message.content.lower()
-            response = "أهلاً بك! أنا مساعد الذكاء الاصطناعي الخاص بالسيرفر. كيف يمكنني مساعدتك؟"
-            
-            if "رتب" in prompt or "قطاع" in prompt:
-                response = "يمكنك التقديم على القطاعات الحكومية أو التذاكر عبر لوحة التذاكر الموحدة."
-            elif "قوانين" in prompt or "شروط" in prompt:
-                response = "يرجى الالتزام بقوانين السيرفر واحترام الأعضاء وعدم نشر الروابط أو الإسبام."
-            elif "مساعدة" in prompt or "دعم" in prompt:
-                response = "تفضل بكتابة استفسارك بالتفصيل وسأقوم بإجابتك، أو قم بفتح تذكرة ليتم خدمتك."
-
-            await message.reply(response)
+            ai_reply = await ask_gemini_ai(message.content)
+            await message.reply(ai_reply)
         return
 
     member = message.author
@@ -315,7 +330,7 @@ class ChannelSelectMenu(discord.ui.ChannelSelect):
         selected_channel = self.values[0]
         ai_settings["channel_id"] = selected_channel.id
         await interaction.response.send_message(
-            f"🎯 **الخيار الثاني:** تم اختيار الروم {selected_channel.mention} للردود التلقائية.", 
+            f"🎯 **الخيار الثاني:** تم اختيار الروم {selected_channel.mention} للردود التلقائية الذكية.", 
             ephemeral=True
         )
 
@@ -335,7 +350,7 @@ class AISecurityDashboard(discord.ui.View):
             return
 
         ai_settings["enabled"] = True
-        await interaction.response.send_message("✅ **الخيار الأول:** تم **تفعيل** نظام الذكاء الاصطناعي بنجاح!", ephemeral=True)
+        await interaction.response.send_message("✅ **الخيار الأول:** تم **تفعيل** نظام الذكاء الاصطناعي المنطقي!", ephemeral=True)
 
     @discord.ui.button(label="تعطيل النظام 🔴", style=discord.ButtonStyle.red, custom_id="ai_btn_disable")
     async def disable_ai_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -346,7 +361,7 @@ class AISecurityDashboard(discord.ui.View):
         ai_settings["enabled"] = False
         await interaction.response.send_message("🛑 **الخيار الأول:** تم **تعطيل** نظام الذكاء الاصطناعي.", ephemeral=True)
 
-@bot.tree.command(name="ai_security", description="إدارة ونظام الذكاء الاصطناعي للإجابات التلقائية")
+@bot.tree.command(name="ai_security", description="إدارة ونظام الذكاء الاصطناعي للإجابات المنطقية")
 async def ai_security_cmd(interaction: discord.Interaction):
     if not interaction.user.guild_permissions.administrator:
         await interaction.response.send_message("❌ هذا الأمر مخصص للإداريين فقط!", ephemeral=True)
@@ -356,9 +371,9 @@ async def ai_security_cmd(interaction: discord.Interaction):
     channel_info = f"<#{ai_settings['channel_id']}>" if ai_settings["channel_id"] else "لم يتم تحديد روم بعد"
 
     embed = discord.Embed(
-        title="🤖 لوحة تحكم نظام AI Security",
+        title="🤖 لوحة تحكم نظام AI Security الذكي",
         description=(
-            "يمكنك التحكم الكامل عبر الخيارين التالين:\n\n"
+            "يمكنك التحكم الكامل عبر الخيارات التالية:\n\n"
             "1️⃣ **الخيار الأول:** التفعيل والتعطيل باستخدام الأزرار.\n"
             "2️⃣ **الخيار الثاني:** اختيار الروم المخصصة من القائمة المنسدلة."
         ),
@@ -366,7 +381,7 @@ async def ai_security_cmd(interaction: discord.Interaction):
     )
     embed.add_field(name="حالة النظام الحالية:", value=status, inline=True)
     embed.add_field(name="الروم المحددة:", value=channel_info, inline=True)
-    embed.set_footer(text="نظام الذكاء الاصطناعي والتنبيهات الموحد")
+    embed.set_footer(text="نظام الذكاء الاصطناعي الفعلي المربوط بـ Gemini")
 
     await interaction.response.send_message(embed=embed, view=AISecurityDashboard(), ephemeral=True)
 
