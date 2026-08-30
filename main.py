@@ -68,7 +68,23 @@ user_message_count = {}
 user_last_message_time = {}
 
 # ==========================================
-# 5. نظام الحماية والأمان المتقدم (Security Guard System)
+# 5. نظام إرسال التحديثات وسجلات الحماية (Security Logging)
+# ==========================================
+async def send_security_log(guild: discord.Guild, title: str, description: str, color: discord.Color = discord.Color.red()):
+    """دالة تبحث عن روم 📑┃حماية وترسل فيه التحديثات والبلاغات"""
+    if not guild:
+        return
+    channel = discord.utils.get(guild.text_channels, name="📑┃حماية")
+    if channel:
+        embed = discord.Embed(title=title, description=description, color=color, timestamp=datetime.now())
+        embed.set_footer(text="نظام مراقبة الحماية والتحديثات")
+        try:
+            await channel.send(embed=embed)
+        except Exception as e:
+            logger.error(f"Failed to send security log: {e}")
+
+# ==========================================
+# 6. نظام الحماية والأمان المتقدم (Security Guard System)
 # ==========================================
 SPAM_PATTERNS = [
     r"discord\.gg/[a-zA-Z0-9]+",
@@ -92,6 +108,15 @@ class SecurityGuard:
                     await message.channel.send(
                         f"⚠️ {message.author.mention} يُمنع نشر الروابط والإعلانات داخل السيرفر!",
                         delete_after=5
+                    )
+                    # إرسال التنبيه لروم 📑┃حماية
+                    await send_security_log(
+                        message.guild,
+                        "🚨 تنبيه أمني - إعلان / رابط مخالف",
+                        f"**العضو المخالف:** {message.author.mention} (`{message.author.id}`)\n"
+                        f"**القناة:** {message.channel.mention}\n"
+                        f"**المحتوى:**\n```{message.content}```",
+                        discord.Color.red()
                     )
                     return False
                 except Exception as e:
@@ -120,6 +145,15 @@ class SecurityGuard:
                     f"🚫 {message.author.mention} تم إيقاف رسائلك مؤقتاً بسبب السبام السريع.",
                     delete_after=5
                 )
+                # إرسال التنبيه لروم 📑┃حماية
+                await send_security_log(
+                    message.guild,
+                    "⚠️ تنبيه أمني - تكرار رسائل (Spam)",
+                    f"**العضو:** {message.author.mention} (`{message.author.id}`)\n"
+                    f"**القناة:** {message.channel.mention}\n"
+                    f"**الإجراء:** تم إرسال رسائل متكررة في وقت قصير وتم حظر الرسالة.",
+                    discord.Color.orange()
+                )
                 return False
             except Exception as e:
                 logger.error(f"Anti-spam error: {e}")
@@ -128,7 +162,7 @@ class SecurityGuard:
         return True
 
 # ==========================================
-# 6. نظام التذاكر والدعم الفني (Ticket Management System)
+# 7. نظام التذاكر والدعم الفني (Ticket Management System)
 # ==========================================
 class CloseTicketView(View):
     def __init__(self):
@@ -207,7 +241,7 @@ class TicketLauncher(View):
         self.add_item(TicketDropdown())
 
 # ==========================================
-# 7. نظام وزارة العدل (Ministry of Justice System)
+# 8. نظام وزارة العدل (Ministry of Justice System)
 # ==========================================
 class CourtCaseModal(Modal, title="رفع دعوى قضائية لدى المحكمة العليا"):
     plaintiff = TextInput(label="اسم المدعي (أنت)", placeholder="اسم الشخصية بالكامل...", required=True)
@@ -235,7 +269,7 @@ class JusticeView(View):
         await interaction.response.send_modal(CourtCaseModal())
 
 # ==========================================
-# 8. نظام الشرطة والأمن (Police Department - LSPD)
+# 9. نظام الشرطة والأمن (Police Department - LSPD)
 # ==========================================
 class PoliceReportModal(Modal, title="بلاغ أمني - مركز العمليات الموحد"):
     caller = TextInput(label="اسم المبلّغ", placeholder="اسمك الكامل ورقم الهاتف...", required=True)
@@ -261,7 +295,7 @@ class PoliceView(View):
         await interaction.response.send_modal(PoliceReportModal())
 
 # ==========================================
-# 9. نظام القوات الخاصة (SWAT Special Unit)
+# 10. نظام القوات الخاصة (SWAT Special Unit)
 # ==========================================
 class SWATReportModal(Modal, title="نداء طوارئ - القوات الخاصة SWAT"):
     officer_name = TextInput(label="الرتبة والاسم", placeholder="الرتبة واسم الضابط...", required=True)
@@ -287,7 +321,7 @@ class SWATView(View):
         await interaction.response.send_modal(SWATReportModal())
 
 # ==========================================
-# 10. نظام الخدمات الصحية الإسعاف (Healthcare System)
+# 11. نظام الخدمات الصحية الإسعاف (Healthcare System)
 # ==========================================
 class HealthRequestModal(Modal, title="نداء إسعاف وطوارئ طبية"):
     patient = TextInput(label="اسم المصاب / المريض", placeholder="اسم الشخصية...", required=True)
@@ -313,7 +347,7 @@ class HealthView(View):
         await interaction.response.send_modal(HealthRequestModal())
 
 # ==========================================
-# 11. نظام إدارة التحكم بالذكاء الاصطناعي (AI Config)
+# 12. نظام إدارة التحكم بالذكاء الاصطناعي (AI Config)
 # ==========================================
 class ChannelSelectView(View):
     def __init__(self):
@@ -334,7 +368,7 @@ class ChannelSelectView(View):
         await interaction.response.send_message(f"✅ تم تخصيص الرد التلقائي للذكاء الاصطناعي في القنوات: {ch_mentions}", ephemeral=True)
 
 # ==========================================
-# 12. الأحداث والأوامر الرئيسية (Events & Commands)
+# 13. الأحداث والأوامر الرئيسية (Events & Commands)
 # ==========================================
 @bot.event
 async def on_ready():
@@ -350,6 +384,15 @@ async def on_ready():
     bot.add_view(ChannelSelectView())
 
     await bot.change_presence(activity=discord.Game(name="إدارة سيرفر الرول بلي والحماية 🛡️"))
+
+    # إرسال إشعار التحديث والتشغيل تلقائياً إلى روم 📑┃حماية
+    for guild in bot.guilds:
+        await send_security_log(
+            guild,
+            "✅ تم إعادة تشغيل النظام وتحديث البوت",
+            "تم تحديث كود البوت بنجاح وإعادة تفعيل جميع القطاعات، نموذج الذكاء الاصطناعي، ونظام الحماية المتقدم.",
+            discord.Color.green()
+        )
 
 # --- أوامر التجهيز الإدارية ---
 @bot.command(name="setup_tickets")
@@ -477,7 +520,7 @@ async def on_message(message: discord.Message):
     await bot.process_commands(message)
 
 # ==========================================
-# 13. التشغيل الرئيسي للمشروع (Execution)
+# 14. التشغيل الرئيسي للمشروع (Execution)
 # ==========================================
 if __name__ == "__main__":
     keep_alive()
