@@ -6,12 +6,13 @@ from threading import Thread
 from datetime import datetime
 from flask import Flask
 import discord
-from discord.ext import commands, tasks
+from discord import app_commands
+from discord.ext import commands
 from discord.ui import Button, View, Select, Modal, TextInput
 import google.generativeai as genai
 
 # ==========================================
-# 1. إعداد السجلات والنظام (Logging System)
+# 1. إعداد السجلات والنظام
 # ==========================================
 logging.basicConfig(
     level=logging.INFO,
@@ -20,7 +21,47 @@ logging.basicConfig(
 logger = logging.getLogger("RoleplayBot")
 
 # ==========================================
-# 2. إعداد خادم Flask لإبقاء البوت حياً (Keep Alive 24/7)
+# 2. قائمة الرتب المستثناة والدوال المعالجة للزخارف
+# ==========================================
+EXEMPT_ROLES = {
+    "#",
+    "MT | Owner ↔",
+    "MT | COowner ↔",
+    "MT | Ceo",
+    "MT | FOUNDERS",
+    "Appy",
+    "Bot",
+    "bot"
+}
+
+def clean_text(text: str) -> str:
+    """إزالة الزخارف والرموز الخاصة وتحويل الحروف إلى صغيرة لتسهيل المقارنة"""
+    # الإبقاء فقط على الحروف والأرقام والمقاطع الأساسية
+    cleaned = re.sub(r'[^a-zA-Z0-9\u0600-\u06FF]', '', text)
+    return cleaned.lower()
+
+# تجهيز قائمة الرتب المنظفة مسبقاً لتسريع عملية الفحص
+CLEANED_EXEMPT_ROLES = {clean_text(role) for role in EXEMPT_ROLES if clean_text(role)}
+
+def is_exempt(member: discord.Member) -> bool:
+    """فحص ما إذا كان العضو يملك إحدى الرتب المستثناة بغض النظر عن الزخارف أو الحروف الكبيرة/الصغيرة"""
+    if not isinstance(member, discord.Member):
+        return False
+    if member.guild_permissions.administrator:
+        return True
+
+    for role in member.roles:
+        # 1. المطابقة المباشرة بالنص الأصلي
+        if role.name in EXEMPT_ROLES:
+            return True
+        # 2. المطابقة بعد إزالة الزخارف وتوحيد حالة الحروف (Case-insensitive & Normalization)
+        if clean_text(role.name) in CLEANED_EXEMPT_ROLES:
+            return True
+
+    return False
+
+# ==========================================
+# 3. إعداد خادم Flask (Keep Alive 24/7)
 # ==========================================
 app = Flask(__name__)
 
@@ -38,19 +79,18 @@ def keep_alive():
     t.start()
 
 # ==========================================
-# 3. إعداد Google Gemini API (الذكاء الاصطناعي)
+# 4. إعداد Google Gemini API
 # ==========================================
 GEMINI_KEY = os.getenv("GEMINI_API_KEY")
 if GEMINI_KEY:
     genai.configure(api_key=GEMINI_KEY)
-    # استخدام النموذج المعتمد والمستقر تفادياً لخطأ 404
     ai_model = genai.GenerativeModel('gemini-2.5-flash')
 else:
     ai_model = None
     logger.warning("GEMINI_API_KEY environment variable is missing!")
 
 # ==========================================
-# 4. إعداد البوت والافتراضيات (Bot Setup)
+# 5. إعداد البوت والافتراضيات
 # ==========================================
 intents = discord.Intents.default()
 intents.message_content = True
@@ -58,131 +98,136 @@ intents.members = True
 intents.guilds = True
 intents.bans = True
 intents.moderation = True
+intents.audit_logs = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# متغيرات النظام العامة
 ai_enabled_channels = set()
-bot_ai_active = True
-user_message_count = {}
-user_last_message_time = {}
 
 # ==========================================
-# 5. نظام إرسال التحديثات وسجلات الحماية (Security Logging)
+# 6. نظام سجلات الحماية לרوم (📑┃حماية)
 # ==========================================
-async def send_security_log(guild: discord.Guild, title: str, description: str, color: discord.Color = discord.Color.red()):
-    """دالة تبحث عن روم 📑┃حماية وترسل فيه التحديثات والبلاغات"""
+async def send_security_alert(guild: discord.Guild, title: str, description: str, color: discord.Color = discord.Color.red()):
     if not guild:
         return
     channel = discord.utils.get(guild.text_channels, name="📑┃حماية")
     if channel:
         embed = discord.Embed(title=title, description=description, color=color, timestamp=datetime.now())
-        embed.set_footer(text="نظام مراقبة الحماية والتحديثات")
+        embed.set_footer(text="نظام الحماية والأمان السريع ⚡")
         try:
             await channel.send(embed=embed)
         except Exception as e:
             logger.error(f"Failed to send security log: {e}")
 
 # ==========================================
-# 6. نظام الحماية والأمان المتقدم (Security Guard System)
+# 7. نظام رادع الحظر التلقائي (Anti-Nuke / Anti-Ban)
 # ==========================================
-SPAM_PATTERNS = [
+@bot.event
+async def on_member_ban(guild: discord.Guild, user: discord.User):
+    banner_user = None
+    reason = "غير معروف"
+
+    try:
+        async for entry in guild.audit_logs(limit=3, action=discord.AuditLogAction.ban):
+            if entry.target.id == user.id:
+                banner_user = entry.user
+                reason = entry.reason or "لم يتم ذكر سبب"
+                break
+
+        if banner_user and banner_user.id != bot.user.id:
+            banner_member = guild.get_member(banner_user.id)
+            if banner_member and is_exempt(banner_member):
+                await send_security_alert(
+                    guild,
+                    "ℹ️ تنبيه حظر معتمد (رتبة مستثناة)",
+                    f"**المبند:** {banner_user.mention} (رتبة مستثناة من الحماية)\n"
+                    f"**المحظور:** {user.mention} (`{user.id}`)\n"
+                    f"**السبب:** {reason}",
+                    discord.Color.blue()
+                )
+                return
+
+            # 1. فك الحظر عن الشخص المتبند فوراً
+            await guild.unban(user, reason="إلغاء حظر تلقائي بواسطة نظام الحماية")
+            
+            # 2. تبنيد الشخص الذي قام بالحظر
+            await guild.ban(banner_user, reason=f"تبنيد تلقائي: قام بالحظر بدون استثناء حماية ({user.name})")
+
+            # 3. إرسال الإشعار لروم الحماية
+            await send_security_alert(
+                guild,
+                "🚨 حماية عاجلة: حظر العضو وتبنيد الفاعل",
+                f"**العضو المظلوم:** {user.mention} (`{user.id}`) -> **تم فك حظره تلقائياً**\n"
+                f"**الفاعل:** {banner_user.mention} (`{banner_user.id}`) -> **تم تبنيده فوراً**\n"
+                f"**السبب الأصلي:** {reason}",
+                discord.Color.red()
+            )
+
+    except Exception as e:
+        logger.error(f"Error in on_member_ban security handler: {e}")
+
+# ==========================================
+# 8. نظام كشف الحسابات والبوتات المخترقة
+# ==========================================
+SUSPICIOUS_PATTERNS = [
     r"discord\.gg/[a-zA-Z0-9]+",
-    r"discord\.com/invite/[a-zA-Z0-9]+",
     r"free nitro",
     r"steamcommunity\.com/gift",
-    r"https?://[^\s]+"
+    r"@everyone",
+    r"@here",
+    r"token",
+    r"http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+"
 ]
 
 class SecurityGuard:
     @staticmethod
     async def check_message(message: discord.Message) -> bool:
-        if message.author.bot or message.author.guild_permissions.administrator:
+        if is_exempt(message.author):
             return True
 
-        # فحص الروابط والإعلانات
-        for pattern in SPAM_PATTERNS:
+        for pattern in SUSPICIOUS_PATTERNS:
             if re.search(pattern, message.content, re.IGNORECASE):
                 try:
                     await message.delete()
-                    await message.channel.send(
-                        f"⚠️ {message.author.mention} يُمنع نشر الروابط والإعلانات داخل السيرفر!",
-                        delete_after=5
-                    )
-                    # إرسال التنبيه لروم 📑┃حماية
-                    await send_security_log(
+                    await message.guild.ban(message.author, reason="حساب/بوت مخترق يقوم بنشر روابط وتهديدات أمنية")
+
+                    await send_security_alert(
                         message.guild,
-                        "🚨 تنبيه أمني - إعلان / رابط مخالف",
-                        f"**العضو المخالف:** {message.author.mention} (`{message.author.id}`)\n"
+                        "🛑 كشف حساب/بوت مخترق وتبنيده فوراً",
+                        f"**الحساب المخترق:** {message.author.mention} (`{message.author.id}`)\n"
+                        f"**نوع الحساب:** {'بوت 🤖' if message.author.bot else 'حساب شخصي 👤'}\n"
                         f"**القناة:** {message.channel.mention}\n"
-                        f"**المحتوى:**\n```{message.content}```",
-                        discord.Color.red()
+                        f"**المحتوى المرصود:**\n```{message.content}```",
+                        discord.Color.dark_red()
                     )
                     return False
                 except Exception as e:
-                    logger.error(f"Failed to delete spam message: {e}")
+                    logger.error(f"Failed to execute emergency security response: {e}")
                     return False
-
-        # فحص التكرار السريع (Anti-Spam)
-        user_id = message.author.id
-        current_time = datetime.now().timestamp()
-        
-        last_time = user_last_message_time.get(user_id, 0)
-        count = user_message_count.get(user_id, 0)
-
-        if current_time - last_time < 2:
-            count += 1
-        else:
-            count = 1
-
-        user_last_message_time[user_id] = current_time
-        user_message_count[user_id] = count
-
-        if count >= 5:
-            try:
-                await message.delete()
-                await message.channel.send(
-                    f"🚫 {message.author.mention} تم إيقاف رسائلك مؤقتاً بسبب السبام السريع.",
-                    delete_after=5
-                )
-                # إرسال التنبيه لروم 📑┃حماية
-                await send_security_log(
-                    message.guild,
-                    "⚠️ تنبيه أمني - تكرار رسائل (Spam)",
-                    f"**العضو:** {message.author.mention} (`{message.author.id}`)\n"
-                    f"**القناة:** {message.channel.mention}\n"
-                    f"**الإجراء:** تم إرسال رسائل متكررة في وقت قصير وتم حظر الرسالة.",
-                    discord.Color.orange()
-                )
-                return False
-            except Exception as e:
-                logger.error(f"Anti-spam error: {e}")
-                return False
-
         return True
 
 # ==========================================
-# 7. نظام التذاكر والدعم الفني (Ticket Management System)
+# 9. نظام التذاكر (Tickets)
 # ==========================================
 class CloseTicketView(View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="إغلاق التذكرة 🔒", style=discord.ButtonStyle.red, custom_id="close_ticket_btn_v5")
+    @discord.ui.button(label="إغلاق التذكرة 🔒", style=discord.ButtonStyle.red, custom_id="close_ticket_btn_v10")
     async def close_ticket(self, interaction: discord.Interaction, button: Button):
-        await interaction.response.send_message("جاري إغلاق التذكرة وحفظ الأرشيف خلال 5 ثوانٍ...")
-        await asyncio.sleep(5)
+        await interaction.response.send_message("جاري إغلاق التذكرة...")
+        await asyncio.sleep(2)
         try:
             await interaction.channel.delete()
         except Exception as e:
             logger.error(f"Error deleting channel: {e}")
 
-    @discord.ui.button(label="استدعاء الإدارة 🔔", style=discord.ButtonStyle.secondary, custom_id="claim_ticket_btn_v5")
+    @discord.ui.button(label="استدعاء الإدارة 🔔", style=discord.ButtonStyle.secondary, custom_id="claim_ticket_btn_v10")
     async def claim_ticket(self, interaction: discord.Interaction, button: Button):
         if not interaction.user.guild_permissions.manage_messages:
             await interaction.response.send_message("❌ هذا الخيار مخصص للإدارة فقط.", ephemeral=True)
             return
-        await interaction.response.send_message(f"🔔 قام الإداري {interaction.user.mention} بالاستجابة لتذكرتك وسيتابع معك الآن.")
+        await interaction.response.send_message(f"🔔 قام الإداري {interaction.user.mention} بالاستجابة لتذكرتك.")
 
 class TicketDropdown(Select):
     def __init__(self):
@@ -195,7 +240,7 @@ class TicketDropdown(Select):
             discord.SelectOption(label="إدارة عصابات ومنظمات", description="تراخيص وشؤون العصابات والأنشطة", emoji="🏴‍☠️", value="gangs"),
             discord.SelectOption(label="طلب استرجاع ممتلكات", description="استرجاع المركبات والأغراض مفقودة", emoji="📦", value="restore")
         ]
-        super().__init__(placeholder="اختر القسم المطلوب لفتح تذكرة...", min_values=1, max_values=1, options=options, custom_id="ticket_select_dropdown_v5")
+        super().__init__(placeholder="اختر القسم المطلوب لفتح تذكرة...", min_values=1, max_values=1, options=options, custom_id="ticket_select_dropdown_v10")
 
     async def callback(self, interaction: discord.Interaction):
         guild = interaction.guild
@@ -228,10 +273,9 @@ class TicketDropdown(Select):
 
         embed = discord.Embed(
             title=f"📋 تذكرة جديدة - {category_name}",
-            description=f"مرحباً بك {interaction.user.mention}!\nيرجى كتابة كافة التفاصيل والأدلة المتاحة، وسيقوم الفريق المختص بمتابعة طلبك في أقرب وقت.",
+            description=f"مرحباً بك {interaction.user.mention}!\nيرجى كتابة كافة التفاصيل والأدلة المتاحة، وسيقوم الفريق المختص بمتابعة طلبك.",
             color=discord.Color.green()
         )
-        embed.set_footer(text="نظام خدمة المواطنين والتذاكر الإلكتروني")
         await ticket_channel.send(embed=embed, view=CloseTicketView())
         await interaction.response.send_message(f"✅ تم إنشاء التذكرة بنجاح: {ticket_channel.mention}", ephemeral=True)
 
@@ -241,13 +285,13 @@ class TicketLauncher(View):
         self.add_item(TicketDropdown())
 
 # ==========================================
-# 8. نظام وزارة العدل (Ministry of Justice System)
+# 10. باقي القطاعات
 # ==========================================
 class CourtCaseModal(Modal, title="رفع دعوى قضائية لدى المحكمة العليا"):
     plaintiff = TextInput(label="اسم المدعي (أنت)", placeholder="اسم الشخصية بالكامل...", required=True)
     defendant = TextInput(label="اسم المدعى عليه", placeholder="اسم الشخص أو الجهة المشتكى عليها...", required=True)
     charge = TextInput(label="التهمة الموجهة", placeholder="اختلاس، اعتداء، مخالفت أنظمة...", required=True)
-    details = TextInput(label="تفاصيل الدعوى والوقائع", style=discord.TextStyle.paragraph, placeholder="اشرح الوقائع والأحداث والتواريخ...", required=True)
+    details = TextInput(label="تفاصيل الدعوى والوقائع", style=discord.TextStyle.paragraph, placeholder="اشرح الوقائع والأحداث...", required=True)
     evidence = TextInput(label="الأدلة والبراهين", style=discord.TextStyle.paragraph, placeholder="روابط الصور أو مقاطع الفيديو...", required=True)
 
     async def on_submit(self, interaction: discord.Interaction):
@@ -264,17 +308,14 @@ class JusticeView(View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="رفع قضية جديدة ⚖️", style=discord.ButtonStyle.primary, custom_id="justice_court_case_btn_v5")
+    @discord.ui.button(label="رفع قضية جديدة ⚖️", style=discord.ButtonStyle.primary, custom_id="justice_court_case_btn_v10")
     async def open_modal(self, interaction: discord.Interaction, button: Button):
         await interaction.response.send_modal(CourtCaseModal())
 
-# ==========================================
-# 9. نظام الشرطة والأمن (Police Department - LSPD)
-# ==========================================
 class PoliceReportModal(Modal, title="بلاغ أمني - مركز العمليات الموحد"):
     caller = TextInput(label="اسم المبلّغ", placeholder="اسمك الكامل ورقم الهاتف...", required=True)
     location = TextInput(label="موقع الحادثة", placeholder="المنطقة، الشارع أو الإحداثيات...", required=True)
-    suspect = TextInput(label="أوصاف المشتبه به / المركبة", placeholder="الملامح، رقم اللوحة، نوع المركبة...", required=False)
+    suspect = TextInput(label="أوصاف المشتبه به / المركبة", placeholder="الملامح، رقم اللوحة...", required=False)
     details = TextInput(label="تفاصيل البلاغ الجنائي", style=discord.TextStyle.paragraph, placeholder="اشرح ما حدث بالتفصيل...", required=True)
 
     async def on_submit(self, interaction: discord.Interaction):
@@ -283,25 +324,21 @@ class PoliceReportModal(Modal, title="بلاغ أمني - مركز العملي�
         embed.add_field(name="الموقع:", value=self.location.value, inline=True)
         embed.add_field(name="المشتبه به:", value=self.suspect.value or "غير معروف", inline=True)
         embed.add_field(name="تفاصيل البلاغ:", value=self.details.value, inline=False)
-        embed.set_footer(text="مديرية الأمن العام - قسم البلاغات الجنائية")
         await interaction.response.send_message("🚨 تم توجيه البلاغ لأقرب دورية أمنية متواجدة بالموقع!", embed=embed)
 
 class PoliceView(View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="تقديم بلاغ أمني 🚨", style=discord.ButtonStyle.danger, custom_id="police_report_btn_v5")
+    @discord.ui.button(label="تقديم بلاغ أمني 🚨", style=discord.ButtonStyle.danger, custom_id="police_report_btn_v10")
     async def open_modal(self, interaction: discord.Interaction, button: Button):
         await interaction.response.send_modal(PoliceReportModal())
 
-# ==========================================
-# 10. نظام القوات الخاصة (SWAT Special Unit)
-# ==========================================
 class SWATReportModal(Modal, title="نداء طوارئ - القوات الخاصة SWAT"):
     officer_name = TextInput(label="الرتبة والاسم", placeholder="الرتبة واسم الضابط...", required=True)
     code = TextInput(label="نوع الشفرة الأمنية", placeholder="Code 3 / Code 99...", required=True)
     location = TextInput(label="موقع الاشتباك / السطو", placeholder="الموقع بالتفصيل...", required=True)
-    situation = TextInput(label="تقييم الوضع والمخاطر", style=discord.TextStyle.paragraph, placeholder="عدد المعتدين، الأسلحة المستخدمة...", required=True)
+    situation = TextInput(label="تقييم الوضع والمخاطر", style=discord.TextStyle.paragraph, placeholder="عدد المعتدين، الأسلحة...", required=True)
 
     async def on_submit(self, interaction: discord.Interaction):
         embed = discord.Embed(title="⚡ نداء استغاثة عالي الخطورة - SWAT", color=discord.Color.dark_purple())
@@ -309,25 +346,21 @@ class SWATReportModal(Modal, title="نداء طوارئ - القوات الخا�
         embed.add_field(name="الشفرة:", value=self.code.value, inline=True)
         embed.add_field(name="الموقع:", value=self.location.value, inline=True)
         embed.add_field(name="تقييم المخاطر:", value=self.situation.value, inline=False)
-        embed.set_footer(text="وحدة التدخل السريع والقوات الخاصة")
         await interaction.response.send_message("⚡ تم استنفار وحدات SWAT وتوجيه المدرعات للموقع!", embed=embed)
 
 class SWATView(View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="طلب دعم القوات الخاصة ⚡", style=discord.ButtonStyle.secondary, custom_id="swat_call_btn_v5")
+    @discord.ui.button(label="طلب دعم القوات الخاصة ⚡", style=discord.ButtonStyle.secondary, custom_id="swat_call_btn_v10")
     async def open_modal(self, interaction: discord.Interaction, button: Button):
         await interaction.response.send_modal(SWATReportModal())
 
-# ==========================================
-# 11. نظام الخدمات الصحية الإسعاف (Healthcare System)
-# ==========================================
 class HealthRequestModal(Modal, title="نداء إسعاف وطوارئ طبية"):
     patient = TextInput(label="اسم المصاب / المريض", placeholder="اسم الشخصية...", required=True)
     location = TextInput(label="الموقع الدقيق", placeholder="اسم الحي أو الإحداثية...", required=True)
-    injury_type = TextInput(label="نوع الإصابة", placeholder="طلق ناري، حادث مروري، إغماء...", required=True)
-    condition = TextInput(label="وصف حالة المصاب الحالية", style=discord.TextStyle.paragraph, placeholder="هل التنفس منتظم؟ هل يوجد نزيف؟", required=True)
+    injury_type = TextInput(label="نوع الإصابة", placeholder="طلق ناري، حادث...", required=True)
+    condition = TextInput(label="وصف حالة المصاب الحالية", style=discord.TextStyle.paragraph, placeholder="هل التنفس منتظم؟", required=True)
 
     async def on_submit(self, interaction: discord.Interaction):
         embed = discord.Embed(title="🚑 بلاغ إسعاف وطوارئ طبية", color=discord.Color.red())
@@ -335,20 +368,16 @@ class HealthRequestModal(Modal, title="نداء إسعاف وطوارئ طبية
         embed.add_field(name="الموقع:", value=self.location.value, inline=True)
         embed.add_field(name="نوع الإصابة:", value=self.injury_type.value, inline=True)
         embed.add_field(name="وصف الحالة:", value=self.condition.value, inline=False)
-        embed.set_footer(text="الهيئة العامة للخدمات الطبية والطب الطارئ")
         await interaction.response.send_message("🚑 تم تحويل الطلب لغرفة الطوارئ والمسعفون في الطريق!", embed=embed)
 
 class HealthView(View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="طلب إسعاف عاجل 🚑", style=discord.ButtonStyle.success, custom_id="health_request_btn_v5")
+    @discord.ui.button(label="طلب إسعاف عاجل 🚑", style=discord.ButtonStyle.success, custom_id="health_request_btn_v10")
     async def open_modal(self, interaction: discord.Interaction, button: Button):
         await interaction.response.send_modal(HealthRequestModal())
 
-# ==========================================
-# 12. نظام إدارة التحكم بالذكاء الاصطناعي (AI Config)
-# ==========================================
 class ChannelSelectView(View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -359,7 +388,7 @@ class ChannelSelectView(View):
         placeholder="اختر القنوات المفعلة للذكاء الاصطناعي...",
         min_values=1,
         max_values=5,
-        custom_id="ai_channel_select_v5"
+        custom_id="ai_channel_select_v10"
     )
     async def select_channels(self, interaction: discord.Interaction, select: discord.ui.ChannelSelect):
         global ai_enabled_channels
@@ -368,13 +397,39 @@ class ChannelSelectView(View):
         await interaction.response.send_message(f"✅ تم تخصيص الرد التلقائي للذكاء الاصطناعي في القنوات: {ch_mentions}", ephemeral=True)
 
 # ==========================================
-# 13. الأحداث والأوامر الرئيسية (Events & Commands)
+# 11. أوامر السلاش المحدثة
+# ==========================================
+@bot.tree.command(name="ai_security", description="فحص حالة الحماية والذكاء الاصطناعي للسيرفر")
+async def ai_security(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    
+    roles_list = "\n".join([f"• `{role}`" for role in EXEMPT_ROLES])
+    
+    embed = discord.Embed(
+        title="🛡️ حالة الحماية السريعة والذكاء الاصطناعي",
+        description="نظام الحماية المتقدم يعمل بالسرعة القصوى ومربوط بروم **`📑┃حماية`**.",
+        color=discord.Color.green()
+    )
+    embed.add_field(name="الذكاء الاصطناعي:", value="مُفعل بنجاح (`gemini-2.5-flash`)", inline=True)
+    embed.add_field(name="نظام فك الحظر وتبنيد الفاعل:", value="مُفعل تلقائياً", inline=True)
+    embed.add_field(name="تجاهل الزخارف بالحماية:", value="مُفعل (Normalizer Active)", inline=True)
+    embed.add_field(name="الرتب المستثناة من الحماية (Whitelist):", value=roles_list, inline=False)
+    
+    await interaction.followup.send(embed=embed, ephemeral=True)
+
+# ==========================================
+# 12. الأحداث والأوامر الرئيسية
 # ==========================================
 @bot.event
 async def on_ready():
     logger.info(f"✅ تم تشغيل البوت بنجاح كـ: {bot.user.name} (ID: {bot.user.id})")
 
-    # تسجيل الواجهات لضمان استمرار عمل كافة الأزرار حتى بعد إيقاف وتحديث البوت
+    try:
+        synced = await bot.tree.sync()
+        logger.info(f"✅ تم مزامنة {len(synced)} أمر سلاش بنجاح.")
+    except Exception as e:
+        logger.error(f"Failed to sync slash commands: {e}")
+
     bot.add_view(TicketLauncher())
     bot.add_view(CloseTicketView())
     bot.add_view(JusticeView())
@@ -385,88 +440,48 @@ async def on_ready():
 
     await bot.change_presence(activity=discord.Game(name="إدارة سيرفر الرول بلي والحماية 🛡️"))
 
-    # إرسال إشعار التحديث والتشغيل تلقائياً إلى روم 📑┃حماية
-    for guild in bot.guilds:
-        await send_security_log(
-            guild,
-            "✅ تم إعادة تشغيل النظام وتحديث البوت",
-            "تم تحديث كود البوت بنجاح وإعادة تفعيل جميع القطاعات، نموذج الذكاء الاصطناعي، ونظام الحماية المتقدم.",
-            discord.Color.green()
-        )
-
 # --- أوامر التجهيز الإدارية ---
 @bot.command(name="setup_tickets")
 @commands.has_permissions(administrator=True)
 async def setup_tickets(ctx):
-    """إنشاء لوحة التذاكر"""
-    embed = discord.Embed(
-        title="🎫 مركز الدعم الفني والخدمات العامة",
-        description="يرجى اختيار القسم المطلوب من القائمة المنسدلة بالأسفل للتواصل مع الفريق المختص.",
-        color=discord.Color.blue()
-    )
+    embed = discord.Embed(title="🎫 مركز الدعم الفني والخدمات العامة", description="اختر القسم المطلوب من القائمة بالأسفل.", color=discord.Color.blue())
     await ctx.send(embed=embed, view=TicketLauncher())
 
 @bot.command(name="setup_justice")
 @commands.has_permissions(administrator=True)
 async def setup_justice(ctx):
-    """إنشاء لوحة وزارة العدل"""
-    embed = discord.Embed(
-        title="⚖️ ديوان وزارة العدل والمحاكم العليا",
-        description="يمكنك تقديم الدعاوى القضائية والبلاغات القانونية عبر الضغط على الزر أدناه.",
-        color=discord.Color.gold()
-    )
+    embed = discord.Embed(title="⚖️ ديوان وزارة العدل والمحاكم العليا", description="تقديم الدعاوى القضائية والبلاغات القانونية.", color=discord.Color.gold())
     await ctx.send(embed=embed, view=JusticeView())
 
 @bot.command(name="setup_police")
 @commands.has_permissions(administrator=True)
 async def setup_police(ctx):
-    """إنشاء لوحة عمليات الشرطة"""
-    embed = discord.Embed(
-        title="🚔 القيادة العامة لشرطة LSPD",
-        description="اضغط على الزر بالأسفل لإرسال بلاغ أمني مباشر لغرفة العمليات.",
-        color=discord.Color.dark_blue()
-    )
+    embed = discord.Embed(title="🚔 القيادة العامة لشرطة LSPD", description="إرسال بلاغ أمني مباشر لغرفة العمليات.", color=discord.Color.dark_blue())
     await ctx.send(embed=embed, view=PoliceView())
 
 @bot.command(name="setup_swat")
 @commands.has_permissions(administrator=True)
 async def setup_swat(ctx):
-    """إنشاء لوحة القوات الخاصة"""
-    embed = discord.Embed(
-        title="⚡ وحدة التدخل السريع والقوات الخاصة SWAT",
-        description="مخصص للضباط لطلب الدعم التكتيكي في الحالات عالية الخطورة.",
-        color=discord.Color.dark_purple()
-    )
+    embed = discord.Embed(title="⚡ وحدة التدخل السريع والقوات الخاصة SWAT", description="طلب الدعم التكتيكي للحالات الحرجية.", color=discord.Color.dark_purple())
     await ctx.send(embed=embed, view=SWATView())
 
 @bot.command(name="setup_health")
 @commands.has_permissions(administrator=True)
 async def setup_health(ctx):
-    """إنشاء لوحة الصحة والإسعاف"""
-    embed = discord.Embed(
-        title="🚑 الهيئة العامة للخدمات الطبية والطب الطارئ",
-        description="اضغط على الزر بالأسفل لطلب الإسعاف الطارئ في الحوادث والإصابات.",
-        color=discord.Color.red()
-    )
+    embed = discord.Embed(title="🚑 الهيئة العامة للخدمات الطبية والطب الطارئ", description="طلب الإسعاف الطارئ للحوادث والإصابات.", color=discord.Color.red())
     await ctx.send(embed=embed, view=HealthView())
 
 @bot.command(name="setup_ai")
 @commands.has_permissions(administrator=True)
 async def setup_ai(ctx):
-    """تخصيص قنوات الذكاء الاصطناعي"""
-    embed = discord.Embed(
-        title="🤖 لوحة تحكم قنوات الذكاء الاصطناعي",
-        description="اختر القنوات المسموح للذكاء الاصطناعي بالرد التلقائي فيها.",
-        color=discord.Color.purple()
-    )
+    embed = discord.Embed(title="🤖 لوحة تحكم قنوات الذكاء الاصطناعي", description="اختر القنوات المسموح للذكاء الاصطناعي بالرد التلقائي فيها.", color=discord.Color.purple())
     await ctx.send(embed=embed, view=ChannelSelectView())
 
-# --- أمر الذكاء الاصطناعي اليدوي ---
+# --- أمر الذكاء الاصطناعي ---
 @bot.command(name="ai")
 async def chat_ai(ctx, *, prompt: str):
-    """التحدث المباشر مع الذكاء الاصطناعي"""
     if not ai_model:
-        await ctx.send("❌ مفتاح Gemini API غير معرف في متغيرات البيئة.")
+        await ctx.send("❌ مفتاح Gemini API غير معرف.")
         return
 
     async with ctx.typing():
@@ -481,20 +496,18 @@ async def chat_ai(ctx, *, prompt: str):
                 for i in range(0, len(answer), 1900):
                     await ctx.send(answer[i:i + 1900])
         except Exception as e:
-            await ctx.send(f"⚠️ حدث خطأ أثناء معالجة النص:\n```{str(e)}```")
+            await ctx.send(f"⚠️ حدث خطأ:\n```{str(e)}```")
 
-# --- معالجة الرسائل والمنشنات الحماية ---
+# --- معالجة الرسائل والمنشنات ---
 @bot.event
 async def on_message(message: discord.Message):
-    if message.author.bot:
+    if message.author.bot and message.author.id == bot.user.id:
         return
 
-    # تشغيل نظام الفحص والأمان أولاً
     is_safe = await SecurityGuard.check_message(message)
     if not is_safe:
         return
 
-    # الرد التلقائي عند الإشارة للبوت (Mention)
     if bot.user.mentioned_in(message) and not message.mention_everyone:
         if ai_enabled_channels and message.channel.id not in ai_enabled_channels:
             await message.reply("⚠️ التفاعل مع الذكاء الاصطناعي محدد بقنوات معينة فقط.")
@@ -514,13 +527,13 @@ async def on_message(message: discord.Message):
                         for i in range(0, len(answer), 1900):
                             await message.channel.send(answer[i:i + 1900])
                 except Exception as e:
-                    await message.reply(f"⚠️ حدث خطأ أثناء الاتصال بنموذج الذكاء الاصطناعي:\n```{str(e)}```")
+                    await message.reply(f"⚠️ حدث خطأ أثناء الاتصال بالذكاء الاصطناعي:\n```{str(e)}```")
                 return
 
     await bot.process_commands(message)
 
 # ==========================================
-# 14. التشغيل الرئيسي للمشروع (Execution)
+# 13. التشغيل
 # ==========================================
 if __name__ == "__main__":
     keep_alive()
