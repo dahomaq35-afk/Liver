@@ -42,7 +42,7 @@ ROLE_POLICE = "𝗠𝗧 | LSPD"
 ROLE_SWAT = "𝗠𝗧 | S.W.A.T"
 ROLE_HEALTH = "𝗠𝗧 | PHMC"
 
-# 🛡️ أسماء الرتب المستثناة من الحماية (مكتوبة بالرمز الدقيق من الصورة)
+# 🛡️ أسماء الرتب المستثناة من الحماية (مقتبسة بدقة مع الرمز)
 WHITELIST_ROLES = [
     "#", 
     "MT | Owner ↔", 
@@ -54,7 +54,7 @@ WHITELIST_ROLES = [
     "bot"
 ]
 
-# 🆔 أرقام الـ IDs للرتب (ضِع أرقامك هنا متى ما استخرجتها)
+# 🆔 أرقام الـ IDs للرتب المستثناة
 WHITELIST_ROLE_IDS = [
     111111111111111111,
     222222222222222222,
@@ -68,6 +68,12 @@ ALLOWED_BOT_IDS = [
 ]
 
 SECURITY_CHANNEL_NAME = "📑┃حماية"
+
+# 🤖 إعدادات الذكاء الاصطناعي
+ai_settings = {
+    "enabled": False,
+    "channel_id": None
+}
 
 criminal_records = {}
 user_message_logs = defaultdict(list)
@@ -111,7 +117,7 @@ async def get_security_channel(guild: discord.Guild):
     return channel
 
 # ---------------------------------------------------------
-# 3. أحداث الحماية
+# 3. أحداث الحماية والذكاء الاصطناعي
 # ---------------------------------------------------------
 
 @bot.event
@@ -211,6 +217,22 @@ async def on_message(message: discord.Message):
     if message.author.bot or not message.guild:
         return
 
+    # 🤖 نظام الرد التلقائي بالذكاء الاصطناعي
+    if ai_settings["enabled"] and message.channel.id == ai_settings["channel_id"]:
+        async with message.channel.typing():
+            prompt = message.content.lower()
+            response = "أهلاً بك! أنا مساعد الذكاء الاصطناعي الخاص بالسيرفر. كيف يمكنني مساعدتك اليوم؟"
+            
+            if "رتب" in prompt or "قطاع" in prompt:
+                response = "يمكنك التقديم على القطاعات الحكومية أو فتح تذكرة عبر روم التذاكر الموحدة."
+            elif "قوانين" in prompt or "شروط" in prompt:
+                response = "يرجى الالتزام بقوانين السيرفر واحترام الجميع والابتعاد عن الإسبام والروابط المخالفة."
+            elif "مساعدة" in prompt or "دعم" in prompt:
+                response = "تفضل بكتابة استفسارك كاملاً وسأقوم بإجابتك، أو قم بفتح تذكرة ليتم خدمتك من قبل الإدارة."
+
+            await message.reply(response)
+        return
+
     member = message.author
     if is_whitelisted(member, message.guild):
         await bot.process_commands(message)
@@ -266,8 +288,73 @@ async def on_message(message: discord.Message):
     await bot.process_commands(message)
 
 # ---------------------------------------------------------
-# 4. التذاكر وأوامر السلاش
+# 4. لوحة أمر AI Security
 # ---------------------------------------------------------
+
+class AISecurityView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="تفعيل النظام 🟢", style=discord.ButtonStyle.green, custom_id="ai_enable_btn")
+    async def enable_ai(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("❌ هذا الأمر مخصص للإدارة فقط!", ephemeral=True)
+            return
+        
+        if not ai_settings["channel_id"]:
+            await interaction.response.send_message("⚠️ يرجى تحديد روم الذكاء الاصطناعي أولاً من القائمة أدناه!", ephemeral=True)
+            return
+
+        ai_settings["enabled"] = True
+        await interaction.response.send_message("✅ تم تفعيل نظام الذكاء الاصطناعي بنجاح!", ephemeral=True)
+
+    @discord.ui.button(label="تعطيل النظام 🔴", style=discord.ButtonStyle.red, custom_id="ai_disable_btn")
+    async def disable_ai(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("❌ هذا الأمر مخصص للإدارة فقط!", ephemeral=True)
+            return
+
+        ai_settings["enabled"] = False
+        await interaction.response.send_message("🛑 تم تعطيل نظام الذكاء الاصطناعي.", ephemeral=True)
+
+    @discord.ui.select(
+        cls=discord.ui.ChannelSelect,
+        channel_types=[discord.ChannelType.text],
+        placeholder="اختر روم الذكاء الاصطناعي...",
+        custom_id="ai_channel_select"
+    )
+    async def select_channel(self, interaction: discord.Interaction, select: discord.ui.ChannelSelect):
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("❌ هذا الأمر مخصص للإدارة فقط!", ephemeral=True)
+            return
+
+        selected_channel = select.values[0]
+        ai_settings["channel_id"] = selected_channel.id
+        await interaction.response.send_message(f"🎯 تم تحديد القناة: {selected_channel.mention} للذكاء الاصطناعي.", ephemeral=True)
+
+@bot.tree.command(name="ai_security", description="إدارة ونظام الذكاء الاصطناعي للإجابات التلقائية")
+async def ai_security_cmd(interaction: discord.Interaction):
+    if not interaction.user.guild_permissions.administrator:
+        await interaction.response.send_message("❌ هذا الأمر مخصص للإداريين فقط!", ephemeral=True)
+        return
+
+    status = "🟢 مفعّل" if ai_settings["enabled"] else "🔴 معطّل"
+    channel_mention = f"<#{ai_settings['channel_id']}>" if ai_settings["channel_id"] else "لم يتم التحديد"
+
+    embed = discord.Embed(
+        title="🤖 لوحة تحكم AI Security",
+        description="قم بإدارة نظام الرد الآلي الذكي واختيار القناة المخصصة للإجابات التلقائية.",
+        color=discord.Color.blue()
+    )
+    embed.add_field(name="حالة النظام:", value=status, inline=True)
+    embed.add_field(name="القناة المحددة:", value=channel_mention, inline=True)
+
+    await interaction.response.send_message(embed=embed, view=AISecurityView(), ephemeral=True)
+
+# ---------------------------------------------------------
+# 5. التذاكر وأوامر السلاش
+# ---------------------------------------------------------
+
 class TicketCloseView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -323,6 +410,7 @@ class TicketSelectView(discord.ui.View):
 async def on_ready():
     bot.add_view(TicketSelectView())
     bot.add_view(TicketCloseView())
+    bot.add_view(AISecurityView())
     try:
         synced = await bot.tree.sync()
         print(f"✅ تم مزامنة {len(synced)} أمر Slash!")
@@ -448,7 +536,7 @@ async def medical_triage(interaction: discord.Interaction, patient: discord.Memb
     await interaction.response.send_message(embed=embed)
 
 # ---------------------------------------------------------
-# 5. تشغيل البوت
+# 6. تشغيل البوت
 # ---------------------------------------------------------
 if __name__ == "__main__":
     keep_alive()
