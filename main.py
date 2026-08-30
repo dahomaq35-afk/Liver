@@ -1,12 +1,15 @@
 import os
 import asyncio
 import datetime
+import logging
 from collections import defaultdict
 from threading import Thread
 from flask import Flask
 import discord
 from discord import app_commands
 from discord.ext import commands
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 
 # ---------------------------------------------------------
 # 1. خادم الويب (Keep Alive 24/7)
@@ -56,19 +59,12 @@ WHITELIST_ROLES = [
     "bot"
 ]
 
-# 🆔 أرقام الـ IDs للرتب (اختياري - ضعه مستقبلاً إن أردت)
-WHITELIST_ROLE_IDS = []
-
-# 🆔 أرقام البوتات الموثوقة المستثناة من الحظر
-ALLOWED_BOT_IDS = []
-
 SECURITY_CHANNEL_NAME = "📑┃حماية"
 
 criminal_records = {}
 user_message_logs = defaultdict(list)
 
 def is_whitelisted(user: discord.User | discord.Member, guild: discord.Guild = None) -> bool:
-    """التحقق الحقيقي والدقيق من استثناء العضو (مالك، أدمن، أو رتبة مستثناة)"""
     if not user:
         return False
     
@@ -83,10 +79,6 @@ def is_whitelisted(user: discord.User | discord.Member, guild: discord.Guild = N
         return True
 
     if isinstance(member, discord.Member):
-        user_role_ids = [role.id for role in member.roles]
-        if any(r_id in user_role_ids for r_id in WHITELIST_ROLE_IDS):
-            return True
-
         user_role_names = [role.name for role in member.roles]
         if any(w_role in user_role_names for w_role in WHITELIST_ROLES):
             return True
@@ -102,8 +94,8 @@ async def get_security_channel(guild: discord.Guild):
     if not channel:
         try:
             channel = await guild.create_text_channel(SECURITY_CHANNEL_NAME)
-        except Exception:
-            pass
+        except Exception as e:
+            logging.error(f"فشل إنشاء روم الحماية: {e}")
     return channel
 
 # ---------------------------------------------------------
@@ -112,7 +104,9 @@ async def get_security_channel(guild: discord.Guild):
 
 @bot.event
 async def on_member_ban(guild: discord.Guild, user: discord.User):
-    await asyncio.sleep(0.3)
+    print(f"⚠️ تم رصد عملية حظر للعضو: {user.name}، جاري فحص السجلات...")
+    await asyncio.sleep(1.5)
+    
     sec_channel = await get_security_channel(guild)
     actor = None
 
@@ -121,8 +115,8 @@ async def on_member_ban(guild: discord.Guild, user: discord.User):
             if entry.target and entry.target.id == user.id:
                 actor = entry.user
                 break
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"❌ خطأ أثناء قراءة السجلات: {e}")
 
     if not actor:
         try:
@@ -131,7 +125,12 @@ async def on_member_ban(guild: discord.Guild, user: discord.User):
         except Exception:
             pass
 
-    if actor and actor.id != bot.user.id:
+    if actor:
+        print(f"🔍 الفاعل الذي قام بالحظر هو: {actor.name} (ID: {actor.id})")
+        
+        if actor.id == bot.user.id:
+            return
+
         if is_whitelisted(actor, guild):
             if sec_channel:
                 embed = discord.Embed(
@@ -145,13 +144,15 @@ async def on_member_ban(guild: discord.Guild, user: discord.User):
 
         try:
             await guild.unban(user, reason="🛡️ حماية: فك حظر تلقائي")
-        except Exception:
-            pass
+            print(f"✅ تم فك الحظر عن العضو: {user.name}")
+        except Exception as e:
+            print(f"❌ فشل فك الحظر: {e}")
 
         try:
             await guild.ban(actor, reason="🛡️ حماية: محاولة تخريب وحظر بدون صلاحية")
-        except Exception:
-            pass
+            print(f"🚨 تم تبنيد المخرب بنجاح: {actor.name}")
+        except Exception as e:
+            print(f"❌ فشل تبنيد المخرب (تأكد من ترتيب رتبة البوت وصلاحياته): {e}")
 
         if sec_channel:
             embed = discord.Embed(
@@ -159,56 +160,9 @@ async def on_member_ban(guild: discord.Guild, user: discord.User):
                 color=discord.Color.red(), 
                 timestamp=datetime.datetime.now(datetime.timezone.utc)
             )
-            embed.add_field(name="👤 المخالف (تم تبنيده فوراً):", value=f"{actor.mention} (`{actor.id}`)", inline=False)
+            embed.add_field(name="👤 المخالف (تم تبنيده):", value=f"{actor.mention} (`{actor.id}`)", inline=False)
             embed.add_field(name="👤 العضو (تم فك حظره):", value=f"{user.mention} (`{user.id}`)", inline=False)
             await sec_channel.send(embed=embed)
-
-@bot.event
-async def on_member_join(member: discord.Member):
-    sec_channel = await get_security_channel(member.guild)
-    
-    if member.bot:
-        if member.id in ALLOWED_BOT_IDS:
-            return
-
-        await asyncio.sleep(0.3)
-        actor = None
-        try:
-            async for entry in member.guild.audit_logs(limit=1, action=discord.AuditLogAction.bot_add):
-                actor = entry.user
-        except Exception:
-            pass
-
-        if actor and actor.id != bot.user.id:
-            if not is_whitelisted(actor, member.guild):
-                try:
-                    await member.ban(reason="🛡️ حماية: دخول بوت غير مصرح")
-                    await member.guild.ban(actor, reason="🛡️ حماية: إدخال بوت مشبوه")
-                except Exception:
-                    pass
-                
-                if sec_channel:
-                    embed = discord.Embed(title="🛡️ [حماية البوتات] طرد وتبنيد", color=discord.Color.dark_red(), timestamp=datetime.datetime.now(datetime.timezone.utc))
-                    embed.add_field(name="🤖 البوت:", value=member.mention, inline=False)
-                    embed.add_field(name="👤 المسؤول:", value=actor.mention, inline=False)
-                    await sec_channel.send(embed=embed)
-                return
-
-    now_utc = datetime.datetime.now(datetime.timezone.utc)
-    account_age = (now_utc - member.created_at).days
-    forbidden_keywords = ["hacked", "hack", "اختراق", "تفجير", "تخريب"]
-    has_forbidden_name = any(kw in member.display_name.lower() for kw in forbidden_keywords)
-
-    if account_age < 1 or has_forbidden_name:
-        try:
-            await member.ban(reason="🛡️ حماية: حساب وهمي أو مشبوه")
-            if sec_channel:
-                embed = discord.Embed(title="🚨 [حماية الحسابات] تبنيد حساب مشبوه", color=discord.Color.orange(), timestamp=datetime.datetime.now(datetime.timezone.utc))
-                embed.add_field(name="👤 الحساب:", value=f"{member.mention} (`{member.id}`)", inline=False)
-                embed.add_field(name="📝 السبب:", value=f"عمر الحساب ({account_age} يوم) أو الاسم مخالف", inline=False)
-                await sec_channel.send(embed=embed)
-        except Exception:
-            pass
 
 @bot.event
 async def on_message(message: discord.Message):
@@ -246,37 +200,10 @@ async def on_message(message: discord.Message):
             await sec_channel.send(embed=embed)
         return
 
-    now_time = datetime.datetime.now(datetime.timezone.utc)
-    user_id = member.id
-    user_message_logs[user_id].append(now_time)
-
-    user_message_logs[user_id] = [
-        t for t in user_message_logs[user_id]
-        if (now_time - t).total_seconds() <= 2
-    ]
-
-    if len(user_message_logs[user_id]) >= 5:
-        user_message_logs[user_id].clear()
-        timeout_until = now_time + datetime.timedelta(minutes=2)
-        try:
-            await member.timeout(timeout_until, reason="🛡️ إسبام: إرسال 5 رسائل خلال ثانيتين")
-            await message.channel.send(f"🔇 تم إعطاء {member.mention} ميوت لمدة دقيقتين بسبب الإسبام.", delete_after=5)
-            
-            def is_user_msg(m): return m.author.id == user_id
-            await message.channel.purge(limit=5, check=is_user_msg)
-
-            if sec_channel:
-                embed = discord.Embed(title="🔇 [ميوت سبام] تايم آوت تلقائي", color=discord.Color.blue())
-                embed.add_field(name="👤 العضو:", value=member.mention, inline=True)
-                embed.add_field(name="⏱️ السبب:", value="إرسال رسائل متكررة بسرعة عالية", inline=True)
-                await sec_channel.send(embed=embed)
-        except Exception:
-            pass
-
     await bot.process_commands(message)
 
 # ---------------------------------------------------------
-# 4. نظام التذاكر والقطاعات والأزرار
+# 4. نظام التذاكر والقطاعات (UI Views)
 # ---------------------------------------------------------
 class TicketCloseView(discord.ui.View):
     def __init__(self):
@@ -342,7 +269,7 @@ class TicketSelectView(discord.ui.View):
         await interaction.response.send_message(f"✅ تم فتح تذكرتك بنجاح: {ticket_channel.mention}", ephemeral=True)
 
 # ---------------------------------------------------------
-# 5. تشغيل البوت وتسجيل الأوامر
+# 5. تسجيل الأوامر وتشغيل البوت
 # ---------------------------------------------------------
 @bot.event
 async def on_ready():
