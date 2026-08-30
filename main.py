@@ -98,7 +98,19 @@ intents.members = True
 intents.guilds = True
 intents.bans = True
 intents.moderation = True
-intents.audit_logs = True
+# ==========================================
+# 5. إعداد البوت والافتراضيات
+# ==========================================
+intents = discord.Intents.default()
+intents.message_content = True
+intents.members = True
+intents.guilds = True
+intents.bans = True
+intents.moderation = True
+# تم إزالة intents.audit_logs = True لأنه غير موجود بالمكتبة ويسبب كراش
+
+bot = commands.Bot(command_prefix="!", intents=intents)
+
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
