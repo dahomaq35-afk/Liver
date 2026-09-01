@@ -18,7 +18,7 @@ web_app = Flask('')
 
 @web_app.route('/')
 def home():
-    return "Roleplay & Security Bot is active 24/7!"
+    return "Bot Core & Security System is Online!"
 
 def run_web():
     port = int(os.environ.get("PORT", 8080))
@@ -30,7 +30,7 @@ def keep_alive():
     t.start()
 
 # ---------------------------------------------------------
-# 2. إعداد البوت والقوائم
+# 2. إعدادات البوت والقواعد
 # ---------------------------------------------------------
 intents = discord.Intents.default()
 intents.message_content = True
@@ -41,19 +41,18 @@ intents.moderation = True
 
 bot = commands.Bot(command_prefix="-", intents=intents)
 
-# 🏷️ أسماء رتب القطاعات الحكومية
+# أسماء رتب القطاعات RP
 ROLE_JUSTICE = "𝗠𝗧 | Justice"
 ROLE_POLICE = "𝗠𝗧 | LSPD"
 ROLE_SWAT = "𝗠𝗧 | S.W.A.T"
 ROLE_HEALTH = "𝗠𝗧 | PHMC"
 
-# 🛡️ أسماء الرتب المستثناة من الحماية (Whitelist)
+# رتب الحماية المصرح لها بالحظر (تم حذف MT | FOUNDERS)
 WHITELIST_ROLES = [
     "#", 
     "MT | Owner ↔", 
     "MT | COowner ↔", 
     "MT | Ceo", 
-    "MT | FOUNDERS", 
     "Appy", 
     "Bot", 
     "bot"
@@ -61,29 +60,20 @@ WHITELIST_ROLES = [
 
 SECURITY_CHANNEL_NAME = "📑┃حماية"
 
+# السجلات الجنائية للبلاغات
 criminal_records = {}
-user_message_logs = defaultdict(list)
 
-def is_whitelisted(user: discord.User | discord.Member, guild: discord.Guild = None) -> bool:
-    if not user:
+def is_whitelisted(user: discord.User | discord.Member, guild: discord.Guild) -> bool:
+    """التحقق حصرياً من رتب الوايت لست المحددة فقط"""
+    if not user or not guild:
         return False
     
-    member = user
-    if guild and not isinstance(user, discord.Member):
-        member = guild.get_member(user.id)
+    member = guild.get_member(user.id) if not isinstance(user, discord.Member) else user
+    if not member:
+        return False
 
-    if guild and member and member.id == guild.owner_id:
-        return True
-
-    if isinstance(member, discord.Member) and member.guild_permissions.administrator:
-        return True
-
-    if isinstance(member, discord.Member):
-        user_role_names = [role.name for role in member.roles]
-        if any(w_role in user_role_names for w_role in WHITELIST_ROLES):
-            return True
-
-    return False
+    user_role_names = [role.name for role in member.roles]
+    return any(w_role in user_role_names for w_role in WHITELIST_ROLES)
 
 def check_role(user: discord.Member, role_name: str) -> bool:
     user_role_names = [role.name for role in user.roles]
@@ -94,71 +84,67 @@ async def get_security_channel(guild: discord.Guild):
     if not channel:
         try:
             channel = await guild.create_text_channel(SECURITY_CHANNEL_NAME)
+            print(f"✅ تم إنشاء روم الحماية: {SECURITY_CHANNEL_NAME}")
         except Exception as e:
-            logging.error(f"فشل إنشاء روم الحماية: {e}")
+            print(f"❌ فشل إنشاء روم الحماية: {e}")
     return channel
 
 # ---------------------------------------------------------
-# 3. أحداث الحماية الأمنية المتقدمة (Anti-Nuke / Anti-Spam)
+# 3. أحداث الحماية السريعة والتنبيهات
 # ---------------------------------------------------------
 
 @bot.event
 async def on_member_ban(guild: discord.Guild, user: discord.User):
-    print(f"⚠️ تم رصد عملية حظر للعضو: {user.name}، جاري فحص السجلات...")
-    await asyncio.sleep(1.5)
-    
     sec_channel = await get_security_channel(guild)
     actor = None
 
     try:
-        async for entry in guild.audit_logs(limit=3, action=discord.AuditLogAction.ban):
-            if entry.target and entry.target.id == user.id:
-                actor = entry.user
-                break
+        async for entry in guild.audit_logs(limit=1, action=discord.AuditLogAction.ban):
+            actor = entry.user
+            break
     except Exception as e:
-        print(f"❌ خطأ أثناء قراءة السجلات: {e}")
+        print(f"❌ فشل قراءة سجلات التدقيق: {e}")
 
     if not actor:
+        await asyncio.sleep(0.4)
         try:
             async for entry in guild.audit_logs(limit=1, action=discord.AuditLogAction.ban):
                 actor = entry.user
+                break
         except Exception:
             pass
 
     if actor:
-        print(f"🔍 الفاعل الذي قام بالحظر هو: {actor.name} (ID: {actor.id})")
-        
         if actor.id == bot.user.id:
             return
 
-        # 🟢 إذا كان المبند يملك رتبة حماية (من الوايت لست): إرسال تنبيه فقط بدون فك الحظر
-        if is_whitelisted(actor, guild):
+        has_protection = is_whitelisted(actor, guild)
+
+        # 1. إذا كان الفاعل يملك رتبة حماية
+        if has_protection:
             if sec_channel:
                 embed = discord.Embed(
                     title="ℹ️ [تنبيه حظر معتمد]",
-                    description=f"قام شخص يمتلك رتبة حماية بحظر عضو.",
+                    description="تم إجراء حظر بواسطة شخص يمتلك رتبة حماية (لم يتم فك الباند).",
                     color=discord.Color.blue(),
                     timestamp=datetime.datetime.now(datetime.timezone.utc)
                 )
-                embed.add_field(name="المبند:", value=actor.mention, inline=False)
-                embed.add_field(name="المحظور:", value=user.mention, inline=False)
+                embed.add_field(name="المبند :", value=actor.mention, inline=False)
+                embed.add_field(name="المحظور :", value=user.mention, inline=False)
                 await sec_channel.send(embed=embed)
             return
 
-        # 🔴 إذا كان المبند بدون رتبة حماية: فك الحظر عن العضو وتبنيد الفاعل
+        # 2. إذا كان الفاعل بدون رتبة حماية (تخريب)
         try:
-            await guild.unban(user, reason="🛡️ حماية: فك حظر تلقائي")
-            print(f"✅ تم فك الحظر عن العضو: {user.name}")
+            await guild.unban(user, reason="🛡️ حماية تلقائية: إلغاء حظر غير مصرح")
         except Exception as e:
             print(f"❌ فشل فك الحظر: {e}")
 
         try:
-            await guild.ban(actor, reason="🛡️ حماية: محاولة تخريب وحظر بدون صلاحية")
-            print(f"🚨 تم تبنيد المخرب بنجاح: {actor.name}")
+            await guild.ban(actor, reason="🛡️ حماية تلقائية: حظر بدون رتبة حماية")
         except Exception as e:
-            print(f"❌ فشل تبنيد المخرب (تأكد من ترتيب رتبة البوت وصلاحياته): {e}")
+            print(f"❌ فشل حظر الفاعل: {e}")
 
-        # إرسال الرسالة بالشكل المطلوب تماماً
         if sec_channel:
             embed = discord.Embed(
                 title="🚨 [حماية فورية] إلغاء حظر وتبنيد الفاعل", 
@@ -208,7 +194,7 @@ async def on_message(message: discord.Message):
     await bot.process_commands(message)
 
 # ---------------------------------------------------------
-# 4. نظام التذاكر والقطاعات (UI Views)
+# 4. واجهات التذاكر الموحدة (UI Elements)
 # ---------------------------------------------------------
 class TicketCloseView(discord.ui.View):
     def __init__(self):
@@ -274,8 +260,9 @@ class TicketSelectView(discord.ui.View):
         await interaction.response.send_message(f"✅ تم فتح تذكرتك بنجاح: {ticket_channel.mention}", ephemeral=True)
 
 # ---------------------------------------------------------
-# 5. تسجيل الأوامر وتشغيل البوت
+# 5. أوامر Slash الكاملة للقطاعات RP
 # ---------------------------------------------------------
+
 @bot.event
 async def on_ready():
     bot.add_view(TicketSelectView())
@@ -311,42 +298,16 @@ async def create_deed(interaction: discord.Interaction, owner: discord.Member, p
     embed.set_footer(text=f"تم الإصدار بواسطة: {interaction.user.name}")
     await interaction.response.send_message(embed=embed)
 
-@bot.tree.command(name="set-trial", description="[DOJ] تحديد موعد محاكمة جديدة")
-async def set_trial(interaction: discord.Interaction, defendant: discord.Member, judge: discord.Member, date_time: str, location: str):
+@bot.tree.command(name="issue-warrant", description="[DOJ] إصدار أمر إلقاء قبض أو تفتيش قضائي")
+async def issue_warrant(interaction: discord.Interaction, target: discord.Member, reason: str, warrant_type: str):
     if not check_role(interaction.user, ROLE_JUSTICE):
-        await interaction.response.send_message("❌ هذا الأمر مخصص لأعضاء وزارة العدل فقط!", ephemeral=True)
+        await interaction.response.send_message("❌ هذا الأمر مخصص للقضاة ووزارة العدل فقط!", ephemeral=True)
         return
-    embed = discord.Embed(title="⚖️ إشعار موعد محاكمة", color=discord.Color.dark_purple(), timestamp=datetime.datetime.now(datetime.timezone.utc))
-    embed.add_field(name="المتهم:", value=defendant.mention, inline=True)
-    embed.add_field(name="القاضي المكلف:", value=judge.mention, inline=True)
-    embed.add_field(name="الموعد:", value=date_time, inline=False)
-    embed.add_field(name="المكان:", value=location, inline=False)
+    embed = discord.Embed(title=f"⚖️ أمر قضائي رسمي ({warrant_type})", color=discord.Color.dark_red(), timestamp=datetime.datetime.now(datetime.timezone.utc))
+    embed.add_field(name="المطلوب:", value=target.mention, inline=True)
+    embed.add_field(name="السبب:", value=reason, inline=False)
+    embed.set_footer(text=f"القاضي المصدر: {interaction.user.name}")
     await interaction.response.send_message(embed=embed)
-
-@bot.tree.command(name="add-charge", description="[DOJ] تسجيل تهمة في السجل الجنائي")
-async def add_charge(interaction: discord.Interaction, target: discord.Member, charge: str, fine: int = 0):
-    if not check_role(interaction.user, ROLE_JUSTICE):
-        await interaction.response.send_message("❌ هذا الأمر مخصص لأعضاء وزارة العدل فقط!", ephemeral=True)
-        return
-    if target.id not in criminal_records:
-        criminal_records[target.id] = []
-    criminal_records[target.id].append({"charge": charge, "fine": fine, "date": datetime.date.today().strftime("%Y-%m-%d")})
-    embed = discord.Embed(title="🚨 تسجيل سابقة جنائية", color=discord.Color.red())
-    embed.add_field(name="المتهم:", value=target.mention, inline=True)
-    embed.add_field(name="التهمة:", value=charge, inline=True)
-    embed.add_field(name="الغرامة:", value=f"${fine:,}", inline=True)
-    await interaction.response.send_message(embed=embed)
-
-@bot.tree.command(name="check-charges", description="[DOJ] عرض السجل الجنائي لعضو")
-async def check_charges(interaction: discord.Interaction, target: discord.Member):
-    records = criminal_records.get(target.id, [])
-    if not records:
-        await interaction.response.send_message(f"✅ السجل الجنائي لـ {target.mention} نظيف تماماً.", ephemeral=True)
-        return
-    embed = discord.Embed(title=f"📁 السجل الجنائي لـ {target.display_name}", color=discord.Color.dark_red())
-    for idx, rec in enumerate(records, 1):
-        embed.add_field(name=f"سابقة #{idx} ({rec['date']})", value=f"التهمة: {rec['charge']}\nالغرامة: ${rec['fine']:,}", inline=False)
-    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 # --- أوامر الشرطة (LSPD) ---
 @bot.tree.command(name="911-dispatch", description="[LSPD] إرسال نداء عمليات أمني")
@@ -360,56 +321,77 @@ async def dispatch_911(interaction: discord.Interaction, code: str, location: st
     embed.add_field(name="التفاصيل:", value=details, inline=False)
     await interaction.response.send_message(content="||@everyone||", embed=embed)
 
-@bot.tree.command(name="log-inspection", description="[LSPD] محضر تفتيش شخص أو مركبة")
-async def log_inspection(interaction: discord.Interaction, suspect: discord.Member, items_found: str, status: str):
+@bot.tree.command(name="add-record", description="[LSPD] إضافة سابقة جنائية لمواطن")
+async def add_record(interaction: discord.Interaction, citizen: discord.Member, crime: str, fine: int, jail_time: str):
     if not check_role(interaction.user, ROLE_POLICE):
-        await interaction.response.send_message("❌ هذا الأمر مخصص لأعضاء LSPD فقط!", ephemeral=True)
+        await interaction.response.send_message("❌ هذا الأمر مخصص للشرطة فقط!", ephemeral=True)
         return
-    embed = discord.Embed(title="🔍 محضر تفتيش أمني", color=discord.Color.dark_blue())
-    embed.add_field(name="المشتبه به:", value=suspect.mention, inline=True)
-    embed.add_field(name="المضبوطات:", value=items_found, inline=False)
-    embed.add_field(name="الإجراء المتخذ:", value=status, inline=False)
+    if citizen.id not in criminal_records:
+        criminal_records[citizen.id] = []
+    
+    record_entry = {
+        "officer": interaction.user.name,
+        "crime": crime,
+        "fine": fine,
+        "jail_time": jail_time,
+        "date": str(datetime.date.today())
+    }
+    criminal_records[citizen.id].append(record_entry)
+    
+    embed = discord.Embed(title="📁 تسجيل سابقة جنائية", color=discord.Color.dark_blue(), timestamp=datetime.datetime.now(datetime.timezone.utc))
+    embed.add_field(name="المواطن:", value=citizen.mention, inline=True)
+    embed.add_field(name="التهمة:", value=crime, inline=False)
+    embed.add_field(name="الغرامة:", value=f"${fine}", inline=True)
+    embed.add_field(name="مدة السجن:", value=jail_time, inline=True)
     embed.set_footer(text=f"الضابط المسؤول: {interaction.user.name}")
     await interaction.response.send_message(embed=embed)
 
-# --- أوامر السوات (S.W.A.T) ---
-@bot.tree.command(name="code-red", description="[SWAT] إعلان حالة الاستنفار القصوى")
-async def code_red(interaction: discord.Interaction, zone: str, reason: str):
-    if not check_role(interaction.user, ROLE_SWAT):
-        await interaction.response.send_message("❌ هذا الأمر مخصص لقوات S.W.A.T فقط!", ephemeral=True)
+@bot.tree.command(name="view-records", description="[LSPD] الاستعلام عن السجل الجنائي لمواطن")
+async def view_records(interaction: discord.Interaction, citizen: discord.Member):
+    if not check_role(interaction.user, ROLE_POLICE):
+        await interaction.response.send_message("❌ هذا الأمر مخصص لأعضاء LSPD فقط!", ephemeral=True)
         return
-    embed = discord.Embed(title="⚠️ إعلان حالة استنفار حمراء (CODE RED)", color=discord.Color.dark_red(), timestamp=datetime.datetime.now(datetime.timezone.utc))
-    embed.add_field(name="المنطقة المحظورة:", value=zone, inline=True)
-    embed.add_field(name="السبب:", value=reason, inline=False)
-    embed.add_field(name="تعليمات:", value="يُمنع اقتراب المدنيين، سيتم التعامل المباشر بالقوة القاتلة.", inline=False)
+    user_recs = criminal_records.get(citizen.id, [])
+    if not user_recs:
+        await interaction.response.send_message(f"✅ المواطن {citizen.mention} سجل جنائي نظيف وخالٍ من الجرائم.", ephemeral=True)
+        return
+    
+    embed = discord.Embed(title=f"📊 السجل الجنائي لـ {citizen.name}", color=discord.Color.orange())
+    for idx, rec in enumerate(user_recs, 1):
+        embed.add_field(
+            name=f"قضية #{idx} - {rec['date']}",
+            value=f"**التهمة:** {rec['crime']}\n**الغرامة:** ${rec['fine']}\n**السجن:** {rec['jail_time']}\n**الضابط:** {rec['officer']}",
+            inline=False
+        )
+    await interaction.response.send_message(embed=embed)
+
+# --- أوامر السوات (SWAT) ---
+@bot.tree.command(name="swat-deploy", description="[SWAT] نداء إعلان حالة الطوارئ والتدخل السريع")
+async def swat_deploy(interaction: discord.Interaction, zone: str, threat_level: str):
+    if not check_role(interaction.user, ROLE_SWAT):
+        await interaction.response.send_message("❌ هذا الأمر مخصص لقوات السوات فقط!", ephemeral=True)
+        return
+    embed = discord.Embed(title="⚡ نداء استنفرار وقوات التدخل السريع SWAT", color=discord.Color.dark_purple(), timestamp=datetime.datetime.now(datetime.timezone.utc))
+    embed.add_field(name="منطقة العمليات:", value=zone, inline=True)
+    embed.add_field(name="مستوى الخطر:", value=threat_level, inline=True)
+    embed.add_field(name="التعليمات:", value="التوجه للموقع بالعتاد الكامل والاشتباك وفق قواعد الإطلاق.", inline=False)
     await interaction.response.send_message(content="||@everyone||", embed=embed)
 
-@bot.tree.command(name="raid-plan", description="[SWAT] اصدار خطة مداهمة أمنية")
-async def raid_plan(interaction: discord.Interaction, target_location: str, team_leader: discord.Member, entry_point: str):
-    if not check_role(interaction.user, ROLE_SWAT):
-        await interaction.response.send_message("❌ هذا الأمر مخصص لقوات S.W.A.T فقط!", ephemeral=True)
-        return
-    embed = discord.Embed(title="⚔️ أمر مداهمة ومعالجة أمنية", color=discord.Color.red())
-    embed.add_field(name="الموقع المستهدف:", value=target_location, inline=True)
-    embed.add_field(name="قائد الميدان:", value=team_leader.mention, inline=True)
-    embed.add_field(name="نقطة الاقتحام:", value=entry_point, inline=False)
-    await interaction.response.send_message(embed=embed, ephemeral=True)
-
-# --- أوامر الصحة (PHMC) ---
-@bot.tree.command(name="medical-triage", description="[PHMC] إصدار تقرير طبي وفحص")
-async def medical_triage(interaction: discord.Interaction, patient: discord.Member, condition: str, treatment: str):
+# --- أوامر الصحة والإسعاف (PHMC) ---
+@bot.tree.command(name="medical-report", description="[PHMC] إصدار تقرير طبي رسمي")
+async def medical_report(interaction: discord.Interaction, patient: discord.Member, status: str, treatment: str):
     if not check_role(interaction.user, ROLE_HEALTH):
-        await interaction.response.send_message("❌ هذا الأمر مخصص لطاقم PHMC فقط!", ephemeral=True)
+        await interaction.response.send_message("❌ هذا الأمر مخصص للقطاع الطبي فقط!", ephemeral=True)
         return
-    embed = discord.Embed(title="🏥 تقرير حالة طبية", color=discord.Color.green(), timestamp=datetime.datetime.now(datetime.timezone.utc))
+    embed = discord.Embed(title="🚑 تقرير طبي رسمي - مستشفى المركز", color=discord.Color.green(), timestamp=datetime.datetime.now(datetime.timezone.utc))
     embed.add_field(name="المريض:", value=patient.mention, inline=True)
-    embed.add_field(name="التشخيص:", value=condition, inline=True)
-    embed.add_field(name="العلاج الموصوف:", value=treatment, inline=False)
+    embed.add_field(name="الحالة التشخيصية:", value=status, inline=True)
+    embed.add_field(name="العلاج أو الإجراء:", value=treatment, inline=False)
     embed.set_footer(text=f"الطبيب المعالج: {interaction.user.name}")
     await interaction.response.send_message(embed=embed)
 
 # ---------------------------------------------------------
-# 6. التشغيل النهائي
+# 6. التشغيل الرئيسي
 # ---------------------------------------------------------
 if __name__ == "__main__":
     keep_alive()
