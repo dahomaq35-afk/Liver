@@ -131,17 +131,21 @@ async def on_member_ban(guild: discord.Guild, user: discord.User):
         if actor.id == bot.user.id:
             return
 
+        # 🟢 إذا كان المبند يملك رتبة حماية (من الوايت لست): إرسال تنبيه فقط بدون فك الحظر
         if is_whitelisted(actor, guild):
             if sec_channel:
                 embed = discord.Embed(
-                    title="ℹ️ تنبيه: حظر معتمد",
-                    description=f"**المبند:** {actor.mention}\n**المحظور:** {user.mention}",
+                    title="ℹ️ [تنبيه حظر معتمد]",
+                    description=f"قام شخص يمتلك رتبة حماية بحظر عضو.",
                     color=discord.Color.blue(),
                     timestamp=datetime.datetime.now(datetime.timezone.utc)
                 )
+                embed.add_field(name="المبند:", value=actor.mention, inline=False)
+                embed.add_field(name="المحظور:", value=user.mention, inline=False)
                 await sec_channel.send(embed=embed)
             return
 
+        # 🔴 إذا كان المبند بدون رتبة حماية: فك الحظر عن العضو وتبنيد الفاعل
         try:
             await guild.unban(user, reason="🛡️ حماية: فك حظر تلقائي")
             print(f"✅ تم فك الحظر عن العضو: {user.name}")
@@ -154,14 +158,15 @@ async def on_member_ban(guild: discord.Guild, user: discord.User):
         except Exception as e:
             print(f"❌ فشل تبنيد المخرب (تأكد من ترتيب رتبة البوت وصلاحياته): {e}")
 
+        # إرسال الرسالة بالشكل المطلوب تماماً
         if sec_channel:
             embed = discord.Embed(
-                title="🚨 [حماية فورية] كشف تخريب وتبنيد الفاعل", 
+                title="🚨 [حماية فورية] إلغاء حظر وتبنيد الفاعل", 
                 color=discord.Color.red(), 
                 timestamp=datetime.datetime.now(datetime.timezone.utc)
             )
-            embed.add_field(name="👤 المخالف (تم تبنيده):", value=f"{actor.mention} (`{actor.id}`)", inline=False)
-            embed.add_field(name="👤 العضو (تم فك حظره):", value=f"{user.mention} (`{user.id}`)", inline=False)
+            embed.add_field(name="المبند :", value=actor.mention, inline=False)
+            embed.add_field(name="تم الغاء الحظر من :", value=user.mention, inline=False)
             await sec_channel.send(embed=embed)
 
 @bot.event
