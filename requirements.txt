@@ -1,3 +1,4 @@
-discord.py
 Flask
+discord.py
 google-genai
+openai
