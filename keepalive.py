@@ -11,7 +11,10 @@ from threading import Thread
 
 app = Flask(__name__)
 
-app.secret_key = os.getenv("FLASK_SECRET_KEY", "temporary-secret-key")
+app.secret_key = os.getenv(
+    "FLASK_SECRET_KEY",
+    "temporary-secret-key"
+)
 
 
 CLIENT_ID = os.getenv("DISCORD_CLIENT_ID")
@@ -35,6 +38,7 @@ def home():
 @app.route("/login")
 def login():
     state = secrets.token_urlsafe(32)
+
     session["oauth_state"] = state
 
     params = {
@@ -55,57 +59,96 @@ def login():
 
 @app.route("/callback")
 def callback():
-    code = request.args.get("code")
-    state = request.args.get("state")
-
-    if not code or state != session.get("oauth_state"):
-        return "فشل تسجيل الدخول.", 400
-
-    data = urllib.parse.urlencode({
-        "client_id": CLIENT_ID,
-        "client_secret": CLIENT_SECRET,
-        "grant_type": "authorization_code",
-        "code": code,
-        "redirect_uri": REDIRECT_URI
-    }).encode()
-
-    token_request = urllib.request.Request(
-        "https://discord.com/api/oauth2/token",
-        data=data,
-        headers={
-            "Content-Type": "application/x-www-form-urlencoded"
-        },
-        method="POST"
-    )
-
     try:
-        with urllib.request.urlopen(token_request) as response:
+        code = request.args.get("code")
+        state = request.args.get("state")
+
+        app.logger.info("OAuth callback started")
+
+        if not code:
+            app.logger.error(
+                "OAuth callback: missing code"
+            )
+            return "فشل تسجيل الدخول: لا يوجد code.", 400
+
+        if state != session.get("oauth_state"):
+            app.logger.error(
+                "OAuth callback: state mismatch"
+            )
+            return "فشل تسجيل الدخول: state غير صحيح.", 400
+
+        data = urllib.parse.urlencode({
+            "client_id": CLIENT_ID,
+            "client_secret": CLIENT_SECRET,
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": REDIRECT_URI
+        }).encode()
+
+        token_request = urllib.request.Request(
+            "https://discord.com/api/v10/oauth2/token",
+            data=data,
+            headers={
+                "Content-Type":
+                    "application/x-www-form-urlencoded"
+            },
+            method="POST"
+        )
+
+        with urllib.request.urlopen(
+            token_request,
+            timeout=15
+        ) as response:
+
             token_data = json.loads(
                 response.read().decode()
             )
 
-        access_token = token_data["access_token"]
+        access_token = token_data.get(
+            "access_token"
+        )
+
+        if not access_token:
+            app.logger.error(
+                "OAuth callback: no access token"
+            )
+
+            app.logger.error(
+                "Discord response: %s",
+                token_data
+            )
+
+            return "فشل الحصول على رمز الدخول.", 500
+
+        headers = {
+            "Authorization":
+                f"Bearer {access_token}"
+        }
 
         user_request = urllib.request.Request(
-            "https://discord.com/api/users/@me",
-            headers={
-                "Authorization": f"Bearer {access_token}"
-            }
+            "https://discord.com/api/v10/users/@me",
+            headers=headers
         )
 
         guild_request = urllib.request.Request(
-            "https://discord.com/api/users/@me/guilds",
-            headers={
-                "Authorization": f"Bearer {access_token}"
-            }
+            "https://discord.com/api/v10/users/@me/guilds",
+            headers=headers
         )
 
-        with urllib.request.urlopen(user_request) as response:
+        with urllib.request.urlopen(
+            user_request,
+            timeout=15
+        ) as response:
+
             user = json.loads(
                 response.read().decode()
             )
 
-        with urllib.request.urlopen(guild_request) as response:
+        with urllib.request.urlopen(
+            guild_request,
+            timeout=15
+        ) as response:
+
             guilds = json.loads(
                 response.read().decode()
             )
@@ -113,25 +156,36 @@ def callback():
         session["user"] = user
         session["guilds"] = guilds
 
-        session.pop("oauth_state", None)
+        session.pop(
+            "oauth_state",
+            None
+        )
+
+        app.logger.info(
+            "OAuth login successful. User ID: %s",
+            user.get("id")
+        )
 
         return redirect("/")
 
     except urllib.error.HTTPError as e:
-        error_body = e.read().decode(errors="replace")
 
-        print(
-            "OAuth HTTP Error:",
+        error_body = e.read().decode(
+            errors="replace"
+        )
+
+        app.logger.error(
+            "OAuth HTTP Error %s: %s",
             e.code,
             error_body
         )
 
         return "حدث خطأ أثناء تسجيل الدخول.", 500
 
-    except Exception as e:
-        print(
-            "OAuth Error:",
-            repr(e)
+    except Exception:
+
+        app.logger.exception(
+            "OAuth CALLBACK CRASH"
         )
 
         return "حدث خطأ أثناء تسجيل الدخول.", 500
@@ -140,11 +194,17 @@ def callback():
 @app.route("/logout")
 def logout():
     session.clear()
+
     return redirect("/")
 
 
 def run():
-    port = int(os.environ.get("PORT", 10000))
+    port = int(
+        os.environ.get(
+            "PORT",
+            10000
+        )
+    )
 
     app.run(
         host="0.0.0.0",
@@ -153,6 +213,9 @@ def run():
 
 
 def keep_alive():
-    t = Thread(target=run)
+    t = Thread(
+        target=run
+    )
+
     t.daemon = True
     t.start()
