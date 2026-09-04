@@ -46,17 +46,34 @@ DISCORD_BOT_TOKEN = os.getenv(
     "TOKEN"
 )
 
-DB_FILE = "mt_bot.db"
-
-BOT = None
-
 
 # =========================================================
 # DATABASE
 # =========================================================
 
+DATA_DIR = os.getenv(
+    "DATA_DIR",
+    "."
+)
+
+os.makedirs(
+    DATA_DIR,
+    exist_ok=True
+)
+
+DB_FILE = os.path.join(
+    DATA_DIR,
+    "mt_bot.db"
+)
+
+BOT = None
+
+
 def db_connect():
-    conn = sqlite3.connect(DB_FILE)
+
+    conn = sqlite3.connect(
+        DB_FILE
+    )
 
     conn.row_factory = sqlite3.Row
 
@@ -103,7 +120,9 @@ def ensure_settings(guild_id):
 
 def get_settings(guild_id):
 
-    ensure_settings(guild_id)
+    ensure_settings(
+        guild_id
+    )
 
     conn = db_connect()
 
@@ -225,7 +244,9 @@ def get_excluded_role_objects(
 ):
 
     excluded_ids = set(
-        get_excluded_roles(guild_id)
+        get_excluded_roles(
+            guild_id
+        )
     )
 
     found = []
@@ -462,10 +483,6 @@ def get_discord_channels(guild_id):
 
         return channels
 
-    # -----------------------------------------------------
-    # إنشاء خريطة التصنيفات
-    # -----------------------------------------------------
-
     categories = {}
 
     for channel in data:
@@ -478,12 +495,6 @@ def get_discord_channels(guild_id):
                 "name",
                 "بدون تصنيف"
             )
-
-    # -----------------------------------------------------
-    # استخراج الرومات النصية
-    # type 0 = Text
-    # type 5 = Announcement
-    # -----------------------------------------------------
 
     for channel in data:
 
@@ -536,10 +547,6 @@ def get_discord_channels(guild_id):
             }
         )
 
-    # -----------------------------------------------------
-    # ترتيب الرومات
-    # -----------------------------------------------------
-
     channels.sort(
         key=lambda x: (
             x["category"].lower(),
@@ -591,12 +598,11 @@ def get_discord_roles(guild_id):
     for role in data:
 
         role_id = str(
-            role.get("id", "")
+            role.get(
+                "id",
+                ""
+            )
         )
-
-        # -------------------------------------------------
-        # تجاهل @everyone
-        # -------------------------------------------------
 
         if role_id == str(guild_id):
 
@@ -633,10 +639,6 @@ def get_discord_roles(guild_id):
             }
         )
 
-    # -----------------------------------------------------
-    # الأعلى أولاً
-    # -----------------------------------------------------
-
     roles.sort(
         key=lambda x: x["position"],
         reverse=True
@@ -651,7 +653,7 @@ def get_discord_roles(guild_id):
 
 
 # =========================================================
-# DISCORD OAUTH
+# HOME
 # =========================================================
 
 @app.route("/")
@@ -725,10 +727,6 @@ def callback():
 
         return redirect("/")
 
-    # -----------------------------------------------------
-    # طلب OAuth Token
-    # -----------------------------------------------------
-
     try:
 
         token_response = requests.post(
@@ -789,18 +787,10 @@ def callback():
 
         return "No access token", 400
 
-    # -----------------------------------------------------
-    # User OAuth headers
-    # -----------------------------------------------------
-
     headers = {
         "Authorization":
             f"Bearer {access_token}"
     }
-
-    # -----------------------------------------------------
-    # المستخدم
-    # -----------------------------------------------------
 
     try:
 
@@ -829,10 +819,6 @@ def callback():
 
         return "Discord User Error", 400
 
-    # -----------------------------------------------------
-    # السيرفرات التي يملك المستخدم صلاحية رؤيتها
-    # -----------------------------------------------------
-
     try:
 
         guild_response = requests.get(
@@ -857,10 +843,6 @@ def callback():
     if guild_response.status_code == 200:
 
         guild_data = guild_response.json()
-
-    # -----------------------------------------------------
-    # حفظ المستخدم
-    # -----------------------------------------------------
 
     session["user"] = {
 
@@ -893,18 +875,6 @@ def callback():
                 "avatar"
             )
     }
-
-    # -----------------------------------------------------
-    # مهم جداً:
-    #
-    # لا نعرض إلا السيرفرات التي:
-    #
-    # 1. المستخدم موجود فيها
-    # 2. البوت موجود فيها فعلياً
-    #
-    # وبكذا لما تختار سيرفر:
-    # الرومات والرتب تكون من نفس السيرفر.
-    # -----------------------------------------------------
 
     usable_guilds = []
 
@@ -1026,10 +996,6 @@ def server(guild_id):
             "/login"
         )
 
-    # -----------------------------------------------------
-    # التأكد أن السيرفر من سيرفرات المستخدم
-    # -----------------------------------------------------
-
     selected_guild = None
 
     for guild in guilds:
@@ -1048,10 +1014,6 @@ def server(guild_id):
 
         return redirect("/")
 
-    # -----------------------------------------------------
-    # التأكد أن البوت موجود في نفس السيرفر
-    # -----------------------------------------------------
-
     bot_guild = get_bot_guild(
         guild_id
     )
@@ -1065,10 +1027,6 @@ def server(guild_id):
         )
 
         return redirect("/")
-
-    # -----------------------------------------------------
-    # تحديث معلومات السيرفر من Discord
-    # -----------------------------------------------------
 
     selected_guild["name"] = (
         bot_guild.get(
@@ -1091,17 +1049,9 @@ def server(guild_id):
         )
     )
 
-    # -----------------------------------------------------
-    # Settings
-    # -----------------------------------------------------
-
     settings = get_settings(
         guild_id
     )
-
-    # -----------------------------------------------------
-    # Stats
-    # -----------------------------------------------------
 
     stats = {
 
@@ -1173,13 +1123,6 @@ def server(guild_id):
 
         conn.close()
 
-    # -----------------------------------------------------
-    # IMPORTANT
-    #
-    # هذه الدوال تستخدم guild_id المحدد
-    # وليس سيرفر آخر.
-    # -----------------------------------------------------
-
     channels = get_discord_channels(
         guild_id
     )
@@ -1206,10 +1149,6 @@ def server(guild_id):
     tickets = get_tickets(
         guild_id
     )
-
-    # -----------------------------------------------------
-    # Debug
-    # -----------------------------------------------------
 
     print("")
     print(
@@ -1298,10 +1237,6 @@ def server_action(guild_id):
             "/login"
         )
 
-    # -----------------------------------------------------
-    # تأكد أن المستخدم يملك السيرفر في OAuth
-    # -----------------------------------------------------
-
     allowed = any(
 
         str(g.get("id"))
@@ -1314,10 +1249,6 @@ def server_action(guild_id):
     if not allowed:
 
         return redirect("/")
-
-    # -----------------------------------------------------
-    # تأكد أن البوت موجود في السيرفر
-    # -----------------------------------------------------
 
     if not bot_is_in_guild(
         guild_id
@@ -1333,10 +1264,6 @@ def server_action(guild_id):
         "value",
         ""
     ).strip()
-
-    # -----------------------------------------------------
-    # Ensure settings row
-    # -----------------------------------------------------
 
     ensure_settings(
         guild_id
@@ -1373,6 +1300,7 @@ def server_action(guild_id):
                 + "?section=ai&saved=1"
             )
 
+
         # =================================================
         # AI DISABLE
         # =================================================
@@ -1399,6 +1327,7 @@ def server_action(guild_id):
                 )
                 + "?section=ai&saved=1"
             )
+
 
         # =================================================
         # AI CHANNEL
@@ -1444,6 +1373,7 @@ def server_action(guild_id):
                 )
                 + "?section=ai&saved=1"
             )
+
 
         # =================================================
         # LOG CHANNELS
@@ -1518,6 +1448,7 @@ def server_action(guild_id):
                 + "?section=logs&saved=1"
             )
 
+
         # =================================================
         # ADD EXCLUDED ROLE
         # =================================================
@@ -1545,10 +1476,6 @@ def server_action(guild_id):
                         break
 
                 if selected_role:
-
-                    # -------------------------------------
-                    # منع إضافة رتبة Managed
-                    # -------------------------------------
 
                     if selected_role.get(
                         "managed",
@@ -1605,6 +1532,7 @@ def server_action(guild_id):
                 + "?section=protection&saved=1"
             )
 
+
         # =================================================
         # REMOVE EXCLUDED ROLE
         # =================================================
@@ -1635,6 +1563,7 @@ def server_action(guild_id):
                 + "?section=protection&saved=1"
             )
 
+
     except Exception as e:
 
         print(
@@ -1645,6 +1574,7 @@ def server_action(guild_id):
     finally:
 
         conn.close()
+
 
     return redirect(
         url_for(
