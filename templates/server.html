@@ -49,24 +49,19 @@
         .sidebar {
             width: 245px;
             min-height: 100vh;
-
             background: #0d0e13;
-
             border-left: 1px solid #20222b;
-
             padding: 22px 14px;
-
             position: fixed;
             right: 0;
             top: 0;
             bottom: 0;
+            overflow-y: auto;
         }
 
         .brand {
             padding: 10px 12px 25px;
-
             border-bottom: 1px solid #20222b;
-
             margin-bottom: 18px;
         }
 
@@ -85,32 +80,23 @@
             display: flex;
             align-items: center;
             gap: 10px;
-
             padding: 10px;
-
             background: #15161d;
-
             border: 1px solid #252833;
-
             border-radius: 12px;
-
             margin-bottom: 18px;
         }
 
         .server-small-icon {
             width: 38px;
             height: 38px;
-
+            min-width: 38px;
             border-radius: 11px;
-
             background: #20222d;
-
             display: flex;
             align-items: center;
             justify-content: center;
-
             font-weight: 800;
-
             overflow: hidden;
         }
 
@@ -126,9 +112,7 @@
 
         .server-small-name strong {
             display: block;
-
             font-size: 11px;
-
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -141,41 +125,25 @@
 
         .nav-title {
             color: #555864;
-
             font-size: 9px;
-
             padding: 0 10px;
-
             margin-bottom: 7px;
         }
 
         .nav-button {
             width: 100%;
-
             border: 0;
-
             background: transparent;
-
             color: #9295a2;
-
             padding: 11px;
-
             border-radius: 10px;
-
             font-family: inherit;
-
             text-align: right;
-
             cursor: pointer;
-
             display: flex;
-
             align-items: center;
-
             gap: 10px;
-
             margin-bottom: 4px;
-
             transition: .2s;
         }
 
@@ -196,28 +164,17 @@
         }
 
         .sidebar-bottom {
-            position: absolute;
-
-            left: 14px;
-            right: 14px;
-            bottom: 18px;
+            margin-top: 25px;
         }
 
         .back-home {
             width: 100%;
-
             padding: 10px;
-
             border-radius: 10px;
-
             border: 1px solid #292c38;
-
             background: transparent;
-
             color: #8e919d;
-
             font-family: inherit;
-
             cursor: pointer;
         }
 
@@ -232,56 +189,42 @@
 
         .main {
             margin-right: 245px;
-
             width: calc(100% - 245px);
-
             padding: 32px;
         }
 
         .topbar {
             display: flex;
-
             align-items: center;
-
             justify-content: space-between;
-
             margin-bottom: 28px;
+            gap: 20px;
         }
 
         .topbar h1 {
             margin: 0;
-
             font-size: 25px;
         }
 
         .topbar p {
             margin: 4px 0 0;
-
             color: #676a76;
-
             font-size: 11px;
         }
 
         .user-box {
             display: flex;
-
             align-items: center;
-
             gap: 9px;
-
             padding: 8px 12px;
-
             border: 1px solid #242630;
-
             background: #101117;
-
             border-radius: 12px;
         }
 
         .user-box img {
             width: 30px;
             height: 30px;
-
             border-radius: 50%;
         }
 
@@ -308,15 +251,12 @@
 
         .section-title h2 {
             margin: 0;
-
             font-size: 18px;
         }
 
         .section-title p {
             color: #686b77;
-
             font-size: 10px;
-
             margin-top: 3px;
         }
 
@@ -326,36 +266,26 @@
 
         .cards {
             display: grid;
-
-            grid-template-columns:
-                repeat(4, minmax(0, 1fr));
-
+            grid-template-columns: repeat(4, minmax(0, 1fr));
             gap: 12px;
-
             margin-bottom: 25px;
         }
 
         .card {
             background: #101117;
-
             border: 1px solid #23252f;
-
             border-radius: 15px;
-
             padding: 17px;
         }
 
         .card-label {
             color: #737682;
-
             font-size: 9px;
         }
 
         .card-value {
             font-size: 22px;
-
             font-weight: 800;
-
             margin-top: 6px;
         }
 
@@ -365,78 +295,63 @@
 
         .settings-grid {
             display: grid;
-
-            grid-template-columns:
-                repeat(2, minmax(0, 1fr));
-
+            grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 14px;
         }
 
         .setting-card {
             background: #101117;
-
             border: 1px solid #242630;
-
             border-radius: 16px;
-
             padding: 20px;
         }
 
         .setting-card h3 {
             margin: 0;
-
             font-size: 13px;
         }
 
         .setting-card p {
             color: #666976;
-
             font-size: 9px;
-
             margin: 5px 0 15px;
         }
 
+        /* =========================
+           SELECT
+        ========================= */
+
         .select {
             width: 100%;
-
             padding: 12px;
-
             border-radius: 10px;
-
             border: 1px solid #2b2e3a;
-
             background: #171820;
-
             color: white;
-
             font-family: inherit;
-
             outline: none;
+            cursor: pointer;
         }
 
         .select:focus {
             border-color: #5865f2;
         }
 
+        .select option {
+            background: #171820;
+            color: white;
+        }
+
         .save-btn {
             margin-top: 10px;
-
             width: 100%;
-
             padding: 11px;
-
             border: 0;
-
             border-radius: 10px;
-
             background: #5865f2;
-
             color: white;
-
             font-family: inherit;
-
             font-weight: 700;
-
             cursor: pointer;
         }
 
@@ -450,15 +365,10 @@
 
         .ai-status {
             padding: 12px;
-
             border-radius: 10px;
-
             margin-bottom: 15px;
-
             background: #15161d;
-
             border: 1px solid #292c38;
-
             font-size: 10px;
         }
 
@@ -477,19 +387,12 @@
 
         .switch-buttons button {
             flex: 1;
-
             padding: 10px;
-
             border-radius: 9px;
-
             border: 1px solid #2a2d38;
-
             background: #171820;
-
             color: white;
-
             font-family: inherit;
-
             cursor: pointer;
         }
 
@@ -503,17 +406,13 @@
 
         .logs-list {
             display: grid;
-
             gap: 10px;
         }
 
         .log-item {
             background: #101117;
-
             border: 1px solid #242630;
-
             border-radius: 12px;
-
             padding: 14px;
         }
 
@@ -523,9 +422,7 @@
 
         .log-item p {
             margin: 4px 0 0;
-
             color: #777a86;
-
             font-size: 9px;
         }
 
@@ -533,63 +430,47 @@
            ROLES
         ========================= */
 
+        .role-list {
+            max-height: 500px;
+            overflow-y: auto;
+            padding-left: 2px;
+        }
+
         .role-item {
             display: flex;
-
             align-items: center;
-
             justify-content: space-between;
-
             gap: 10px;
-
-            padding: 10px 12px;
-
+            padding: 11px 12px;
             margin-bottom: 8px;
-
             background: #15161d;
-
             border: 1px solid #292c38;
-
             border-radius: 10px;
         }
 
         .role-name {
             font-size: 10px;
-
             font-weight: 700;
-
             overflow: hidden;
-
             text-overflow: ellipsis;
-
             white-space: nowrap;
         }
 
-        .role-id {
+        .role-position {
             color: #555864;
-
             font-size: 8px;
-
-            direction: ltr;
+            margin-top: 2px;
         }
 
         .remove-btn {
             padding: 7px 10px;
-
             border-radius: 8px;
-
             border: 1px solid #542d35;
-
             background: #24161a;
-
             color: #e47777;
-
             font-family: inherit;
-
             font-size: 9px;
-
             cursor: pointer;
-
             white-space: nowrap;
         }
 
@@ -599,18 +480,27 @@
 
         .empty-box {
             padding: 15px;
-
             text-align: center;
-
             border-radius: 10px;
-
             background: #15161d;
-
             border: 1px solid #292c38;
-
             color: #666976;
-
             font-size: 10px;
+            margin-top: 10px;
+        }
+
+        /* =========================
+           CHANNEL INFO
+        ========================= */
+
+        .channel-count {
+            display: inline-block;
+            padding: 4px 8px;
+            margin-right: 5px;
+            border-radius: 7px;
+            background: #1b1d27;
+            color: #8d91a1;
+            font-size: 8px;
         }
 
         /* =========================
@@ -625,15 +515,12 @@
 
             .main {
                 margin-right: 210px;
-
                 width: calc(100% - 210px);
-
                 padding: 20px;
             }
 
             .cards {
-                grid-template-columns:
-                    repeat(2, 1fr);
+                grid-template-columns: repeat(2, 1fr);
             }
 
         }
@@ -646,27 +533,15 @@
 
             .sidebar {
                 position: relative;
-
                 width: 100%;
-
                 min-height: auto;
-
                 border-left: 0;
-
                 border-bottom: 1px solid #20222b;
-            }
-
-            .sidebar-bottom {
-                position: static;
-
-                margin-top: 15px;
             }
 
             .main {
                 margin-right: 0;
-
                 width: 100%;
-
                 padding: 17px;
             }
 
@@ -678,24 +553,26 @@
                 grid-template-columns: 1fr 1fr;
             }
 
+            .topbar {
+                align-items: flex-start;
+                flex-direction: column;
+            }
+
         }
 
     </style>
 
 </head>
 
-
 <body>
 
 <div class="dashboard">
-
 
     <!-- ======================================
          SIDEBAR
     ======================================= -->
 
     <aside class="sidebar">
-
 
         <div class="brand">
 
@@ -708,7 +585,6 @@
             </div>
 
         </div>
-
 
         <div class="server-small">
 
@@ -743,11 +619,9 @@
 
         </div>
 
-
         <div class="nav-title">
             الإدارة
         </div>
-
 
         <button
             class="nav-button active"
@@ -757,7 +631,6 @@
             الرئيسية
         </button>
 
-
         <button
             class="nav-button"
             onclick="showSection('protection', this)"
@@ -765,7 +638,6 @@
             <span class="nav-icon">🛡️</span>
             الحماية
         </button>
-
 
         <button
             class="nav-button"
@@ -775,7 +647,6 @@
             السجلات
         </button>
 
-
         <button
             class="nav-button"
             onclick="showSection('tickets', this)"
@@ -783,7 +654,6 @@
             <span class="nav-icon">🎫</span>
             التذاكر
         </button>
-
 
         <button
             class="nav-button"
@@ -793,7 +663,6 @@
             الذكاء الاصطناعي
         </button>
 
-
         <button
             class="nav-button"
             onclick="showSection('settings', this)"
@@ -801,7 +670,6 @@
             <span class="nav-icon">⚙️</span>
             إعدادات السيرفر
         </button>
-
 
         <div class="sidebar-bottom">
 
@@ -814,16 +682,13 @@
 
         </div>
 
-
     </aside>
-
 
     <!-- ======================================
          MAIN
     ======================================= -->
 
     <main class="main">
-
 
         <div class="topbar">
 
@@ -838,7 +703,6 @@
                 </p>
 
             </div>
-
 
             {% if user %}
 
@@ -863,7 +727,6 @@
 
         </div>
 
-
         <!-- ======================================
              OVERVIEW
         ======================================= -->
@@ -885,10 +748,10 @@
 
             </div>
 
-
             <div class="cards">
 
                 <div class="card">
+
                     <div class="card-label">
                         السجلات الجنائية
                     </div>
@@ -896,10 +759,11 @@
                     <div class="card-value">
                         {{ stats.criminal_records }}
                     </div>
+
                 </div>
 
-
                 <div class="card">
+
                     <div class="card-label">
                         التحذيرات
                     </div>
@@ -907,10 +771,11 @@
                     <div class="card-value">
                         {{ stats.warnings }}
                     </div>
+
                 </div>
 
-
                 <div class="card">
+
                     <div class="card-label">
                         السجلات الأمنية
                     </div>
@@ -918,10 +783,11 @@
                     <div class="card-value">
                         {{ stats.security_logs }}
                     </div>
+
                 </div>
 
-
                 <div class="card">
+
                     <div class="card-label">
                         التذاكر
                     </div>
@@ -929,10 +795,11 @@
                     <div class="card-value">
                         {{ stats.tickets }}
                     </div>
+
                 </div>
 
-
                 <div class="card">
+
                     <div class="card-label">
                         الصكوك
                     </div>
@@ -940,10 +807,11 @@
                     <div class="card-value">
                         {{ stats.deeds }}
                     </div>
+
                 </div>
 
-
                 <div class="card">
+
                     <div class="card-label">
                         أوامر القبض
                     </div>
@@ -951,10 +819,11 @@
                     <div class="card-value">
                         {{ stats.warrants }}
                     </div>
+
                 </div>
 
-
                 <div class="card">
+
                     <div class="card-label">
                         البلاغات
                     </div>
@@ -962,10 +831,11 @@
                     <div class="card-value">
                         {{ stats.dispatches }}
                     </div>
+
                 </div>
 
-
                 <div class="card">
+
                     <div class="card-label">
                         التقارير الطبية
                     </div>
@@ -973,12 +843,12 @@
                     <div class="card-value">
                         {{ stats.medical_reports }}
                     </div>
+
                 </div>
 
             </div>
 
         </section>
-
 
         <!-- ======================================
              PROTECTION
@@ -1001,9 +871,7 @@
 
             </div>
 
-
             <div class="settings-grid">
-
 
                 <!-- إضافة رتبة -->
 
@@ -1014,9 +882,8 @@
                     </h3>
 
                     <p>
-                        اختر الرتبة من رتب السيرفر بدل إدخال ID.
+                        اختر رتبة من رتب السيرفر مباشرة.
                     </p>
-
 
                     <form
                         method="POST"
@@ -1029,7 +896,6 @@
                             value="add_excluded_role"
                         >
 
-
                         <select
                             class="select"
                             name="value"
@@ -1040,34 +906,25 @@
                                 اختر الرتبة
                             </option>
 
-
                             {% for role in roles %}
 
                             <option
                                 value="{{ role.id }}"
                             >
-
                                 @{{ role.name }}
-
                             </option>
 
                             {% endfor %}
 
                         </select>
 
-
                         {% if not roles %}
 
-                        <div
-                            class="empty-box"
-                            style="margin-top:10px;"
-                        >
-                            ⚠️ لم يتم العثور على رتب.
-                            تأكد أن البوت موجود في السيرفر.
+                        <div class="empty-box">
+                            ⚠️ لم يتم العثور على رتب في هذا السيرفر.
                         </div>
 
                         {% endif %}
-
 
                         <button
                             class="save-btn"
@@ -1080,8 +937,7 @@
 
                 </div>
 
-
-                <!-- الرتب الحالية -->
+                <!-- الرتب المستثناة -->
 
                 <div class="setting-card">
 
@@ -1090,101 +946,100 @@
                     </h3>
 
                     <p>
-                        الرتب التي تم استثناؤها من الحماية.
+                        الرتب التي تم استثناؤها من نظام الحماية.
                     </p>
 
+                    <div class="role-list">
 
-                    {% if excluded_roles %}
+                        {% if excluded_roles %}
 
-                        {% for role_id in excluded_roles %}
+                            {% for role_id in excluded_roles %}
 
-                            {% set found_role = namespace(data=None) %}
+                                {% set found_role = namespace(data=None) %}
 
-                            {% for role in roles %}
+                                {% for role in roles %}
 
-                                {% if role.id|string == role_id|string %}
+                                    {% if role.id|string == role_id|string %}
 
-                                    {% set found_role.data = role %}
-
-                                {% endif %}
-
-                            {% endfor %}
-
-
-                            <div class="role-item">
-
-                                <div>
-
-                                    {% if found_role.data %}
-
-                                    <div class="role-name">
-                                        @{{ found_role.data.name }}
-                                    </div>
-
-                                    <div class="role-id">
-                                        {{ found_role.data.id }}
-                                    </div>
-
-                                    {% else %}
-
-                                    <div class="role-name">
-                                        رتبة غير موجودة
-                                    </div>
-
-                                    <div class="role-id">
-                                        {{ role_id }}
-                                    </div>
+                                        {% set found_role.data = role %}
 
                                     {% endif %}
 
+                                {% endfor %}
+
+                                <div class="role-item">
+
+                                    <div style="min-width:0;">
+
+                                        {% if found_role.data %}
+
+                                            <div class="role-name">
+                                                @{{ found_role.data.name }}
+                                            </div>
+
+                                            <div class="role-position">
+                                                رتبة مستثناة
+                                            </div>
+
+                                        {% else %}
+
+                                            <div class="role-name">
+                                                رتبة غير موجودة
+                                            </div>
+
+                                            <div class="role-position">
+                                                تم حذفها من السيرفر
+                                            </div>
+
+                                        {% endif %}
+
+                                    </div>
+
+                                    <form
+                                        method="POST"
+                                        action="/server/{{ guild.id }}/action"
+                                    >
+
+                                        <input
+                                            type="hidden"
+                                            name="action"
+                                            value="remove_excluded_role"
+                                        >
+
+                                        <input
+                                            type="hidden"
+                                            name="value"
+                                            value="{{ role_id }}"
+                                        >
+
+                                        <button
+                                            class="remove-btn"
+                                            type="submit"
+                                        >
+                                            إزالة
+                                        </button>
+
+                                    </form>
+
                                 </div>
 
+                            {% endfor %}
 
-                                <form
-                                    method="POST"
-                                    action="/server/{{ guild.id }}/action"
-                                >
+                        {% else %}
 
-                                    <input
-                                        type="hidden"
-                                        name="action"
-                                        value="remove_excluded_role"
-                                    >
-
-                                    <input
-                                        type="hidden"
-                                        name="value"
-                                        value="{{ role_id }}"
-                                    >
-
-                                    <button
-                                        class="remove-btn"
-                                        type="submit"
-                                    >
-                                        إزالة
-                                    </button>
-
-                                </form>
-
+                            <div class="empty-box">
+                                لا توجد رتب مستثناة حالياً.
                             </div>
 
-                        {% endfor %}
+                        {% endif %}
 
-                    {% else %}
-
-                        <div class="empty-box">
-                            لا توجد رتب مستثناة حالياً.
-                        </div>
-
-                    {% endif %}
+                    </div>
 
                 </div>
-
 
             </div>
 
         </section>
-
 
         <!-- ======================================
              LOGS
@@ -1202,14 +1057,24 @@
                 </h2>
 
                 <p>
-                    اختر روم لكل نوع من أنواع السجلات.
+                    اختر أي روم من رومات السيرفر لكل نوع من السجلات.
+                    <span class="channel-count">
+                        {{ channels|length }} روم
+                    </span>
                 </p>
 
             </div>
 
+            {% if not channels %}
+
+            <div class="empty-box">
+                ⚠️ لم يتم العثور على رومات نصية.
+                تأكد أن البوت موجود في السيرفر وأن التوكن صحيح.
+            </div>
+
+            {% endif %}
 
             <div class="settings-grid">
-
 
                 {% set log_channels = [
 
@@ -1257,7 +1122,6 @@
 
                 ] %}
 
-
                 {% for action_name, title, setting_name in log_channels %}
 
                 <div class="setting-card">
@@ -1267,9 +1131,8 @@
                     </h3>
 
                     <p>
-                        اختر الروم الذي يستقبل هذا النوع من السجلات.
+                        اختر الروم من رومات هذا السيرفر.
                     </p>
-
 
                     <form
                         method="POST"
@@ -1282,7 +1145,6 @@
                             value="{{ action_name }}"
                         >
 
-
                         <select
                             class="select"
                             name="value"
@@ -1293,20 +1155,19 @@
                                 اختر الروم
                             </option>
 
-
                             {% for channel in channels %}
 
                             <option
                                 value="{{ channel.id }}"
-                                {% if settings[setting_name] and settings[setting_name]|string == channel.id|string %}
-                                selected
+                                {% if settings.get(setting_name) and settings.get(setting_name)|string == channel.id|string %}
+                                    selected
                                 {% endif %}
                             >
 
                                 # {{ channel.name }}
 
                                 {% if channel.category %}
-                                — {{ channel.category }}
+                                    — {{ channel.category }}
                                 {% endif %}
 
                             </option>
@@ -1314,20 +1175,6 @@
                             {% endfor %}
 
                         </select>
-
-
-                        {% if not channels %}
-
-                        <div
-                            class="empty-box"
-                            style="margin-top:10px;"
-                        >
-                            ⚠️ لم يتم العثور على رومات نصية.
-                            تأكد أن البوت متصل بالسيرفر.
-                        </div>
-
-                        {% endif %}
-
 
                         <button
                             class="save-btn"
@@ -1342,11 +1189,9 @@
 
                 {% endfor %}
 
-
             </div>
 
         </section>
-
 
         <!-- ======================================
              TICKETS
@@ -1369,7 +1214,6 @@
 
             </div>
 
-
             <div class="cards">
 
                 <div class="card">
@@ -1385,7 +1229,6 @@
                 </div>
 
             </div>
-
 
             <div class="logs-list">
 
@@ -1433,7 +1276,6 @@
 
         </section>
 
-
         <!-- ======================================
              AI
         ======================================= -->
@@ -1450,14 +1292,12 @@
                 </h2>
 
                 <p>
-                    التحكم في تشغيل الذكاء الاصطناعي وتحديد رومه.
+                    التحكم في تشغيل الذكاء الاصطناعي وتحديد الروم.
                 </p>
 
             </div>
 
-
             <div class="settings-grid">
-
 
                 <!-- حالة AI -->
 
@@ -1471,8 +1311,7 @@
                         تشغيل أو إيقاف نظام الذكاء الاصطناعي.
                     </p>
 
-
-                    {% if settings.ai_enabled %}
+                    {% if settings.get("ai_enabled") %}
 
                     <div class="ai-status enabled">
                         ● الذكاء الاصطناعي مفعّل
@@ -1486,9 +1325,7 @@
 
                     {% endif %}
 
-
                     <div class="switch-buttons">
-
 
                         <form
                             method="POST"
@@ -1511,7 +1348,6 @@
 
                         </form>
 
-
                         <form
                             method="POST"
                             action="/server/{{ guild.id }}/action"
@@ -1533,11 +1369,9 @@
 
                         </form>
 
-
                     </div>
 
                 </div>
-
 
                 <!-- روم AI -->
 
@@ -1551,7 +1385,6 @@
                         اختر الروم الذي يعمل فيه الذكاء الاصطناعي.
                     </p>
 
-
                     <form
                         method="POST"
                         action="/server/{{ guild.id }}/action"
@@ -1563,7 +1396,6 @@
                             value="ai_channel"
                         >
 
-
                         <select
                             class="select"
                             name="value"
@@ -1574,20 +1406,19 @@
                                 اختر روم الذكاء الاصطناعي
                             </option>
 
-
                             {% for channel in channels %}
 
                             <option
                                 value="{{ channel.id }}"
-                                {% if settings.ai_channel_id and settings.ai_channel_id|string == channel.id|string %}
-                                selected
+                                {% if settings.get("ai_channel_id") and settings.get("ai_channel_id")|string == channel.id|string %}
+                                    selected
                                 {% endif %}
                             >
 
                                 # {{ channel.name }}
 
                                 {% if channel.category %}
-                                — {{ channel.category }}
+                                    — {{ channel.category }}
                                 {% endif %}
 
                             </option>
@@ -1596,18 +1427,13 @@
 
                         </select>
 
-
                         {% if not channels %}
 
-                        <div
-                            class="empty-box"
-                            style="margin-top:10px;"
-                        >
+                        <div class="empty-box">
                             ⚠️ لا توجد رومات متاحة.
                         </div>
 
                         {% endif %}
-
 
                         <button
                             class="save-btn"
@@ -1620,11 +1446,9 @@
 
                 </div>
 
-
             </div>
 
         </section>
-
 
         <!-- ======================================
              SERVER SETTINGS
@@ -1642,14 +1466,12 @@
                 </h2>
 
                 <p>
-                    معلومات وإعدادات MT BOT.
+                    معلومات السيرفر المتصل.
                 </p>
 
             </div>
 
-
             <div class="settings-grid">
-
 
                 <div class="setting-card">
 
@@ -1667,7 +1489,6 @@
 
                 </div>
 
-
                 <div class="setting-card">
 
                     <h3>
@@ -1678,33 +1499,69 @@
                         معرف السيرفر.
                     </p>
 
-                    <div class="ai-status">
+                    <div
+                        class="ai-status"
+                        dir="ltr"
+                    >
                         {{ guild.id }}
                     </div>
 
                 </div>
 
+                <div class="setting-card">
+
+                    <h3>
+                        عدد الرومات
+                    </h3>
+
+                    <p>
+                        الرومات النصية التي استطاع البوت قراءتها.
+                    </p>
+
+                    <div class="ai-status">
+                        {{ channels|length }} روم
+                    </div>
+
+                </div>
+
+                <div class="setting-card">
+
+                    <h3>
+                        عدد الرتب
+                    </h3>
+
+                    <p>
+                        الرتب التي استطاع البوت قراءتها.
+                    </p>
+
+                    <div class="ai-status">
+                        {{ roles|length }} رتبة
+                    </div>
+
+                </div>
 
             </div>
 
         </section>
 
-
     </main>
 
 </div>
-
 
 <script>
 
 function showSection(id, button) {
 
     document.querySelectorAll(".section").forEach(
-        section => section.classList.remove("active")
+        section => {
+            section.classList.remove("active");
+        }
     );
 
     document.querySelectorAll(".nav-button").forEach(
-        nav => nav.classList.remove("active")
+        nav => {
+            nav.classList.remove("active");
+        }
     );
 
     const target = document.getElementById(id);
@@ -1746,42 +1603,44 @@ if (requestedSection) {
         document.querySelectorAll(
             ".section"
         ).forEach(
-            section => section.classList.remove("active")
+            section => {
+                section.classList.remove("active");
+            }
         );
 
         target.classList.add("active");
 
-
         document.querySelectorAll(
             ".nav-button"
-        ).forEach(button => {
+        ).forEach(
+            button => {
 
-            const onclick =
-                button.getAttribute("onclick");
+                const onclick =
+                    button.getAttribute("onclick");
 
-            if (
-                onclick &&
-                onclick.includes(
-                    "'" + requestedSection + "'"
-                )
-            ) {
+                if (
+                    onclick &&
+                    onclick.includes(
+                        "'" + requestedSection + "'"
+                    )
+                ) {
 
-                button.classList.add("active");
+                    button.classList.add("active");
 
-            } else {
+                } else {
 
-                button.classList.remove("active");
+                    button.classList.remove("active");
+
+                }
 
             }
-
-        });
+        );
 
     }
 
 }
 
 </script>
-
 
 </body>
 
