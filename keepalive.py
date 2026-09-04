@@ -1,11 +1,16 @@
 import os
 import secrets
 import requests
+import sqlite3
 
 from flask import Flask, render_template, redirect, request, session
 from threading import Thread
 from werkzeug.middleware.proxy_fix import ProxyFix
 
+
+# =========================================================
+# Flask
+# =========================================================
 
 app = Flask(__name__)
 
@@ -29,6 +34,11 @@ app.config.update(
     SESSION_COOKIE_PATH="/"
 )
 
+
+# =========================================================
+# Discord OAuth
+# =========================================================
+
 CLIENT_ID = os.getenv("DISCORD_CLIENT_ID")
 CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
 
@@ -38,12 +48,171 @@ REDIRECT_URI = os.getenv(
 )
 
 
-# =========================
+# =========================================================
+# Database
+# =========================================================
+
+DB_FILE = "mt_bot.db"
+
+
+def db_connect():
+    conn = sqlite3.connect(DB_FILE)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def safe_count(table, guild_id):
+    try:
+        conn = db_connect()
+
+        row = conn.execute(
+            f"SELECT COUNT(*) AS total FROM {table} WHERE guild_id = ?",
+            (guild_id,)
+        ).fetchone()
+
+        conn.close()
+
+        return row["total"] if row else 0
+
+    except Exception:
+        return 0
+
+
+def get_settings(guild_id):
+    default_settings = {
+        "ai_enabled": 0,
+        "ai_channel_id": None,
+        "security_log_channel_id": None,
+        "delete_log_channel_id": None,
+        "edit_log_channel_id": None,
+        "member_log_channel_id": None,
+        "mod_log_channel_id": None,
+        "role_log_channel_id": None,
+        "channel_log_channel_id": None
+    }
+
+    try:
+        conn = db_connect()
+
+        row = conn.execute(
+            """
+            SELECT *
+            FROM settings
+            WHERE guild_id = ?
+            """,
+            (guild_id,)
+        ).fetchone()
+
+        conn.close()
+
+        if not row:
+            return default_settings
+
+        result = dict(default_settings)
+
+        for key in result:
+            try:
+                result[key] = row[key]
+            except Exception:
+                pass
+
+        return result
+
+    except Exception:
+        return default_settings
+
+
+def get_excluded_roles(guild_id):
+    try:
+        conn = db_connect()
+
+        rows = conn.execute(
+            """
+            SELECT role_id
+            FROM excluded_roles
+            WHERE guild_id = ?
+            ORDER BY role_id
+            """,
+            (guild_id,)
+        ).fetchall()
+
+        conn.close()
+
+        return [
+            str(row["role_id"])
+            for row in rows
+        ]
+
+    except Exception:
+        return []
+
+
+def get_security_logs(guild_id, limit=50):
+    try:
+        conn = db_connect()
+
+        rows = conn.execute(
+            """
+            SELECT
+                id,
+                event_type,
+                actor_id,
+                target_id,
+                details,
+                created_at
+            FROM security_logs
+            WHERE guild_id = ?
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (guild_id, limit)
+        ).fetchall()
+
+        conn.close()
+
+        return [dict(row) for row in rows]
+
+    except Exception:
+        return []
+
+
+def get_tickets(guild_id, limit=50):
+    try:
+        conn = db_connect()
+
+        rows = conn.execute(
+            """
+            SELECT
+                id,
+                user_id,
+                channel_id,
+                sector,
+                claimed_by,
+                created_at,
+                closed
+            FROM tickets
+            WHERE guild_id = ?
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (guild_id, limit)
+        ).fetchall()
+
+        conn.close()
+
+        return [dict(row) for row in rows]
+
+    except Exception:
+        return []
+
+
+# =========================================================
 # الصفحة الرئيسية
-# =========================
+# =========================================================
 
 @app.route("/")
 def home():
+
     app.logger.info(
         "HOME SESSION USER: %s",
         bool(session.get("user"))
@@ -61,12 +230,13 @@ def home():
     )
 
 
-# =========================
+# =========================================================
 # تسجيل الدخول
-# =========================
+# =========================================================
 
 @app.route("/login")
 def login():
+
     state = secrets.token_urlsafe(32)
 
     session.clear()
@@ -92,13 +262,15 @@ def login():
     return redirect(url)
 
 
-# =========================
+# =========================================================
 # Discord Callback
-# =========================
+# =========================================================
 
 @app.route("/callback")
 def callback():
+
     try:
+
         code = request.args.get("code")
         state = request.args.get("state")
 
@@ -108,6 +280,7 @@ def callback():
         )
 
         if not code:
+
             app.logger.error(
                 "CALLBACK ERROR: NO CODE"
             )
@@ -120,6 +293,7 @@ def callback():
         saved_state = session.get("oauth_state")
 
         if not saved_state:
+
             app.logger.error(
                 "STATE LOST"
             )
@@ -130,6 +304,7 @@ def callback():
             )
 
         if state != saved_state:
+
             app.logger.error(
                 "STATE MISMATCH"
             )
@@ -139,12 +314,13 @@ def callback():
                 400
             )
 
-        # =========================
-        # الحصول على Access Token
-        # =========================
+        # =================================================
+        # Access Token
+        # =================================================
 
         token_response = requests.post(
             "https://discord.com/api/v10/oauth2/token",
+
             data={
                 "client_id": CLIENT_ID,
                 "client_secret": CLIENT_SECRET,
@@ -152,14 +328,17 @@ def callback():
                 "code": code,
                 "redirect_uri": REDIRECT_URI
             },
+
             headers={
                 "Content-Type":
                     "application/x-www-form-urlencoded"
             },
+
             timeout=15
         )
 
         if not token_response.ok:
+
             app.logger.error(
                 "TOKEN ERROR %s: %s",
                 token_response.status_code,
@@ -178,6 +357,7 @@ def callback():
         )
 
         if not access_token:
+
             app.logger.error(
                 "NO ACCESS TOKEN"
             )
@@ -192,9 +372,9 @@ def callback():
                 f"Bearer {access_token}"
         }
 
-        # =========================
-        # بيانات المستخدم
-        # =========================
+        # =================================================
+        # User
+        # =================================================
 
         user_response = requests.get(
             "https://discord.com/api/v10/users/@me",
@@ -203,6 +383,7 @@ def callback():
         )
 
         if not user_response.ok:
+
             app.logger.error(
                 "USER ERROR %s: %s",
                 user_response.status_code,
@@ -223,9 +404,9 @@ def callback():
             "avatar": user_data.get("avatar")
         }
 
-        # =========================
-        # سيرفرات المستخدم
-        # =========================
+        # =================================================
+        # Guilds
+        # =================================================
 
         guild_response = requests.get(
             "https://discord.com/api/v10/users/@me/guilds",
@@ -234,6 +415,7 @@ def callback():
         )
 
         if not guild_response.ok:
+
             app.logger.error(
                 "GUILD ERROR %s: %s",
                 guild_response.status_code,
@@ -250,15 +432,16 @@ def callback():
         guilds = []
 
         for guild in guild_data:
+
             guilds.append({
                 "id": guild.get("id"),
                 "name": guild.get("name"),
                 "icon": guild.get("icon")
             })
 
-        # =========================
-        # حفظ الجلسة
-        # =========================
+        # =================================================
+        # Save Session
+        # =================================================
 
         session.clear()
 
@@ -274,6 +457,7 @@ def callback():
         return redirect("/")
 
     except Exception:
+
         app.logger.exception(
             "OAUTH CALLBACK CRASH"
         )
@@ -284,57 +468,390 @@ def callback():
         )
 
 
-# =========================
+# =========================================================
 # إدارة السيرفر
-# =========================
+# =========================================================
 
 @app.route("/server/<guild_id>")
 def server(guild_id):
 
-    # التأكد أن المستخدم مسجل دخول
     user = session.get("user")
 
     if not user:
         return redirect("/")
 
-    # السيرفرات الموجودة في جلسة المستخدم
-    guilds = session.get("guilds", [])
+    guilds = session.get(
+        "guilds",
+        []
+    )
 
-    # البحث عن السيرفر المطلوب
     selected_guild = None
 
     for guild in guilds:
-        if guild.get("id") == guild_id:
+
+        if str(guild.get("id")) == str(guild_id):
+
             selected_guild = guild
             break
 
-    # إذا حاول فتح سيرفر غير موجود عنده
     if not selected_guild:
         return redirect("/")
 
+    settings = get_settings(guild_id)
+
+    excluded_roles = get_excluded_roles(
+        guild_id
+    )
+
+    stats = {
+
+        "tickets": safe_count(
+            "tickets",
+            guild_id
+        ),
+
+        "security_logs": safe_count(
+            "security_logs",
+            guild_id
+        ),
+
+        "criminal_records": safe_count(
+            "criminal_records",
+            guild_id
+        ),
+
+        "warnings": safe_count(
+            "warnings",
+            guild_id
+        ),
+
+        "deeds": safe_count(
+            "deeds",
+            guild_id
+        ),
+
+        "warrants": safe_count(
+            "warrants",
+            guild_id
+        ),
+
+        "dispatches": safe_count(
+            "dispatches",
+            guild_id
+        ),
+
+        "medical_reports": safe_count(
+            "medical_reports",
+            guild_id
+        )
+    }
+
+    logs = get_security_logs(
+        guild_id
+    )
+
+    tickets = get_tickets(
+        guild_id
+    )
+
     return render_template(
+
         "server.html",
+
         user=user,
-        guild=selected_guild
+
+        guild=selected_guild,
+
+        settings=settings,
+
+        stats=stats,
+
+        excluded_roles=excluded_roles,
+
+        logs=logs,
+
+        tickets=tickets
     )
 
 
-# =========================
+# =========================================================
+# حفظ إعدادات السيرفر
+# =========================================================
+
+@app.route(
+    "/server/<guild_id>/action",
+    methods=["POST"]
+)
+def server_action(guild_id):
+
+    user = session.get("user")
+
+    if not user:
+        return redirect("/")
+
+    guilds = session.get(
+        "guilds",
+        []
+    )
+
+    allowed = any(
+        str(g.get("id")) == str(guild_id)
+        for g in guilds
+    )
+
+    if not allowed:
+        return redirect("/")
+
+    action = request.form.get(
+        "action",
+        ""
+    )
+
+    conn = db_connect()
+
+    try:
+
+        # =================================================
+        # AI
+        # =================================================
+
+        if action == "ai_enable":
+
+            conn.execute(
+                """
+                INSERT INTO settings (
+                    guild_id,
+                    ai_enabled
+                )
+                VALUES (?, 1)
+
+                ON CONFLICT(guild_id)
+                DO UPDATE SET
+                    ai_enabled = 1
+                """,
+                (guild_id,)
+            )
+
+            conn.commit()
+
+            return redirect(
+                f"/server/{guild_id}?section=ai&saved=1"
+            )
+
+        if action == "ai_disable":
+
+            conn.execute(
+                """
+                INSERT INTO settings (
+                    guild_id,
+                    ai_enabled
+                )
+                VALUES (?, 0)
+
+                ON CONFLICT(guild_id)
+                DO UPDATE SET
+                    ai_enabled = 0
+                """,
+                (guild_id,)
+            )
+
+            conn.commit()
+
+            return redirect(
+                f"/server/{guild_id}?section=ai&saved=1"
+            )
+
+        if action == "ai_channel":
+
+            channel_id = request.form.get(
+                "channel_id",
+                ""
+            ).strip()
+
+            channel_id = channel_id or None
+
+            conn.execute(
+                """
+                INSERT INTO settings (
+                    guild_id,
+                    ai_channel_id
+                )
+                VALUES (?, ?)
+
+                ON CONFLICT(guild_id)
+                DO UPDATE SET
+                    ai_channel_id = excluded.ai_channel_id
+                """,
+                (
+                    guild_id,
+                    channel_id
+                )
+            )
+
+            conn.commit()
+
+            return redirect(
+                f"/server/{guild_id}?section=ai&saved=1"
+            )
+
+        # =================================================
+        # Log Channels
+        # =================================================
+
+        log_actions = {
+
+            "security_log":
+                "security_log_channel_id",
+
+            "delete_log":
+                "delete_log_channel_id",
+
+            "edit_log":
+                "edit_log_channel_id",
+
+            "member_log":
+                "member_log_channel_id",
+
+            "mod_log":
+                "mod_log_channel_id",
+
+            "role_log":
+                "role_log_channel_id",
+
+            "channel_log":
+                "channel_log_channel_id"
+        }
+
+        if action in log_actions:
+
+            column = log_actions[action]
+
+            channel_id = request.form.get(
+                "channel_id",
+                ""
+            ).strip()
+
+            channel_id = channel_id or None
+
+            conn.execute(
+                f"""
+                INSERT INTO settings (
+                    guild_id,
+                    {column}
+                )
+                VALUES (?, ?)
+
+                ON CONFLICT(guild_id)
+                DO UPDATE SET
+                    {column} = excluded.{column}
+                """,
+                (
+                    guild_id,
+                    channel_id
+                )
+            )
+
+            conn.commit()
+
+            return redirect(
+                f"/server/{guild_id}?section=settings&saved=1"
+            )
+
+        # =================================================
+        # إضافة رتبة مستثناة
+        # =================================================
+
+        if action == "add_excluded_role":
+
+            role_id = request.form.get(
+                "role_id",
+                ""
+            ).strip()
+
+            if role_id:
+
+                conn.execute(
+                    """
+                    INSERT OR IGNORE INTO excluded_roles (
+                        guild_id,
+                        role_id
+                    )
+                    VALUES (?, ?)
+                    """,
+                    (
+                        guild_id,
+                        role_id
+                    )
+                )
+
+                conn.commit()
+
+            return redirect(
+                f"/server/{guild_id}?section=protection&saved=1"
+            )
+
+        # =================================================
+        # حذف رتبة مستثناة
+        # =================================================
+
+        if action == "remove_excluded_role":
+
+            role_id = request.form.get(
+                "role_id",
+                ""
+            ).strip()
+
+            conn.execute(
+                """
+                DELETE FROM excluded_roles
+                WHERE guild_id = ?
+                AND role_id = ?
+                """,
+                (
+                    guild_id,
+                    role_id
+                )
+            )
+
+            conn.commit()
+
+            return redirect(
+                f"/server/{guild_id}?section=protection&saved=1"
+            )
+
+    except Exception:
+
+        app.logger.exception(
+            "SERVER ACTION ERROR"
+        )
+
+    finally:
+
+        conn.close()
+
+    return redirect(
+        f"/server/{guild_id}"
+    )
+
+
+# =========================================================
 # تسجيل الخروج
-# =========================
+# =========================================================
 
 @app.route("/logout")
 def logout():
+
     session.clear()
 
     return redirect("/")
 
 
-# =========================
+# =========================================================
 # تشغيل Flask
-# =========================
+# =========================================================
 
 def run():
+
     port = int(
         os.environ.get(
             "PORT",
@@ -349,7 +866,10 @@ def run():
 
 
 def keep_alive():
-    t = Thread(target=run)
+
+    t = Thread(
+        target=run
+    )
 
     t.daemon = True
 
