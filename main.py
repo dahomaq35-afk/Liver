@@ -7,7 +7,7 @@ import logging
 import sqlite3
 import unicodedata
 
-from keep_alive import keep_alive
+from keepalive import keep_alive
 
 import discord
 from discord import app_commands
