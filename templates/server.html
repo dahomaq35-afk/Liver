@@ -530,6 +530,90 @@
         }
 
         /* =========================
+           ROLES
+        ========================= */
+
+        .role-item {
+            display: flex;
+
+            align-items: center;
+
+            justify-content: space-between;
+
+            gap: 10px;
+
+            padding: 10px 12px;
+
+            margin-bottom: 8px;
+
+            background: #15161d;
+
+            border: 1px solid #292c38;
+
+            border-radius: 10px;
+        }
+
+        .role-name {
+            font-size: 10px;
+
+            font-weight: 700;
+
+            overflow: hidden;
+
+            text-overflow: ellipsis;
+
+            white-space: nowrap;
+        }
+
+        .role-id {
+            color: #555864;
+
+            font-size: 8px;
+
+            direction: ltr;
+        }
+
+        .remove-btn {
+            padding: 7px 10px;
+
+            border-radius: 8px;
+
+            border: 1px solid #542d35;
+
+            background: #24161a;
+
+            color: #e47777;
+
+            font-family: inherit;
+
+            font-size: 9px;
+
+            cursor: pointer;
+
+            white-space: nowrap;
+        }
+
+        .remove-btn:hover {
+            background: #351b21;
+        }
+
+        .empty-box {
+            padding: 15px;
+
+            text-align: center;
+
+            border-radius: 10px;
+
+            background: #15161d;
+
+            border: 1px solid #292c38;
+
+            color: #666976;
+
+            font-size: 10px;
+        }
+
+        /* =========================
            MOBILE
         ========================= */
 
@@ -804,9 +888,7 @@
 
             <div class="cards">
 
-
                 <div class="card">
-
                     <div class="card-label">
                         السجلات الجنائية
                     </div>
@@ -814,12 +896,10 @@
                     <div class="card-value">
                         {{ stats.criminal_records }}
                     </div>
-
                 </div>
 
 
                 <div class="card">
-
                     <div class="card-label">
                         التحذيرات
                     </div>
@@ -827,12 +907,10 @@
                     <div class="card-value">
                         {{ stats.warnings }}
                     </div>
-
                 </div>
 
 
                 <div class="card">
-
                     <div class="card-label">
                         السجلات الأمنية
                     </div>
@@ -840,12 +918,10 @@
                     <div class="card-value">
                         {{ stats.security_logs }}
                     </div>
-
                 </div>
 
 
                 <div class="card">
-
                     <div class="card-label">
                         التذاكر
                     </div>
@@ -853,12 +929,10 @@
                     <div class="card-value">
                         {{ stats.tickets }}
                     </div>
-
                 </div>
 
 
                 <div class="card">
-
                     <div class="card-label">
                         الصكوك
                     </div>
@@ -866,12 +940,10 @@
                     <div class="card-value">
                         {{ stats.deeds }}
                     </div>
-
                 </div>
 
 
                 <div class="card">
-
                     <div class="card-label">
                         أوامر القبض
                     </div>
@@ -879,12 +951,10 @@
                     <div class="card-value">
                         {{ stats.warrants }}
                     </div>
-
                 </div>
 
 
                 <div class="card">
-
                     <div class="card-label">
                         البلاغات
                     </div>
@@ -892,12 +962,10 @@
                     <div class="card-value">
                         {{ stats.dispatches }}
                     </div>
-
                 </div>
 
 
                 <div class="card">
-
                     <div class="card-label">
                         التقارير الطبية
                     </div>
@@ -905,9 +973,7 @@
                     <div class="card-value">
                         {{ stats.medical_reports }}
                     </div>
-
                 </div>
-
 
             </div>
 
@@ -939,14 +1005,16 @@
             <div class="settings-grid">
 
 
+                <!-- إضافة رتبة -->
+
                 <div class="setting-card">
 
                     <h3>
-                        الرتب المستثناة
+                        إضافة رتبة مستثناة
                     </h3>
 
                     <p>
-                        اختر الرتبة التي لا تريد تطبيق بعض إجراءات الحماية عليها.
+                        اختر الرتبة من رتب السيرفر بدل إدخال ID.
                     </p>
 
 
@@ -962,12 +1030,43 @@
                         >
 
 
-                        <input
+                        <select
                             class="select"
-                            type="text"
                             name="value"
-                            placeholder="أدخل ID الرتبة"
+                            required
                         >
+
+                            <option value="">
+                                اختر الرتبة
+                            </option>
+
+
+                            {% for role in roles %}
+
+                            <option
+                                value="{{ role.id }}"
+                            >
+
+                                @{{ role.name }}
+
+                            </option>
+
+                            {% endfor %}
+
+                        </select>
+
+
+                        {% if not roles %}
+
+                        <div
+                            class="empty-box"
+                            style="margin-top:10px;"
+                        >
+                            ⚠️ لم يتم العثور على رتب.
+                            تأكد أن البوت موجود في السيرفر.
+                        </div>
+
+                        {% endif %}
 
 
                         <button
@@ -982,6 +1081,8 @@
                 </div>
 
 
+                <!-- الرتب الحالية -->
+
                 <div class="setting-card">
 
                     <h3>
@@ -989,51 +1090,91 @@
                     </h3>
 
                     <p>
-                        الرتب الموجودة في قائمة الاستثناء.
+                        الرتب التي تم استثناؤها من الحماية.
                     </p>
 
 
                     {% if excluded_roles %}
 
-                    {% for role in excluded_roles %}
+                        {% for role_id in excluded_roles %}
 
-                    <div class="ai-status">
-                        رتبة ID: {{ role }}
-                    </div>
+                            {% set found_role = namespace(data=None) %}
 
-                    <form
-                        method="POST"
-                        action="/server/{{ guild.id }}/action"
-                    >
+                            {% for role in roles %}
 
-                        <input
-                            type="hidden"
-                            name="action"
-                            value="remove_excluded_role"
-                        >
+                                {% if role.id|string == role_id|string %}
 
-                        <input
-                            type="hidden"
-                            name="value"
-                            value="{{ role }}"
-                        >
+                                    {% set found_role.data = role %}
 
-                        <button
-                            class="save-btn"
-                            type="submit"
-                        >
-                            حذف الاستثناء
-                        </button>
+                                {% endif %}
 
-                    </form>
+                            {% endfor %}
 
-                    {% endfor %}
+
+                            <div class="role-item">
+
+                                <div>
+
+                                    {% if found_role.data %}
+
+                                    <div class="role-name">
+                                        @{{ found_role.data.name }}
+                                    </div>
+
+                                    <div class="role-id">
+                                        {{ found_role.data.id }}
+                                    </div>
+
+                                    {% else %}
+
+                                    <div class="role-name">
+                                        رتبة غير موجودة
+                                    </div>
+
+                                    <div class="role-id">
+                                        {{ role_id }}
+                                    </div>
+
+                                    {% endif %}
+
+                                </div>
+
+
+                                <form
+                                    method="POST"
+                                    action="/server/{{ guild.id }}/action"
+                                >
+
+                                    <input
+                                        type="hidden"
+                                        name="action"
+                                        value="remove_excluded_role"
+                                    >
+
+                                    <input
+                                        type="hidden"
+                                        name="value"
+                                        value="{{ role_id }}"
+                                    >
+
+                                    <button
+                                        class="remove-btn"
+                                        type="submit"
+                                    >
+                                        إزالة
+                                    </button>
+
+                                </form>
+
+                            </div>
+
+                        {% endfor %}
 
                     {% else %}
 
-                    <div class="ai-status">
-                        لا توجد رتب مستثناة حالياً.
-                    </div>
+                        <div class="empty-box">
+                            لا توجد رتب مستثناة حالياً.
+                        </div>
 
                     {% endif %}
 
@@ -1071,13 +1212,49 @@
 
 
                 {% set log_channels = [
-                    ("security_log", "سجل الحماية", "security_log_channel_id"),
-                    ("delete_log", "سجل حذف الرسائل", "delete_log_channel_id"),
-                    ("edit_log", "سجل تعديل الرسائل", "edit_log_channel_id"),
-                    ("member_log", "سجل الأعضاء", "member_log_channel_id"),
-                    ("mod_log", "سجل الإدارة", "mod_log_channel_id"),
-                    ("role_log", "سجل الرتب", "role_log_channel_id"),
-                    ("channel_log", "سجل الرومات", "channel_log_channel_id")
+
+                    (
+                        "security_log",
+                        "سجل الحماية",
+                        "security_log_channel_id"
+                    ),
+
+                    (
+                        "delete_log",
+                        "سجل حذف الرسائل",
+                        "delete_log_channel_id"
+                    ),
+
+                    (
+                        "edit_log",
+                        "سجل تعديل الرسائل",
+                        "edit_log_channel_id"
+                    ),
+
+                    (
+                        "member_log",
+                        "سجل الأعضاء",
+                        "member_log_channel_id"
+                    ),
+
+                    (
+                        "mod_log",
+                        "سجل الإدارة",
+                        "mod_log_channel_id"
+                    ),
+
+                    (
+                        "role_log",
+                        "سجل الرتب",
+                        "role_log_channel_id"
+                    ),
+
+                    (
+                        "channel_log",
+                        "سجل الرومات",
+                        "channel_log_channel_id"
+                    )
+
                 ] %}
 
 
@@ -1109,6 +1286,7 @@
                         <select
                             class="select"
                             name="value"
+                            required
                         >
 
                             <option value="">
@@ -1136,6 +1314,19 @@
                             {% endfor %}
 
                         </select>
+
+
+                        {% if not channels %}
+
+                        <div
+                            class="empty-box"
+                            style="margin-top:10px;"
+                        >
+                            ⚠️ لم يتم العثور على رومات نصية.
+                            تأكد أن البوت متصل بالسيرفر.
+                        </div>
+
+                        {% endif %}
 
 
                         <button
@@ -1200,39 +1391,41 @@
 
                 {% if tickets %}
 
-                {% for ticket in tickets %}
+                    {% for ticket in tickets %}
 
-                <div class="log-item">
+                    <div class="log-item">
 
-                    <strong>
-                        تذكرة #{{ ticket.id }}
-                    </strong>
+                        <strong>
+                            تذكرة #{{ ticket.id }}
+                        </strong>
 
-                    <p>
-                        المستخدم: {{ ticket.user_id }}
-                    </p>
+                        <p>
+                            المستخدم:
+                            {{ ticket.user_id }}
+                        </p>
 
-                    <p>
-                        الحالة: {{ ticket.status }}
-                    </p>
+                        <p>
+                            الحالة:
+                            {{ ticket.status }}
+                        </p>
 
-                </div>
+                    </div>
 
-                {% endfor %}
+                    {% endfor %}
 
                 {% else %}
 
-                <div class="log-item">
+                    <div class="log-item">
 
-                    <strong>
-                        لا توجد تذاكر
-                    </strong>
+                        <strong>
+                            لا توجد تذاكر
+                        </strong>
 
-                    <p>
-                        لم يتم تسجيل أي تذاكر لهذا السيرفر حالياً.
-                    </p>
+                        <p>
+                            لم يتم تسجيل أي تذاكر لهذا السيرفر حالياً.
+                        </p>
 
-                </div>
+                    </div>
 
                 {% endif %}
 
@@ -1265,6 +1458,8 @@
 
             <div class="settings-grid">
 
+
+                <!-- حالة AI -->
 
                 <div class="setting-card">
 
@@ -1344,6 +1539,8 @@
                 </div>
 
 
+                <!-- روم AI -->
+
                 <div class="setting-card">
 
                     <h3>
@@ -1370,6 +1567,7 @@
                         <select
                             class="select"
                             name="value"
+                            required
                         >
 
                             <option value="">
@@ -1397,6 +1595,18 @@
                             {% endfor %}
 
                         </select>
+
+
+                        {% if not channels %}
+
+                        <div
+                            class="empty-box"
+                            style="margin-top:10px;"
+                        >
+                            ⚠️ لا توجد رومات متاحة.
+                        </div>
+
+                        {% endif %}
 
 
                         <button
@@ -1515,7 +1725,9 @@ function showSection(id, button) {
 }
 
 
-/* فتح القسم من الرابط */
+/* =========================================
+   فتح القسم من الرابط
+========================================= */
 
 const params = new URLSearchParams(
     window.location.search
@@ -1531,19 +1743,21 @@ if (requestedSection) {
 
     if (target) {
 
+        document.querySelectorAll(
+            ".section"
+        ).forEach(
+            section => section.classList.remove("active")
+        );
+
         target.classList.add("active");
 
-        document.querySelector(
-            ".nav-button.active"
-        )?.classList.remove("active");
 
         document.querySelectorAll(
             ".nav-button"
         ).forEach(button => {
 
-            const onclick = button.getAttribute(
-                "onclick"
-            );
+            const onclick =
+                button.getAttribute("onclick");
 
             if (
                 onclick &&
@@ -1551,15 +1765,19 @@ if (requestedSection) {
                     "'" + requestedSection + "'"
                 )
             ) {
+
                 button.classList.add("active");
+
+            } else {
+
+                button.classList.remove("active");
+
             }
 
         });
 
-        document.getElementById(
-            "overview"
-        )?.classList.remove("active");
     }
+
 }
 
 </script>
