@@ -3,17 +3,42 @@ import sqlite3
 import threading
 import requests
 
-from flask import Flask, redirect, request, session, render_template, url_for
+from flask import (
+    Flask,
+    redirect,
+    request,
+    session,
+    render_template,
+    url_for
+)
 
 app = Flask(__name__)
-app.secret_key = os.getenv("FLASK_SECRET_KEY", "change-this-secret")
 
-DISCORD_CLIENT_ID = os.getenv("DISCORD_CLIENT_ID")
-DISCORD_CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
+app.secret_key = os.getenv(
+    "FLASK_SECRET_KEY",
+    "change-this-secret"
+)
+
+# =========================================================
+# DISCORD OAUTH
+# =========================================================
+
+DISCORD_CLIENT_ID = os.getenv(
+    "DISCORD_CLIENT_ID"
+)
+
+DISCORD_CLIENT_SECRET = os.getenv(
+    "DISCORD_CLIENT_SECRET"
+)
 
 DISCORD_REDIRECT_URI = os.getenv(
     "DISCORD_REDIRECT_URI",
     "https://liver-1.onrender.com/callback"
+)
+
+# توكن البوت
+DISCORD_BOT_TOKEN = os.getenv(
+    "TOKEN"
 )
 
 DB_FILE = "mt_bot.db"
@@ -26,13 +51,24 @@ BOT = None
 # =========================================================
 
 def db_connect():
-    conn = sqlite3.connect(DB_FILE)
+
+    conn = sqlite3.connect(
+        DB_FILE
+    )
+
     conn.row_factory = sqlite3.Row
+
     return conn
 
 
-def safe_count(conn, table, guild_id):
+def safe_count(
+    conn,
+    table,
+    guild_id
+):
+
     try:
+
         row = conn.execute(
             f"""
             SELECT COUNT(*) AS c
@@ -42,16 +78,23 @@ def safe_count(conn, table, guild_id):
             (guild_id,)
         ).fetchone()
 
-        return row["c"] if row else 0
+        return (
+            row["c"]
+            if row
+            else 0
+        )
 
     except Exception:
+
         return 0
 
 
 def get_settings(guild_id):
+
     conn = db_connect()
 
     try:
+
         row = conn.execute(
             """
             SELECT *
@@ -61,19 +104,27 @@ def get_settings(guild_id):
             (guild_id,)
         ).fetchone()
 
-        return dict(row) if row else {}
+        if row:
+
+            return dict(row)
+
+        return {}
 
     except Exception:
+
         return {}
 
     finally:
+
         conn.close()
 
 
 def get_excluded_roles(guild_id):
+
     conn = db_connect()
 
     try:
+
         rows = conn.execute(
             """
             SELECT role_id
@@ -89,16 +140,20 @@ def get_excluded_roles(guild_id):
         ]
 
     except Exception:
+
         return []
 
     finally:
+
         conn.close()
 
 
 def get_security_logs(guild_id):
+
     conn = db_connect()
 
     try:
+
         rows = conn.execute(
             """
             SELECT *
@@ -110,19 +165,26 @@ def get_security_logs(guild_id):
             (guild_id,)
         ).fetchall()
 
-        return [dict(row) for row in rows]
+        return [
+            dict(row)
+            for row in rows
+        ]
 
     except Exception:
+
         return []
 
     finally:
+
         conn.close()
 
 
 def get_tickets(guild_id):
+
     conn = db_connect()
 
     try:
+
         rows = conn.execute(
             """
             SELECT *
@@ -134,13 +196,247 @@ def get_tickets(guild_id):
             (guild_id,)
         ).fetchall()
 
-        return [dict(row) for row in rows]
+        return [
+            dict(row)
+            for row in rows
+        ]
 
     except Exception:
+
         return []
 
     finally:
+
         conn.close()
+
+
+# =========================================================
+# DISCORD API
+# =========================================================
+
+def discord_headers():
+
+    return {
+        "Authorization": (
+            f"Bot {DISCORD_BOT_TOKEN}"
+        ),
+        "Content-Type": "application/json"
+    }
+
+
+def discord_api_get(endpoint):
+
+    if not DISCORD_BOT_TOKEN:
+
+        print(
+            "DASHBOARD ERROR: TOKEN غير موجود."
+        )
+
+        return None
+
+    url = (
+        "https://discord.com/api/v10"
+        + endpoint
+    )
+
+    try:
+
+        response = requests.get(
+            url,
+            headers=discord_headers(),
+            timeout=15
+        )
+
+        print(
+            "DISCORD API:",
+            response.status_code,
+            endpoint
+        )
+
+        if response.status_code != 200:
+
+            print(
+                "DISCORD API ERROR:",
+                response.text
+            )
+
+            return None
+
+        return response.json()
+
+    except Exception as e:
+
+        print(
+            "DISCORD API REQUEST ERROR:",
+            repr(e)
+        )
+
+        return None
+
+
+# =========================================================
+# GET CHANNELS FROM DISCORD
+# =========================================================
+
+def get_discord_channels(guild_id):
+
+    channels = []
+
+    data = discord_api_get(
+        f"/guilds/{guild_id}/channels"
+    )
+
+    if not data:
+
+        print(
+            "DASHBOARD: لم يتم العثور على الرومات."
+        )
+
+        return channels
+
+    try:
+
+        for channel in data:
+
+            channel_type = channel.get(
+                "type"
+            )
+
+            # Discord type 0 = Text Channel
+            if channel_type != 0:
+
+                continue
+
+            category_name = (
+                "بدون تصنيف"
+            )
+
+            parent_id = channel.get(
+                "parent_id"
+            )
+
+            if parent_id:
+
+                for parent in data:
+
+                    if (
+                        parent.get("id")
+                        == parent_id
+                    ):
+
+                        category_name = (
+                            parent.get(
+                                "name",
+                                "بدون تصنيف"
+                            )
+                        )
+
+                        break
+
+            channels.append({
+
+                "id": str(
+                    channel.get("id")
+                ),
+
+                "name": channel.get(
+                    "name",
+                    "بدون اسم"
+                ),
+
+                "category": category_name
+
+            })
+
+    except Exception as e:
+
+        print(
+            "CHANNEL PARSE ERROR:",
+            repr(e)
+        )
+
+    channels.sort(
+        key=lambda x: (
+            x["category"].lower(),
+            x["name"].lower()
+        )
+    )
+
+    print(
+        "DASHBOARD CHANNELS:",
+        len(channels)
+    )
+
+    return channels
+
+
+# =========================================================
+# GET ROLES FROM DISCORD
+# =========================================================
+
+def get_discord_roles(guild_id):
+
+    roles = []
+
+    data = discord_api_get(
+        f"/guilds/{guild_id}/roles"
+    )
+
+    if not data:
+
+        print(
+            "DASHBOARD: لم يتم العثور على الرتب."
+        )
+
+        return roles
+
+    try:
+
+        for role in data:
+
+            # تجاهل @everyone
+            if role.get(
+                "id"
+            ) == str(guild_id):
+
+                continue
+
+            roles.append({
+
+                "id": str(
+                    role.get("id")
+                ),
+
+                "name": role.get(
+                    "name",
+                    "بدون اسم"
+                ),
+
+                "position": role.get(
+                    "position",
+                    0
+                )
+
+            })
+
+    except Exception as e:
+
+        print(
+            "ROLE PARSE ERROR:",
+            repr(e)
+        )
+
+    roles.sort(
+        key=lambda x: x["position"],
+        reverse=True
+    )
+
+    print(
+        "DASHBOARD ROLES:",
+        len(roles)
+    )
+
+    return roles
 
 
 # =========================================================
@@ -150,8 +446,14 @@ def get_tickets(guild_id):
 @app.route("/")
 def index():
 
-    user = session.get("user")
-    guilds = session.get("guilds", [])
+    user = session.get(
+        "user"
+    )
+
+    guilds = session.get(
+        "guilds",
+        []
+    )
 
     return render_template(
         "index.html",
@@ -164,251 +466,266 @@ def index():
 def login():
 
     params = {
-        "client_id": DISCORD_CLIENT_ID,
-        "redirect_uri": DISCORD_REDIRECT_URI,
-        "response_type": "code",
-        "scope": "identify guilds"
+
+        "client_id":
+            DISCORD_CLIENT_ID,
+
+        "redirect_uri":
+            DISCORD_REDIRECT_URI,
+
+        "response_type":
+            "code",
+
+        "scope":
+            "identify guilds"
     }
 
     query = "&".join(
-        f"{key}={requests.utils.quote(str(value), safe='')}"
-        for key, value in params.items()
+
+        f"{key}="
+        f"{requests.utils.quote(str(value), safe='')}"
+
+        for key, value
+        in params.items()
     )
 
     return redirect(
-        "https://discord.com/oauth2/authorize?" + query
+        "https://discord.com/oauth2/authorize?"
+        + query
     )
 
 
 @app.route("/callback")
 def callback():
 
-    code = request.args.get("code")
+    code = request.args.get(
+        "code"
+    )
 
     if not code:
+
         return redirect("/")
 
     token_response = requests.post(
+
         "https://discord.com/api/v10/oauth2/token",
+
         data={
-            "client_id": DISCORD_CLIENT_ID,
-            "client_secret": DISCORD_CLIENT_SECRET,
-            "grant_type": "authorization_code",
-            "code": code,
-            "redirect_uri": DISCORD_REDIRECT_URI
+
+            "client_id":
+                DISCORD_CLIENT_ID,
+
+            "client_secret":
+                DISCORD_CLIENT_SECRET,
+
+            "grant_type":
+                "authorization_code",
+
+            "code":
+                code,
+
+            "redirect_uri":
+                DISCORD_REDIRECT_URI
         },
+
         headers={
-            "Content-Type": "application/x-www-form-urlencoded"
+            "Content-Type":
+                "application/x-www-form-urlencoded"
         },
+
         timeout=15
     )
 
     if token_response.status_code != 200:
+
         print(
             "Discord OAuth Token Error:",
             token_response.status_code,
             token_response.text
         )
-        return "Discord OAuth Error", 400
 
-    token_data = token_response.json()
+        return (
+            "Discord OAuth Error",
+            400
+        )
 
-    access_token = token_data.get("access_token")
+    token_data = (
+        token_response.json()
+    )
+
+    access_token = (
+        token_data.get(
+            "access_token"
+        )
+    )
 
     if not access_token:
-        return "No access token", 400
+
+        return (
+            "No access token",
+            400
+        )
 
     headers = {
-        "Authorization": f"Bearer {access_token}"
+        "Authorization":
+            f"Bearer {access_token}"
     }
 
     user_response = requests.get(
+
         "https://discord.com/api/v10/users/@me",
+
         headers=headers,
+
         timeout=15
     )
 
     guild_response = requests.get(
+
         "https://discord.com/api/v10/users/@me/guilds",
+
         headers=headers,
+
         timeout=15
     )
 
     if user_response.status_code != 200:
-        return "Discord User Error", 400
 
-    user_data = user_response.json()
+        return (
+            "Discord User Error",
+            400
+        )
+
+    user_data = (
+        user_response.json()
+    )
 
     guild_data = []
 
     if guild_response.status_code == 200:
-        guild_data = guild_response.json()
+
+        guild_data = (
+            guild_response.json()
+        )
 
     session["user"] = {
-        "id": str(user_data.get("id", "")),
-        "username": user_data.get("username", ""),
-        "global_name": user_data.get("global_name")
-        or user_data.get("username", ""),
-        "avatar": user_data.get("avatar"),
+
+        "id": str(
+            user_data.get(
+                "id",
+                ""
+            )
+        ),
+
+        "username":
+            user_data.get(
+                "username",
+                ""
+            ),
+
+        "global_name":
+            user_data.get(
+                "global_name"
+            )
+            or
+            user_data.get(
+                "username",
+                ""
+            ),
+
+        "avatar":
+            user_data.get(
+                "avatar"
+            )
     }
 
     session["guilds"] = [
+
         {
-            "id": str(guild.get("id", "")),
-            "name": guild.get("name", ""),
-            "icon": guild.get("icon"),
-            "owner": guild.get("owner", False),
-            "permissions": str(
-                guild.get("permissions", "0")
-            )
+
+            "id": str(
+                guild.get(
+                    "id",
+                    ""
+                )
+            ),
+
+            "name":
+                guild.get(
+                    "name",
+                    ""
+                ),
+
+            "icon":
+                guild.get(
+                    "icon"
+                ),
+
+            "owner":
+                guild.get(
+                    "owner",
+                    False
+                ),
+
+            "permissions":
+                str(
+                    guild.get(
+                        "permissions",
+                        "0"
+                    )
+                )
+
         }
-        for guild in guild_data
+
+        for guild
+        in guild_data
     ]
 
     return redirect("/")
 
 
 # =========================================================
-# DISCORD GUILD
-# =========================================================
-
-def get_discord_guild(guild_id):
-
-    if BOT is None:
-        print("DASHBOARD: BOT is None")
-        return None
-
-    try:
-        guild_id = int(guild_id)
-    except Exception:
-        print("DASHBOARD: Invalid Guild ID:", guild_id)
-        return None
-
-    guild = BOT.get_guild(guild_id)
-
-    if guild:
-        return guild
-
-    print(
-        "DASHBOARD: Guild not found in cache:",
-        guild_id
-    )
-
-    return None
-
-
-# =========================================================
-# CHANNELS
-# =========================================================
-
-def get_guild_channels(guild):
-
-    channels = []
-
-    if guild is None:
-        return channels
-
-    try:
-
-        for channel in guild.channels:
-
-            channel_type = str(
-                getattr(channel, "type", "")
-            )
-
-            if channel_type != "text":
-                continue
-
-            category_name = "بدون تصنيف"
-
-            if channel.category:
-                category_name = channel.category.name
-
-            channels.append({
-                "id": str(channel.id),
-                "name": channel.name,
-                "category": category_name
-            })
-
-    except Exception as e:
-
-        print(
-            "DASHBOARD CHANNEL ERROR:",
-            repr(e)
-        )
-
-    channels.sort(
-        key=lambda x: (
-            x["category"].lower(),
-            x["name"].lower()
-        )
-    )
-
-    return channels
-
-
-# =========================================================
-# ROLES
-# =========================================================
-
-def get_guild_roles(guild):
-
-    roles = []
-
-    if guild is None:
-        return roles
-
-    try:
-
-        for role in guild.roles:
-
-            if role.is_default():
-                continue
-
-            roles.append({
-                "id": str(role.id),
-                "name": role.name,
-                "position": role.position
-            })
-
-    except Exception as e:
-
-        print(
-            "DASHBOARD ROLE ERROR:",
-            repr(e)
-        )
-
-    roles.sort(
-        key=lambda x: x["position"],
-        reverse=True
-    )
-
-    return roles
-
-
-# =========================================================
 # SERVER
 # =========================================================
 
-@app.route("/server/<guild_id>")
+@app.route(
+    "/server/<guild_id>"
+)
 def server(guild_id):
 
-    user = session.get("user")
-    guilds = session.get("guilds", [])
+    user = session.get(
+        "user"
+    )
+
+    guilds = session.get(
+        "guilds",
+        []
+    )
 
     if not user:
-        return redirect("/login")
+
+        return redirect(
+            "/login"
+        )
 
     selected_guild = None
 
     for guild in guilds:
 
-        if str(guild.get("id")) == str(guild_id):
+        if (
+            str(
+                guild.get("id")
+            )
+            ==
+            str(guild_id)
+        ):
 
             selected_guild = guild
+
             break
 
     if not selected_guild:
+
         return redirect("/")
 
 
@@ -416,7 +733,9 @@ def server(guild_id):
     # SETTINGS
     # =====================================================
 
-    settings = get_settings(guild_id)
+    settings = get_settings(
+        guild_id
+    )
 
 
     # =====================================================
@@ -424,6 +743,7 @@ def server(guild_id):
     # =====================================================
 
     stats = {
+
         "criminal_records": 0,
         "warnings": 0,
         "security_logs": 0,
@@ -438,60 +758,39 @@ def server(guild_id):
 
     try:
 
-        stats["criminal_records"] = safe_count(
-            conn,
-            "criminal_records",
-            guild_id
-        )
+        for key, table in {
 
-        stats["warnings"] = safe_count(
-            conn,
-            "warnings",
-            guild_id
-        )
+            "criminal_records":
+                "criminal_records",
 
-        stats["security_logs"] = safe_count(
-            conn,
-            "security_logs",
-            guild_id
-        )
+            "warnings":
+                "warnings",
 
-        stats["tickets"] = safe_count(
-            conn,
-            "tickets",
-            guild_id
-        )
+            "security_logs":
+                "security_logs",
 
-        stats["deeds"] = safe_count(
-            conn,
-            "deeds",
-            guild_id
-        )
+            "tickets":
+                "tickets",
 
-        stats["warrants"] = safe_count(
-            conn,
-            "warrants",
-            guild_id
-        )
+            "deeds":
+                "deeds",
 
-        stats["dispatches"] = safe_count(
-            conn,
-            "dispatches",
-            guild_id
-        )
+            "warrants":
+                "warrants",
 
-        stats["medical_reports"] = safe_count(
-            conn,
-            "medical_reports",
-            guild_id
-        )
+            "dispatches":
+                "dispatches",
 
-    except Exception as e:
+            "medical_reports":
+                "medical_reports"
 
-        print(
-            "DASHBOARD STATS ERROR:",
-            repr(e)
-        )
+        }.items():
+
+            stats[key] = safe_count(
+                conn,
+                table,
+                guild_id
+            )
 
     finally:
 
@@ -499,25 +798,21 @@ def server(guild_id):
 
 
     # =====================================================
-    # GET DISCORD SERVER
+    # DISCORD CHANNELS
     # =====================================================
 
-    discord_guild = None
+    channels = get_discord_channels(
+        guild_id
+    )
 
-    if BOT is not None:
 
-        try:
+    # =====================================================
+    # DISCORD ROLES
+    # =====================================================
 
-            discord_guild = BOT.get_guild(
-                int(guild_id)
-            )
-
-        except Exception as e:
-
-            print(
-                "DASHBOARD GUILD ERROR:",
-                repr(e)
-            )
+    roles = get_discord_roles(
+        guild_id
+    )
 
 
     # =====================================================
@@ -525,72 +820,39 @@ def server(guild_id):
     # =====================================================
 
     print("")
-    print("==========================================")
-    print("       DASHBOARD DISCORD CHECK")
-    print("==========================================")
-    print("Requested Guild ID:", guild_id)
-    print("Bot:", BOT)
     print(
-        "Bot User:",
-        BOT.user if BOT else None
+        "=========================================="
     )
-
-    if BOT:
-
-        print(
-            "Bot Guild Count:",
-            len(BOT.guilds)
-        )
-
-        for g in BOT.guilds:
-
-            print(
-                "BOT SERVER:",
-                g.id,
-                "|",
-                g.name
-            )
-
     print(
-        "MATCHED GUILD:",
-        discord_guild
+        "        MT DASHBOARD SERVER"
     )
-
-
-    # =====================================================
-    # CHANNELS
-    # =====================================================
-
-    channels = get_guild_channels(
-        discord_guild
-    )
-
-
-    # =====================================================
-    # ROLES
-    # =====================================================
-
-    roles = get_guild_roles(
-        discord_guild
-    )
-
-
     print(
-        "CHANNEL COUNT:",
+        "=========================================="
+    )
+    print(
+        "Guild ID:",
+        guild_id
+    )
+    print(
+        "Guild Name:",
+        selected_guild.get("name")
+    )
+    print(
+        "Channels:",
         len(channels)
     )
-
     print(
-        "ROLE COUNT:",
+        "Roles:",
         len(roles)
     )
-
-    print("==========================================")
+    print(
+        "=========================================="
+    )
     print("")
 
 
     # =====================================================
-    # OTHER DATA
+    # DATA
     # =====================================================
 
     excluded_roles = get_excluded_roles(
@@ -607,19 +869,29 @@ def server(guild_id):
 
 
     # =====================================================
-    # RENDER
+    # PAGE
     # =====================================================
 
     return render_template(
+
         "server.html",
+
         user=user,
+
         guild=selected_guild,
+
         settings=settings,
+
         stats=stats,
+
         excluded_roles=excluded_roles,
+
         logs=logs,
+
         tickets=tickets,
+
         channels=channels,
+
         roles=roles
     )
 
@@ -634,21 +906,39 @@ def server(guild_id):
 )
 def server_action(guild_id):
 
-    user = session.get("user")
-    guilds = session.get("guilds", [])
+    user = session.get(
+        "user"
+    )
+
+    guilds = session.get(
+        "guilds",
+        []
+    )
 
     if not user:
-        return redirect("/login")
+
+        return redirect(
+            "/login"
+        )
 
     allowed = any(
-        str(g.get("id")) == str(guild_id)
+
+        str(
+            g.get("id")
+        )
+        ==
+        str(guild_id)
+
         for g in guilds
     )
 
     if not allowed:
+
         return redirect("/")
 
-    action = request.form.get("action")
+    action = request.form.get(
+        "action"
+    )
 
     value = request.form.get(
         "value",
@@ -657,13 +947,8 @@ def server_action(guild_id):
 
 
     # =====================================================
-    # BOT GUILD
+    # DATABASE
     # =====================================================
-
-    discord_guild = get_discord_guild(
-        guild_id
-    )
-
 
     conn = db_connect()
 
@@ -676,22 +961,26 @@ def server_action(guild_id):
         if action == "ai_enable":
 
             conn.execute(
+
                 """
                 UPDATE settings
                 SET ai_enabled = 1
                 WHERE guild_id = ?
                 """,
+
                 (guild_id,)
             )
 
             conn.commit()
 
             return redirect(
+
                 url_for(
                     "server",
                     guild_id=guild_id
                 )
-                + "?section=ai&saved=1"
+                +
+                "?section=ai&saved=1"
             )
 
 
@@ -702,22 +991,26 @@ def server_action(guild_id):
         if action == "ai_disable":
 
             conn.execute(
+
                 """
                 UPDATE settings
                 SET ai_enabled = 0
                 WHERE guild_id = ?
                 """,
+
                 (guild_id,)
             )
 
             conn.commit()
 
             return redirect(
+
                 url_for(
                     "server",
                     guild_id=guild_id
                 )
-                + "?section=ai&saved=1"
+                +
+                "?section=ai&saved=1"
             )
 
 
@@ -727,26 +1020,34 @@ def server_action(guild_id):
 
         if action == "ai_channel":
 
-            if (
-                value.isdigit()
-                and discord_guild
-            ):
+            if value.isdigit():
 
-                channel = discord_guild.get_channel(
-                    int(value)
+                channels = get_discord_channels(
+                    guild_id
                 )
 
-                if (
-                    channel
-                    and str(channel.type) == "text"
-                ):
+                valid = any(
+
+                    str(
+                        channel["id"]
+                    )
+                    ==
+                    str(value)
+
+                    for channel
+                    in channels
+                )
+
+                if valid:
 
                     conn.execute(
+
                         """
                         UPDATE settings
                         SET ai_channel_id = ?
                         WHERE guild_id = ?
                         """,
+
                         (
                             int(value),
                             guild_id
@@ -756,11 +1057,13 @@ def server_action(guild_id):
                     conn.commit()
 
             return redirect(
+
                 url_for(
                     "server",
                     guild_id=guild_id
                 )
-                + "?section=ai&saved=1"
+                +
+                "?section=ai&saved=1"
             )
 
 
@@ -795,28 +1098,38 @@ def server_action(guild_id):
 
         if action in log_actions:
 
-            if (
-                value.isdigit()
-                and discord_guild
-            ):
+            if value.isdigit():
 
-                channel = discord_guild.get_channel(
-                    int(value)
+                channels = get_discord_channels(
+                    guild_id
                 )
 
-                if (
-                    channel
-                    and str(channel.type) == "text"
-                ):
+                valid = any(
 
-                    column = log_actions[action]
+                    str(
+                        channel["id"]
+                    )
+                    ==
+                    str(value)
+
+                    for channel
+                    in channels
+                )
+
+                if valid:
+
+                    column = log_actions[
+                        action
+                    ]
 
                     conn.execute(
+
                         f"""
                         UPDATE settings
                         SET {column} = ?
                         WHERE guild_id = ?
                         """,
+
                         (
                             int(value),
                             guild_id
@@ -826,11 +1139,13 @@ def server_action(guild_id):
                     conn.commit()
 
             return redirect(
+
                 url_for(
                     "server",
                     guild_id=guild_id
                 )
-                + "?section=logs&saved=1"
+                +
+                "?section=logs&saved=1"
             )
 
 
@@ -840,27 +1155,35 @@ def server_action(guild_id):
 
         if action == "add_excluded_role":
 
-            if (
-                value.isdigit()
-                and discord_guild
-            ):
+            if value.isdigit():
 
-                role = discord_guild.get_role(
-                    int(value)
+                roles = get_discord_roles(
+                    guild_id
                 )
 
-                if (
-                    role
-                    and not role.is_default()
-                ):
+                valid = any(
+
+                    str(
+                        role["id"]
+                    )
+                    ==
+                    str(value)
+
+                    for role
+                    in roles
+                )
+
+                if valid:
 
                     existing = conn.execute(
+
                         """
                         SELECT 1
                         FROM excluded_roles
                         WHERE guild_id = ?
                         AND role_id = ?
                         """,
+
                         (
                             guild_id,
                             int(value)
@@ -870,6 +1193,7 @@ def server_action(guild_id):
                     if not existing:
 
                         conn.execute(
+
                             """
                             INSERT INTO excluded_roles
                             (
@@ -878,6 +1202,7 @@ def server_action(guild_id):
                             )
                             VALUES (?, ?)
                             """,
+
                             (
                                 guild_id,
                                 int(value)
@@ -887,11 +1212,13 @@ def server_action(guild_id):
                         conn.commit()
 
             return redirect(
+
                 url_for(
                     "server",
                     guild_id=guild_id
                 )
-                + "?section=protection&saved=1"
+                +
+                "?section=protection&saved=1"
             )
 
 
@@ -904,11 +1231,13 @@ def server_action(guild_id):
             if value.isdigit():
 
                 conn.execute(
+
                     """
                     DELETE FROM excluded_roles
                     WHERE guild_id = ?
                     AND role_id = ?
                     """,
+
                     (
                         guild_id,
                         int(value)
@@ -918,11 +1247,13 @@ def server_action(guild_id):
                 conn.commit()
 
             return redirect(
+
                 url_for(
                     "server",
                     guild_id=guild_id
                 )
-                + "?section=protection&saved=1"
+                +
+                "?section=protection&saved=1"
             )
 
 
@@ -939,6 +1270,7 @@ def server_action(guild_id):
 
 
     return redirect(
+
         url_for(
             "server",
             guild_id=guild_id
@@ -980,12 +1312,19 @@ def keep_alive(bot):
     )
 
     flask_thread = threading.Thread(
+
         target=lambda: app.run(
+
             host="0.0.0.0",
+
             port=port,
+
             debug=False,
+
             use_reloader=False
+
         ),
+
         daemon=True
     )
 
