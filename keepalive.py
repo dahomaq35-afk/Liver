@@ -4,18 +4,33 @@ import requests
 
 from flask import Flask, render_template, redirect, request, session
 from threading import Thread
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 
 app = Flask(__name__)
+
+# Render يعمل خلف Reverse Proxy
+app.wsgi_app = ProxyFix(
+    app.wsgi_app,
+    x_for=1,
+    x_proto=1,
+    x_host=1
+)
+
 
 app.secret_key = os.getenv(
     "FLASK_SECRET_KEY",
     "temporary-secret-key"
 )
 
-app.config["SESSION_COOKIE_SECURE"] = True
-app.config["SESSION_COOKIE_HTTPONLY"] = True
-app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+
+app.config.update(
+    SESSION_COOKIE_NAME="mtbot_session",
+    SESSION_COOKIE_SECURE=True,
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_PATH="/"
+)
 
 
 CLIENT_ID = os.getenv("DISCORD_CLIENT_ID")
@@ -40,6 +55,7 @@ def home():
 def login():
     state = secrets.token_urlsafe(32)
 
+    session.clear()
     session["oauth_state"] = state
 
     params = {
@@ -69,7 +85,18 @@ def callback():
         if not code:
             return "فشل تسجيل الدخول: لا يوجد code.", 400
 
-        if state != session.get("oauth_state"):
+        saved_state = session.get("oauth_state")
+
+        if not saved_state:
+            app.logger.error(
+                "OAuth state missing from session"
+            )
+            return "انتهت جلسة تسجيل الدخول، حاول مرة أخرى.", 400
+
+        if state != saved_state:
+            app.logger.error(
+                "OAuth state mismatch"
+            )
             return "فشل تسجيل الدخول: state غير صحيح.", 400
 
         token_response = requests.post(
@@ -105,8 +132,7 @@ def callback():
 
         if not access_token:
             app.logger.error(
-                "No access token returned: %s",
-                token_data
+                "No access token returned"
             )
 
             return "لم يتم الحصول على رمز الدخول.", 500
@@ -157,6 +183,8 @@ def callback():
             "oauth_state",
             None
         )
+
+        session.permanent = True
 
         app.logger.info(
             "OAuth login successful"
