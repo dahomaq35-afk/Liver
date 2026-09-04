@@ -200,6 +200,7 @@ setup_database()
 # =========================================================
 
 def now_utc():
+
     return datetime.datetime.now(
         datetime.timezone.utc
     ).isoformat()
@@ -281,9 +282,15 @@ def get_guild_settings(guild_id):
     }
 
 
-def set_ai_settings(guild_id, enabled=None, channel_id=None):
+def set_ai_settings(
+    guild_id,
+    enabled=None,
+    channel_id=None
+):
 
-    current = get_guild_settings(guild_id)
+    current = get_guild_settings(
+        guild_id
+    )
 
     if enabled is None:
         enabled = current["ai_enabled"]
@@ -320,7 +327,11 @@ def set_ai_settings(guild_id, enabled=None, channel_id=None):
     db.close()
 
 
-def set_log_channel(guild_id, setting_name, channel_id):
+def set_log_channel(
+    guild_id,
+    setting_name,
+    channel_id
+):
 
     allowed = {
         "security_log_channel_id",
@@ -333,9 +344,14 @@ def set_log_channel(guild_id, setting_name, channel_id):
     }
 
     if setting_name not in allowed:
-        raise ValueError("Invalid log setting")
 
-    get_guild_settings(guild_id)
+        raise ValueError(
+            "Invalid log setting"
+        )
+
+    get_guild_settings(
+        guild_id
+    )
 
     db = db_connect()
     cursor = db.cursor()
@@ -413,12 +429,19 @@ def get_excluded_role_ids(guild_id):
     )
 
     rows = cursor.fetchall()
+
     db.close()
 
-    return {row[0] for row in rows}
+    return {
+        row[0]
+        for row in rows
+    }
 
 
-def add_excluded_role(guild_id, role_id):
+def add_excluded_role(
+    guild_id,
+    role_id
+):
 
     db = db_connect()
     cursor = db.cursor()
@@ -426,10 +449,16 @@ def add_excluded_role(guild_id, role_id):
     cursor.execute(
         """
         INSERT OR IGNORE INTO excluded_roles
-        (guild_id, role_id)
+        (
+            guild_id,
+            role_id
+        )
         VALUES (?, ?)
         """,
-        (guild_id, role_id)
+        (
+            guild_id,
+            role_id
+        )
     )
 
     added = cursor.rowcount > 0
@@ -440,7 +469,10 @@ def add_excluded_role(guild_id, role_id):
     return added
 
 
-def remove_excluded_role(guild_id, role_id):
+def remove_excluded_role(
+    guild_id,
+    role_id
+):
 
     db = db_connect()
     cursor = db.cursor()
@@ -451,7 +483,10 @@ def remove_excluded_role(guild_id, role_id):
         WHERE guild_id = ?
         AND role_id = ?
         """,
-        (guild_id, role_id)
+        (
+            guild_id,
+            role_id
+        )
     )
 
     removed = cursor.rowcount > 0
@@ -462,7 +497,9 @@ def remove_excluded_role(guild_id, role_id):
     return removed
 
 
-def clear_excluded_roles(guild_id):
+def clear_excluded_roles(
+    guild_id
+):
 
     db = db_connect()
     cursor = db.cursor()
@@ -496,7 +533,10 @@ def normalize_text(text):
 
     for char in text:
 
-        name = unicodedata.name(char, "")
+        name = unicodedata.name(
+            char,
+            ""
+        )
 
         if "MATHEMATICAL" in name:
 
@@ -505,9 +545,12 @@ def normalize_text(text):
             if len(last) == 1 and last.isalnum():
 
                 result.append(last)
+
                 continue
 
-        category = unicodedata.category(char)
+        category = unicodedata.category(
+            char
+        )
 
         if category.startswith("S"):
             continue
@@ -539,7 +582,10 @@ def normalize_text(text):
     return text
 
 
-def role_matches(role_name, expected_name):
+def role_matches(
+    role_name,
+    expected_name
+):
 
     return (
         normalize_text(role_name)
@@ -548,13 +594,19 @@ def role_matches(role_name, expected_name):
     )
 
 
-def check_role(member, role_name):
+def check_role(
+    member,
+    role_name
+):
 
     if not member:
         return False
 
     return any(
-        role_matches(role.name, role_name)
+        role_matches(
+            role.name,
+            role_name
+        )
         for role in member.roles
     )
 
@@ -571,7 +623,10 @@ WHITELIST_ROLES = [
 ]
 
 
-def is_whitelisted(member, guild=None):
+def is_whitelisted(
+    member,
+    guild=None
+):
 
     if not member:
         return False
@@ -647,7 +702,10 @@ AI_MODEL = os.getenv(
 # AI
 # =========================================================
 
-async def ask_ai(question, guild_name):
+async def ask_ai(
+    question,
+    guild_name
+):
 
     if not ai_client:
 
@@ -696,7 +754,10 @@ async def ask_ai(question, guild_name):
         answer = response.output_text
 
         if not answer:
-            return "⚠️ ما قدرت أجهز رد حاليًا."
+
+            return (
+                "⚠️ ما قدرت أجهز رد حاليًا."
+            )
 
         return answer[:4000]
 
@@ -715,7 +776,10 @@ async def ask_ai(question, guild_name):
 # LOG CHANNEL
 # =========================================================
 
-def get_log_channel(guild, setting_name):
+def get_log_channel(
+    guild,
+    setting_name
+):
 
     settings = get_guild_settings(
         guild.id
@@ -773,7 +837,10 @@ async def send_log(
             name="👤 المنفذ",
             value=(
                 actor.mention
-                if hasattr(actor, "mention")
+                if hasattr(
+                    actor,
+                    "mention"
+                )
                 else str(actor)
             ),
             inline=True
@@ -785,7 +852,10 @@ async def send_log(
             name="🎯 المستهدف",
             value=(
                 target.mention
-                if hasattr(target, "mention")
+                if hasattr(
+                    target,
+                    "mention"
+                )
                 else str(target)
             ),
             inline=True
@@ -968,34 +1038,55 @@ async def ban_unauthorized_actor(
 ):
 
     if not actor:
-        return "لم يتم تحديد المنفذ."
+
+        return (
+            "لم يتم تحديد المنفذ."
+        )
 
     if actor.id == guild.owner_id:
-        return "تعذر الحظر: المنفذ هو Owner."
+
+        return (
+            "تعذر الحظر: المنفذ هو Owner."
+        )
 
     if bot.user and actor.id == bot.user.id:
-        return "المنفذ هو البوت نفسه."
+
+        return (
+            "المنفذ هو البوت نفسه."
+        )
 
     actor_member = guild.get_member(
         actor.id
     )
 
     if not actor_member:
-        return "المنفذ غير موجود داخل السيرفر."
+
+        return (
+            "المنفذ غير موجود داخل السيرفر."
+        )
 
     if is_whitelisted(
         actor_member,
         guild
     ):
-        return "المنفذ مستثنى."
+
+        return (
+            "المنفذ مستثنى."
+        )
 
     me = guild.me
 
     if not me:
-        return "تعذر معرفة رتبة البوت."
+
+        return (
+            "تعذر معرفة رتبة البوت."
+        )
 
     if actor_member.top_role >= me.top_role:
-        return "تعذر الحظر بسبب Role Hierarchy."
+
+        return (
+            "تعذر الحظر بسبب Role Hierarchy."
+        )
 
     try:
 
@@ -1004,7 +1095,9 @@ async def ban_unauthorized_actor(
             reason=reason
         )
 
-        return "تم حظر المنفذ تلقائيًا."
+        return (
+            "تم حظر المنفذ تلقائيًا."
+        )
 
     except Exception as error:
 
@@ -1012,7 +1105,9 @@ async def ban_unauthorized_actor(
             f"Auto ban error: {error}"
         )
 
-        return "فشل الحظر التلقائي."
+        return (
+            "فشل الحظر التلقائي."
+        )
 
 
 # =========================================================
@@ -1025,7 +1120,9 @@ async def on_member_ban(
     user
 ):
 
-    await asyncio.sleep(0.7)
+    await asyncio.sleep(
+        0.7
+    )
 
     actor = await get_audit_actor(
         guild,
@@ -1086,7 +1183,9 @@ async def on_member_ban(
             reason="MT Security: Unauthorized ban"
         )
 
-        unban_result = "تم فك حظر المستهدف."
+        unban_result = (
+            "تم فك حظر المستهدف."
+        )
 
     except Exception as error:
 
@@ -1094,7 +1193,9 @@ async def on_member_ban(
             f"Unban error: {error}"
         )
 
-        unban_result = "تعذر فك حظر المستهدف."
+        unban_result = (
+            "تعذر فك حظر المستهدف."
+        )
 
     actor_result = await ban_unauthorized_actor(
         guild,
@@ -1110,8 +1211,14 @@ async def on_member_ban(
         actor=actor_member or actor,
         target=user,
         extra_fields=[
-            ("🔓 حالة المستهدف", unban_result),
-            ("🔨 حالة المنفذ", actor_result)
+            (
+                "🔓 حالة المستهدف",
+                unban_result
+            ),
+            (
+                "🔨 حالة المنفذ",
+                actor_result
+            )
         ],
         security_event=True
     )
@@ -1125,8 +1232,14 @@ async def on_member_ban(
         actor=actor_member or actor,
         target=user,
         extra_fields=[
-            ("🔓 حالة المستهدف", unban_result),
-            ("🔨 حالة المنفذ", actor_result)
+            (
+                "🔓 حالة المستهدف",
+                unban_result
+            ),
+            (
+                "🔨 حالة المنفذ",
+                actor_result
+            )
         ]
     )
 
@@ -1141,7 +1254,9 @@ async def on_member_unban(
     user
 ):
 
-    await asyncio.sleep(0.7)
+    await asyncio.sleep(
+        0.7
+    )
 
     actor = await get_audit_actor(
         guild,
@@ -1165,7 +1280,9 @@ async def on_member_unban(
 # =========================================================
 
 @bot.event
-async def on_member_join(member):
+async def on_member_join(
+    member
+):
 
     await send_log(
         member.guild,
@@ -1175,11 +1292,19 @@ async def on_member_join(member):
         discord.Color.green(),
         target=member,
         extra_fields=[
-            ("🤖 Bot", str(member.bot)),
-            ("🆔 ID", member.id),
+            (
+                "🤖 Bot",
+                str(member.bot)
+            ),
+            (
+                "🆔 ID",
+                member.id
+            ),
             (
                 "🔐 Administrator",
-                str(member.guild_permissions.administrator)
+                str(
+                    member.guild_permissions.administrator
+                )
             )
         ]
     )
@@ -1190,9 +1315,13 @@ async def on_member_join(member):
 # =========================================================
 
 @bot.event
-async def on_member_remove(member):
+async def on_member_remove(
+    member
+):
 
-    await asyncio.sleep(0.7)
+    await asyncio.sleep(
+        0.7
+    )
 
     actor = await get_audit_actor(
         member.guild,
@@ -1248,7 +1377,10 @@ async def on_member_remove(member):
         actor=actor_member or actor,
         target=member,
         extra_fields=[
-            ("🔨 الإجراء", result)
+            (
+                "🔨 الإجراء",
+                result
+            )
         ],
         security_event=True
     )
@@ -1262,7 +1394,10 @@ async def on_member_remove(member):
         actor=actor_member or actor,
         target=member,
         extra_fields=[
-            ("🔨 الإجراء", result)
+            (
+                "🔨 الإجراء",
+                result
+            )
         ]
     )
 
@@ -1272,7 +1407,9 @@ async def on_member_remove(member):
 # =========================================================
 
 @bot.event
-async def on_message_delete(message):
+async def on_message_delete(
+    message
+):
 
     if not message.guild:
         return
@@ -1280,7 +1417,10 @@ async def on_message_delete(message):
     content = message.content
 
     if not content:
-        content = "[المحتوى غير متوفر أو كان Embed/Attachment]"
+
+        content = (
+            "[المحتوى غير متوفر أو كان Embed/Attachment]"
+        )
 
     await send_log(
         message.guild,
@@ -1290,8 +1430,14 @@ async def on_message_delete(message):
         discord.Color.red(),
         actor=message.author if message.author else None,
         extra_fields=[
-            ("📍 الروم", message.channel.mention),
-            ("💬 المحتوى", content[:1000])
+            (
+                "📍 الروم",
+                message.channel.mention
+            ),
+            (
+                "💬 المحتوى",
+                content[:1000]
+            )
         ]
     )
 
@@ -1312,8 +1458,15 @@ async def on_message_edit(
     if before.content == after.content:
         return
 
-    old_content = before.content or "[فارغ]"
-    new_content = after.content or "[فارغ]"
+    old_content = (
+        before.content
+        or "[فارغ]"
+    )
+
+    new_content = (
+        after.content
+        or "[فارغ]"
+    )
 
     await send_log(
         after.guild,
@@ -1323,9 +1476,18 @@ async def on_message_edit(
         discord.Color.orange(),
         actor=after.author if after.author else None,
         extra_fields=[
-            ("📍 الروم", after.channel.mention),
-            ("قبل التعديل", old_content[:1000]),
-            ("بعد التعديل", new_content[:1000])
+            (
+                "📍 الروم",
+                after.channel.mention
+            ),
+            (
+                "قبل التعديل",
+                old_content[:1000]
+            ),
+            (
+                "بعد التعديل",
+                new_content[:1000]
+            )
         ]
     )
 
@@ -1341,18 +1503,29 @@ URL_PATTERN = re.compile(
 
 
 @bot.event
-async def on_message(message):
+async def on_message(
+    message
+):
 
     if message.author.bot:
         return
 
     if not message.guild:
-        await bot.process_commands(message)
+
+        await bot.process_commands(
+            message
+        )
+
         return
 
-    if message.content.startswith(BOT_PREFIX):
+    if message.content.startswith(
+        BOT_PREFIX
+    ):
 
-        await bot.process_commands(message)
+        await bot.process_commands(
+            message
+        )
+
         return
 
     if message.mention_everyone:
@@ -1363,8 +1536,11 @@ async def on_message(message):
         ):
 
             try:
+
                 await message.delete()
+
             except Exception:
+
                 pass
 
             await security_report(
@@ -1374,8 +1550,14 @@ async def on_message(message):
                 discord.Color.red(),
                 actor=message.author,
                 extra_fields=[
-                    ("📍 الروم", message.channel.mention),
-                    ("💬 المحتوى", message.content[:1000])
+                    (
+                        "📍 الروم",
+                        message.channel.mention
+                    ),
+                    (
+                        "💬 المحتوى",
+                        message.content[:1000]
+                    )
                 ],
                 security_event=True
             )
@@ -1392,8 +1574,11 @@ async def on_message(message):
         ):
 
             try:
+
                 await message.delete()
+
             except Exception:
+
                 pass
 
             await security_report(
@@ -1403,8 +1588,14 @@ async def on_message(message):
                 discord.Color.red(),
                 actor=message.author,
                 extra_fields=[
-                    ("📍 الروم", message.channel.mention),
-                    ("💬 المحتوى", message.content[:1000])
+                    (
+                        "📍 الروم",
+                        message.channel.mention
+                    ),
+                    (
+                        "💬 المحتوى",
+                        message.content[:1000]
+                    )
                 ],
                 security_event=True
             )
@@ -1418,7 +1609,9 @@ async def on_message(message):
     if (
         settings["ai_enabled"]
         and
-        settings["ai_channel_id"] == message.channel.id
+        settings["ai_channel_id"]
+        ==
+        message.channel.id
     ):
 
         answer = await ask_ai(
@@ -1440,7 +1633,9 @@ async def on_message(message):
 
         return
 
-    await bot.process_commands(message)
+    await bot.process_commands(
+        message
+    )
 
 
 # =========================================================
@@ -1484,6 +1679,7 @@ async def roles_command(
         return
 
     embeds = []
+
     current_lines = []
     current_length = 0
     page = 1
@@ -1514,13 +1710,18 @@ async def roles_command(
                 text=f"MT • صفحة {page}"
             )
 
-            embeds.append(embed)
+            embeds.append(
+                embed
+            )
 
             page += 1
             current_lines = []
             current_length = 0
 
-        current_lines.append(line)
+        current_lines.append(
+            line
+        )
+
         current_length += len(line)
 
     if current_lines:
@@ -1537,7 +1738,9 @@ async def roles_command(
             text=f"MT • صفحة {page}"
         )
 
-        embeds.append(embed)
+        embeds.append(
+            embed
+        )
 
     await interaction.response.send_message(
         embeds=embeds[:10],
@@ -1599,22 +1802,27 @@ async def channels_command(
                 channel,
                 discord.TextChannel
             ):
+
                 icon = "💬"
 
             elif isinstance(
                 channel,
                 discord.VoiceChannel
             ):
+
                 icon = "🔊"
 
             else:
+
                 icon = "📌"
 
             lines.append(
                 f"{icon} {channel.mention}"
             )
 
-        value = "\n".join(lines)
+        value = "\n".join(
+            lines
+        )
 
         if len(children) > 15:
 
@@ -1639,7 +1847,11 @@ async def channels_command(
         if channel.category is None
     ]
 
-    if uncategorized and len(embed.fields) < 10:
+    if (
+        uncategorized
+        and
+        len(embed.fields) < 10
+    ):
 
         lines = []
 
@@ -1658,7 +1870,9 @@ async def channels_command(
                 f"{icon} {channel.mention}"
             )
 
-        value = "\n".join(lines)
+        value = "\n".join(
+            lines
+        )
 
         if len(uncategorized) > 20:
 
@@ -1682,12 +1896,19 @@ async def channels_command(
 # SECURITY PERMISSION
 # =========================================================
 
-def can_manage_security(interaction):
+def can_manage_security(
+    interaction
+):
 
     if not interaction.guild:
         return False
 
-    if interaction.user.id == interaction.guild.owner_id:
+    if (
+        interaction.user.id
+        ==
+        interaction.guild.owner_id
+    ):
+
         return True
 
     allowed_roles = [
@@ -1705,12 +1926,19 @@ def can_manage_security(interaction):
     )
 
 
-def has_administrator(interaction):
+def has_administrator(
+    interaction
+):
 
     if not interaction.guild:
         return False
 
-    return interaction.user.guild_permissions.administrator
+    return (
+        interaction
+        .user
+        .guild_permissions
+        .administrator
+    )
 
 
 # =========================================================
@@ -1729,7 +1957,9 @@ async def set_excluded_role(
     role: discord.Role
 ):
 
-    if not can_manage_security(interaction):
+    if not can_manage_security(
+        interaction
+    ):
 
         await interaction.response.send_message(
             "❌ هذا الأمر للـ Owner و COowner فقط.",
@@ -1765,8 +1995,14 @@ async def set_excluded_role(
         discord.Color.green(),
         actor=interaction.user,
         extra_fields=[
-            ("🎭 الرتبة", role.mention),
-            ("🆔 ID", role.id)
+            (
+                "🎭 الرتبة",
+                role.mention
+            ),
+            (
+                "🆔 ID",
+                role.id
+            )
         ]
     )
 
@@ -1783,7 +2019,9 @@ async def remove_excluded_role_command(
     role: discord.Role
 ):
 
-    if not can_manage_security(interaction):
+    if not can_manage_security(
+        interaction
+    ):
 
         await interaction.response.send_message(
             "❌ هذا الأمر للـ Owner و COowner فقط.",
@@ -1807,7 +2045,7 @@ async def remove_excluded_role_command(
         return
 
     await interaction.response.send_message(
-        f"✅ تمت إزالة {role.mention} من الاستثناءات.",
+        f"✅ تمت إزالة {role.mention} من الرتب المستثناة.",
         ephemeral=True
     )
 
@@ -1830,7 +2068,9 @@ async def clear_excluded_roles_command(
     interaction: discord.Interaction
 ):
 
-    if not can_manage_security(interaction):
+    if not can_manage_security(
+        interaction
+    ):
 
         await interaction.response.send_message(
             "❌ هذا الأمر للـ Owner و COowner فقط.",
@@ -1866,7 +2106,9 @@ async def list_excluded_roles_command(
     interaction: discord.Interaction
 ):
 
-    if not can_manage_security(interaction):
+    if not can_manage_security(
+        interaction
+    ):
 
         await interaction.response.send_message(
             "❌ هذا الأمر للـ Owner و COowner فقط.",
@@ -1913,13 +2155,17 @@ async def list_excluded_roles_command(
 
     embed = discord.Embed(
         title="🛡️ الرتب المستثناة",
-        description="\n".join(lines)[:4000],
+        description="\n".join(
+            lines
+        )[:4000],
         color=discord.Color.blurple()
     )
 
     embed.add_field(
         name="📊 العدد",
-        value=str(len(role_ids))
+        value=str(
+            len(role_ids)
+        )
     )
 
     await interaction.response.send_message(
@@ -1939,7 +2185,9 @@ async def set_log_command(
     channel
 ):
 
-    if not has_administrator(interaction):
+    if not has_administrator(
+        interaction
+    ):
 
         await interaction.response.send_message(
             "❌ هذا الأمر يحتاج Administrator.",
@@ -2052,7 +2300,7 @@ async def set_member_log(
     description="تحديد روم سجل الإدارة"
 )
 @app_commands.describe(
-    channel="روم الإدارة"
+    channel="روم سجل الإدارة"
 )
 async def set_mod_log(
     interaction: discord.Interaction,
@@ -2072,7 +2320,7 @@ async def set_mod_log(
     description="تحديد روم سجل الرتب"
 )
 @app_commands.describe(
-    channel="روم الرتب"
+    channel="روم سجل الرتب"
 )
 async def set_role_log(
     interaction: discord.Interaction,
@@ -2119,7 +2367,10 @@ SECTOR_OPTIONS = {
 }
 
 
-def find_role(guild, role_name):
+def find_role(
+    guild,
+    role_name
+):
 
     for role in guild.roles:
 
@@ -2127,6 +2378,7 @@ def find_role(guild, role_name):
             role.name,
             role_name
         ):
+
             return role
 
     return None
@@ -2171,10 +2423,13 @@ class TicketCloseView(
             WHERE channel_id = ?
             AND closed = 0
             """,
-            (channel.id,)
+            (
+                channel.id,
+            )
         )
 
         row = cursor.fetchone()
+
         db.close()
 
         if not row:
@@ -2191,7 +2446,8 @@ class TicketCloseView(
                 interaction.user,
                 guild
             )
-            or interaction.user.id == row[0]
+            or
+            interaction.user.id == row[0]
         ):
 
             await interaction.response.send_message(
@@ -2215,15 +2471,19 @@ class TicketCloseView(
                 oldest_first=True
             ):
 
-                timestamp = msg.created_at.strftime(
-                    "%Y-%m-%d %H:%M:%S"
+                timestamp = (
+                    msg.created_at.strftime(
+                        "%Y-%m-%d %H:%M:%S"
+                    )
                 )
 
                 content = msg.content
 
                 if not content:
 
-                    content = "[Embed / Attachment]"
+                    content = (
+                        "[Embed / Attachment]"
+                    )
 
                 lines.append(
                     f"[{timestamp}] "
@@ -2237,7 +2497,9 @@ class TicketCloseView(
                 f"Transcript error: {error}"
             )
 
-        transcript = "\n".join(lines)
+        transcript = "\n".join(
+            lines
+        )
 
         db = db_connect()
         cursor = db.cursor()
@@ -2248,7 +2510,9 @@ class TicketCloseView(
             SET closed = 1
             WHERE channel_id = ?
             """,
-            (channel.id,)
+            (
+                channel.id,
+            )
         )
 
         db.commit()
@@ -2296,19 +2560,27 @@ class TicketCloseView(
 
             try:
 
-                transcript_bytes = transcript.encode(
-                    "utf-8"
+                transcript_bytes = (
+                    transcript.encode(
+                        "utf-8"
+                    )
                 )
 
                 if len(transcript_bytes) > 5_000_000:
 
                     transcript_bytes = (
-                        transcript_bytes[:5_000_000]
+                        transcript_bytes[
+                            :5_000_000
+                        ]
                     )
 
                 file = discord.File(
-                    io.BytesIO(transcript_bytes),
-                    filename=f"ticket-{channel.id}.txt"
+                    io.BytesIO(
+                        transcript_bytes
+                    ),
+                    filename=(
+                        f"ticket-{channel.id}.txt"
+                    )
                 )
 
                 await log_channel.send(
@@ -2326,7 +2598,9 @@ class TicketCloseView(
                     embed=embed
                 )
 
-        await asyncio.sleep(2)
+        await asyncio.sleep(
+            2
+        )
 
         try:
 
@@ -2392,9 +2666,11 @@ class TicketSelectView(
 
         sector_key = select.values[0]
 
-        sector_role_name = SECTOR_OPTIONS[
-            sector_key
-        ]
+        sector_role_name = (
+            SECTOR_OPTIONS[
+                sector_key
+            ]
+        )
 
         db = db_connect()
         cursor = db.cursor()
@@ -2414,6 +2690,7 @@ class TicketSelectView(
         )
 
         existing = cursor.fetchone()
+
         db.close()
 
         if existing:
@@ -2550,8 +2827,14 @@ class TicketSelectView(
             discord.Color.blue(),
             actor=member,
             extra_fields=[
-                ("📂 القطاع", sector_role_name),
-                ("📍 القناة", channel.mention)
+                (
+                    "📂 القطاع",
+                    sector_role_name
+                ),
+                (
+                    "📍 القناة",
+                    channel.mention
+                )
             ]
         )
 
@@ -2704,8 +2987,14 @@ async def create_deed(
         actor=interaction.user,
         target=citizen,
         extra_fields=[
-            ("🔢 الرقم", f"DEED-{deed_id:05d}"),
-            ("🏠 العقار", property_name)
+            (
+                "🔢 الرقم",
+                f"DEED-{deed_id:05d}"
+            ),
+            (
+                "🏠 العقار",
+                property_name
+            )
         ]
     )
 
@@ -2825,9 +3114,18 @@ async def issue_warrant(
         actor=interaction.user,
         target=citizen,
         extra_fields=[
-            ("🔢 الرقم", f"WARRANT-{warrant_id:05d}"),
-            ("📄 النوع", warrant_type.value),
-            ("📝 السبب", reason)
+            (
+                "🔢 الرقم",
+                f"WARRANT-{warrant_id:05d}"
+            ),
+            (
+                "📄 النوع",
+                warrant_type.value
+            ),
+            (
+                "📝 السبب",
+                reason
+            )
         ]
     )
 
@@ -2929,9 +3227,18 @@ async def dispatch_911(
         discord.Color.red(),
         actor=interaction.user,
         extra_fields=[
-            ("🔢 الرقم", f"911-{dispatch_id:05d}"),
-            ("📍 الموقع", location),
-            ("📝 التفاصيل", details)
+            (
+                "🔢 الرقم",
+                f"911-{dispatch_id:05d}"
+            ),
+            (
+                "📍 الموقع",
+                location
+            ),
+            (
+                "📝 التفاصيل",
+                details
+            )
         ]
     )
 
@@ -2970,7 +3277,10 @@ async def add_record(
 
         return
 
-    fine = max(0, fine)
+    fine = max(
+        0,
+        fine
+    )
 
     db = db_connect()
     cursor = db.cursor()
@@ -3048,10 +3358,22 @@ async def add_record(
         actor=interaction.user,
         target=citizen,
         extra_fields=[
-            ("🔢 الرقم", f"RECORD-{record_id:05d}"),
-            ("⚠️ الجريمة", crime),
-            ("💰 الغرامة", f"{fine:,}"),
-            ("⛓️ السجن", jail_time)
+            (
+                "🔢 الرقم",
+                f"RECORD-{record_id:05d}"
+            ),
+            (
+                "⚠️ الجريمة",
+                crime
+            ),
+            (
+                "💰 الغرامة",
+                f"{fine:,}"
+            ),
+            (
+                "⛓️ السجن",
+                jail_time
+            )
         ]
     )
 
@@ -3237,8 +3559,14 @@ async def swat_deploy(
         discord.Color.orange(),
         actor=interaction.user,
         extra_fields=[
-            ("📍 المنطقة", zone),
-            ("🚨 الخطورة", threat.value)
+            (
+                "📍 المنطقة",
+                zone
+            ),
+            (
+                "🚨 الخطورة",
+                threat.value
+            )
         ]
     )
 
@@ -3348,9 +3676,18 @@ async def medical_report(
         actor=interaction.user,
         target=citizen,
         extra_fields=[
-            ("🔢 الرقم", f"MED-{report_id:05d}"),
-            ("🩺 التشخيص", diagnosis),
-            ("💊 العلاج", treatment)
+            (
+                "🔢 الرقم",
+                f"MED-{report_id:05d}"
+            ),
+            (
+                "🩺 التشخيص",
+                diagnosis
+            ),
+            (
+                "💊 العلاج",
+                treatment
+            )
         ]
     )
 
@@ -3407,7 +3744,9 @@ async def ai_command(
 
     if action.value == "enable":
 
-        if not settings["ai_channel_id"]:
+        if not settings[
+            "ai_channel_id"
+        ]:
 
             await interaction.response.send_message(
                 "❌ حدد روم AI أولًا.",
@@ -3491,7 +3830,10 @@ async def ai_command(
             discord.Color.blue(),
             actor=interaction.user,
             extra_fields=[
-                ("📍 الروم الجديد", channel.mention)
+                (
+                    "📍 الروم الجديد",
+                    channel.mention
+                )
             ]
         )
 
@@ -3554,11 +3896,13 @@ if __name__ == "__main__":
             "❌ لم يتم العثور على Environment Variable باسم TOKEN في Render."
         )
 
-    # مهم:
-    # نرسل كائن البوت إلى keepalive
-    # حتى لوحة التحكم تستطيع جلب رومات السيرفر مباشرة من البوت.
-    keep_alive(bot)
+    # تشغيل لوحة التحكم
+    # مع تمرير البوت إلى keepalive
+    keep_alive(
+        bot
+    )
 
+    # تشغيل البوت
     bot.run(
         TOKEN
     )
