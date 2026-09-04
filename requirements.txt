@@ -2,3 +2,4 @@ Flask
 discord.py
 google-genai
 openai
+requests
