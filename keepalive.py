@@ -2,6 +2,7 @@ import os
 import secrets
 import urllib.parse
 import urllib.request
+import urllib.error
 import json
 
 from flask import Flask, render_template, redirect, request, session
@@ -116,8 +117,23 @@ def callback():
 
         return redirect("/")
 
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode(errors="replace")
+
+        print(
+            "OAuth HTTP Error:",
+            e.code,
+            error_body
+        )
+
+        return "حدث خطأ أثناء تسجيل الدخول.", 500
+
     except Exception as e:
-        print("OAuth Error:", repr(e))
+        print(
+            "OAuth Error:",
+            repr(e)
+        )
+
         return "حدث خطأ أثناء تسجيل الدخول.", 500
 
 
