@@ -914,6 +914,48 @@ def normalize_ai_text(text):
 
 
 def is_name_question(question):
+    normalized = normalize_ai_text(question).rstrip("?").strip()
+
+    NAME_QUESTIONS = {
+        "وش اسمك",
+        "ما اسمك",
+        "ايش اسمك",
+        "إيش اسمك",
+        "ماهو اسمك",
+        "ما هو اسمك",
+        "وش اسم البوت",
+        "ايش اسم البوت",
+        "إيش اسم البوت",
+        "ما اسم البوت",
+        "ماهو اسم البوت",
+        "ما هو اسم البوت",
+        "من انت",
+        "من أنت",
+        "مين انت",
+        "مين أنت",
+        "من تكون",
+        "مين تكون",
+        "وش انت",
+        "وش أنت",
+        "ايش انت",
+        "إيش أنت",
+        "اسمك",
+        "اسم البوت",
+        "وش تسمى",
+        "ماذا تسمى",
+        "ما هويتك",
+        "what is your name",
+        "what's your name",
+        "whats your name",
+        "your name",
+        "who are you",
+        "what are you",
+    }
+
+    return normalized in {
+        normalize_ai_text(x).rstrip("?").strip()
+        for x in NAME_QUESTIONS
+    }
 
     normalized = normalize_ai_text(
         question
