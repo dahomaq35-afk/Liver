@@ -5,7 +5,6 @@ import urllib.request
 import json
 
 from flask import Flask, render_template, redirect, request, session
-
 from threading import Thread
 
 
@@ -16,6 +15,7 @@ app.secret_key = os.getenv("FLASK_SECRET_KEY", "temporary-secret-key")
 
 CLIENT_ID = os.getenv("DISCORD_CLIENT_ID")
 CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
+
 REDIRECT_URI = os.getenv(
     "DISCORD_REDIRECT_URI",
     "https://liver-1.onrender.com/callback"
@@ -44,7 +44,10 @@ def login():
         "state": state
     }
 
-    url = "https://discord.com/oauth2/authorize?" + urllib.parse.urlencode(params)
+    url = (
+        "https://discord.com/oauth2/authorize?"
+        + urllib.parse.urlencode(params)
+    )
 
     return redirect(url)
 
@@ -76,7 +79,9 @@ def callback():
 
     try:
         with urllib.request.urlopen(token_request) as response:
-            token_data = json.loads(response.read().decode())
+            token_data = json.loads(
+                response.read().decode()
+            )
 
         access_token = token_data["access_token"]
 
@@ -95,10 +100,14 @@ def callback():
         )
 
         with urllib.request.urlopen(user_request) as response:
-            user = json.loads(response.read().decode())
+            user = json.loads(
+                response.read().decode()
+            )
 
         with urllib.request.urlopen(guild_request) as response:
-            guilds = json.loads(response.read().decode())
+            guilds = json.loads(
+                response.read().decode()
+            )
 
         session["user"] = user
         session["guilds"] = guilds
@@ -108,8 +117,9 @@ def callback():
         return redirect("/")
 
     except Exception as e:
-    print("OAuth Error:", repr(e))
-    return "حدث خطأ أثناء تسجيل الدخول.", 500
+        print("OAuth Error:", repr(e))
+        return "حدث خطأ أثناء تسجيل الدخول.", 500
+
 
 @app.route("/logout")
 def logout():
@@ -119,7 +129,11 @@ def logout():
 
 def run():
     port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+
+    app.run(
+        host="0.0.0.0",
+        port=port
+    )
 
 
 def keep_alive():
