@@ -1,115 +1,694 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
+
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MT BOT</title>
 
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>MT BOT — لوحة التحكم</title>
+
+    <link
+        rel="stylesheet"
+        href="{{ url_for('static', filename='style.css') }}"
+    >
+
+    <link
+        rel="preconnect"
+        href="https://fonts.googleapis.com"
+    >
+
+    <link
+        rel="preconnect"
+        href="https://fonts.gstatic.com"
+        crossorigin
+    >
+
+    <link
+        href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap"
+        rel="stylesheet"
+    >
 </head>
+
 
 <body>
 
+
 {% if not user %}
 
-    <div style="
-        min-height: 100vh;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        text-align: center;
-    ">
+<!-- =========================
+     صفحة تسجيل الدخول
+========================= -->
 
-        <div class="card">
+<div class="login-page">
 
-            <h1>🤖 MT BOT</h1>
+    <div class="login-glow glow-one"></div>
+    <div class="login-glow glow-two"></div>
 
-            <p style="margin-top: 15px;">
-                لوحة تحكم MT BOT
-            </p>
+    <div class="login-card">
 
-            <a href="/login">
-                <button>تسجيل الدخول عبر Discord</button>
-            </a>
+        <div class="bot-logo">
+            <span>MT</span>
+        </div>
 
+        <div class="login-title">
+            MT BOT
+        </div>
+
+        <div class="login-subtitle">
+            لوحة تحكم احترافية لسيرفر Discord
+        </div>
+
+        <a
+            href="/login"
+            class="discord-login"
+        >
+            <span class="discord-icon">◉</span>
+            تسجيل الدخول عبر Discord
+        </a>
+
+        <div class="login-note">
+            تسجيل دخول آمن باستخدام Discord OAuth2
         </div>
 
     </div>
+
+</div>
+
 
 {% else %}
 
-    <button class="menu-btn" onclick="toggleMenu()">☰</button>
 
-    <div class="sidebar" id="sidebar">
+<!-- =========================
+     التطبيق
+========================= -->
 
-        <h2>MT BOT</h2>
+<div class="app">
 
-        <div style="margin: 20px 0;">
-            👤 {{ user.username }}
+
+    <!-- =========================
+         الشريط الجانبي
+    ========================= -->
+
+    <aside
+        class="sidebar"
+        id="sidebar"
+    >
+
+        <div class="brand">
+
+            <div class="brand-logo">
+                MT
+            </div>
+
+            <div class="brand-text">
+
+                <strong>MT BOT</strong>
+
+                <span>
+                    Dashboard
+                </span>
+
+            </div>
+
         </div>
 
-        <a href="#">🏠 الرئيسية</a>
-        <a href="#">🛡️ الحماية</a>
-        <a href="#">📋 السجلات</a>
-        <a href="#">🎫 التذاكر</a>
-        <a href="#">🤖 الذكاء الاصطناعي</a>
-        <a href="#">⚙️ الإعدادات</a>
 
-        <a href="/logout">🚪 تسجيل الخروج</a>
+        <div class="sidebar-line"></div>
 
-    </div>
 
-    <main>
+        <div class="menu-title">
+            الرئيسية
+        </div>
 
-        <h1>لوحة تحكم MT BOT</h1>
 
-        <p style="margin-top: 10px;">
-            مرحباً {{ user.username }} 👋
-        </p>
+        <nav class="menu">
 
-        <h2 style="margin-top: 40px;">
-            سيرفراتك
-        </h2>
+            <a
+                href="#"
+                class="menu-item active"
+            >
 
-        <div class="cards">
+                <span class="menu-icon">⌂</span>
 
-            {% for guild in guilds %}
+                <span>
+                    الرئيسية
+                </span>
 
-            <div class="card">
+            </a>
 
-                <h3>🏠 {{ guild.name }}</h3>
 
-                <p style="margin-top: 10px;">
-                    إدارة إعدادات البوت
+            <a
+                href="#servers"
+                class="menu-item"
+            >
+
+                <span class="menu-icon">▣</span>
+
+                <span>
+                    السيرفرات
+                </span>
+
+            </a>
+
+
+            <div class="menu-title second">
+                الإدارة
+            </div>
+
+
+            <a
+                href="#protection"
+                class="menu-item"
+            >
+
+                <span class="menu-icon">◈</span>
+
+                <span>
+                    الحماية
+                </span>
+
+            </a>
+
+
+            <a
+                href="#logs"
+                class="menu-item"
+            >
+
+                <span class="menu-icon">≡</span>
+
+                <span>
+                    السجلات
+                </span>
+
+            </a>
+
+
+            <a
+                href="#tickets"
+                class="menu-item"
+            >
+
+                <span class="menu-icon">□</span>
+
+                <span>
+                    التذاكر
+                </span>
+
+            </a>
+
+
+            <div class="menu-title second">
+                الأدوات
+            </div>
+
+
+            <a
+                href="#ai"
+                class="menu-item"
+            >
+
+                <span class="menu-icon">✦</span>
+
+                <span>
+                    الذكاء الاصطناعي
+                </span>
+
+            </a>
+
+
+            <a
+                href="#settings"
+                class="menu-item"
+            >
+
+                <span class="menu-icon">⚙</span>
+
+                <span>
+                    الإعدادات
+                </span>
+
+            </a>
+
+        </nav>
+
+
+        <!-- =========================
+             الحساب
+        ========================= -->
+
+        <div class="sidebar-bottom">
+
+            <div class="profile">
+
+                <div class="profile-avatar">
+
+                    {% if user.avatar %}
+
+                    <img
+                        src="https://cdn.discordapp.com/avatars/{{ user.id }}/{{ user.avatar }}.png?size=128"
+                        alt="Avatar"
+                    >
+
+                    {% else %}
+
+                    <span>
+                        {{ user.username[0]|upper }}
+                    </span>
+
+                    {% endif %}
+
+                </div>
+
+
+                <div class="profile-info">
+
+                    <strong>
+                        {{ user.global_name or user.username }}
+                    </strong>
+
+                    <span>
+                        @{{ user.username }}
+                    </span>
+
+                </div>
+
+
+                <a
+                    href="/logout"
+                    class="logout"
+                    title="تسجيل الخروج"
+                >
+                    ↪
+                </a>
+
+            </div>
+
+        </div>
+
+    </aside>
+
+
+    <!-- =========================
+         المحتوى
+    ========================= -->
+
+    <main class="content">
+
+
+        <!-- Header -->
+
+        <header class="topbar">
+
+            <button
+                class="mobile-menu"
+                onclick="toggleSidebar()"
+            >
+                ☰
+            </button>
+
+
+            <div>
+
+                <div class="page-small">
+                    لوحة التحكم
+                </div>
+
+                <h1>
+                    الرئيسية
+                </h1>
+
+            </div>
+
+
+            <div class="top-user">
+
+                <div class="status-dot"></div>
+
+                <span>
+                    متصل
+                </span>
+
+            </div>
+
+        </header>
+
+
+        <!-- =========================
+             Welcome
+        ========================= -->
+
+        <section class="welcome-card">
+
+            <div class="welcome-content">
+
+                <span class="welcome-label">
+                    أهلاً بك 👋
+                </span>
+
+                <h2>
+                    {{ user.global_name or user.username }}
+                </h2>
+
+                <p>
+                    تحكم في بوت MT وإدارة سيرفراتك من مكان واحد.
                 </p>
 
-                <button>
-                    إدارة السيرفر
-                </button>
+            </div>
+
+
+            <div class="welcome-decoration">
+
+                <div class="decoration-circle circle-one"></div>
+                <div class="decoration-circle circle-two"></div>
+
+                <div class="decoration-logo">
+                    MT
+                </div>
 
             </div>
 
-            {% else %}
+        </section>
 
-            <div class="card">
-                <h3>لا توجد سيرفرات</h3>
-                <p>لم يتم العثور على سيرفرات مرتبطة بحسابك.</p>
+
+        <!-- =========================
+             الإحصائيات
+        ========================= -->
+
+        <section class="stats-grid">
+
+
+            <div class="stat-card">
+
+                <div class="stat-icon">
+                    ◈
+                </div>
+
+                <div class="stat-info">
+
+                    <span>
+                        السيرفرات
+                    </span>
+
+                    <strong>
+                        {{ guilds|length }}
+                    </strong>
+
+                </div>
+
             </div>
 
-            {% endfor %}
 
-        </div>
+            <div class="stat-card">
+
+                <div class="stat-icon">
+                    ✓
+                </div>
+
+                <div class="stat-info">
+
+                    <span>
+                        حالة البوت
+                    </span>
+
+                    <strong>
+                        متصل
+                    </strong>
+
+                </div>
+
+            </div>
+
+
+            <div class="stat-card">
+
+                <div class="stat-icon">
+                    ⚡
+                </div>
+
+                <div class="stat-info">
+
+                    <span>
+                        النظام
+                    </span>
+
+                    <strong>
+                        يعمل
+                    </strong>
+
+                </div>
+
+            </div>
+
+
+            <div class="stat-card">
+
+                <div class="stat-icon">
+                    🔒
+                </div>
+
+                <div class="stat-info">
+
+                    <span>
+                        الحماية
+                    </span>
+
+                    <strong>
+                        جاهزة
+                    </strong>
+
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- =========================
+             السيرفرات
+        ========================= -->
+
+        <section
+            class="section"
+            id="servers"
+        >
+
+            <div class="section-header">
+
+                <div>
+
+                    <span>
+                        إدارة السيرفرات
+                    </span>
+
+                    <h2>
+                        سيرفراتك
+                    </h2>
+
+                </div>
+
+                <span class="section-count">
+                    {{ guilds|length }} سيرفر
+                </span>
+
+            </div>
+
+
+            <div class="servers-grid">
+
+
+                {% for guild in guilds %}
+
+                <div class="server-card">
+
+
+                    <div class="server-top">
+
+                        <div class="server-icon">
+
+                            {% if guild.icon %}
+
+                            <img
+                                src="https://cdn.discordapp.com/icons/{{ guild.id }}/{{ guild.icon }}.png?size=128"
+                                alt="{{ guild.name }}"
+                            >
+
+                            {% else %}
+
+                            <span>
+                                {{ guild.name[0]|upper }}
+                            </span>
+
+                            {% endif %}
+
+                        </div>
+
+
+                        <div class="server-status">
+                            ●
+                        </div>
+
+                    </div>
+
+
+                    <div class="server-info">
+
+                        <h3>
+                            {{ guild.name }}
+                        </h3>
+
+                        <p>
+                            إدارة إعدادات البوت
+                        </p>
+
+                    </div>
+
+
+                    <button
+                        class="manage-btn"
+                        onclick="manageServer('{{ guild.id }}')"
+                    >
+
+                        <span>
+                            إدارة السيرفر
+                        </span>
+
+                        <span>
+                            ←
+                        </span>
+
+                    </button>
+
+
+                </div>
+
+                {% else %}
+
+
+                <div class="empty-card">
+
+                    <div class="empty-icon">
+                        ◇
+                    </div>
+
+                    <h3>
+                        لا توجد سيرفرات
+                    </h3>
+
+                    <p>
+                        لم يتم العثور على سيرفرات مرتبطة بحسابك.
+                    </p>
+
+                </div>
+
+
+                {% endfor %}
+
+
+            </div>
+
+        </section>
+
+
+        <!-- =========================
+             الأقسام القادمة
+        ========================= -->
+
+        <section
+            class="coming-section"
+            id="protection"
+        >
+
+            <div class="coming-card">
+
+                <div class="coming-icon">
+                    ◈
+                </div>
+
+                <div>
+
+                    <span>
+                        قادم قريباً
+                    </span>
+
+                    <h3>
+                        نظام الحماية
+                    </h3>
+
+                    <p>
+                        سيتم ربط إعدادات الحماية بالبوت في الخطوة القادمة.
+                    </p>
+
+                </div>
+
+            </div>
+
+        </section>
+
 
     </main>
+
+</div>
+
 
 {% endif %}
 
 
 <script>
-function toggleMenu() {
-    document.getElementById("sidebar").classList.toggle("open");
+
+function toggleSidebar() {
+
+    const sidebar =
+        document.getElementById("sidebar");
+
+    sidebar.classList.toggle("open");
+
 }
+
+
+function manageServer(id) {
+
+    console.log(
+        "Selected server:",
+        id
+    );
+
+    alert(
+        "سيتم فتح إعدادات السيرفر في الخطوة القادمة."
+    );
+
+}
+
+
+document
+    .querySelectorAll(".menu-item")
+    .forEach(function(item) {
+
+        item.addEventListener(
+            "click",
+            function() {
+
+                document
+                    .querySelectorAll(".menu-item")
+                    .forEach(function(el) {
+
+                        el.classList.remove("active");
+
+                    });
+
+                this.classList.add("active");
+
+            }
+        );
+
+    });
+
 </script>
+
 
 </body>
 </html>
