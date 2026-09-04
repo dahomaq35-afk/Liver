@@ -2,7 +2,6 @@ import os
 import sqlite3
 import threading
 import requests
-import time
 
 from flask import Flask, redirect, request, session, render_template, url_for
 
@@ -62,10 +61,7 @@ def get_settings(guild_id):
             (guild_id,)
         ).fetchone()
 
-        if row:
-            return dict(row)
-
-        return {}
+        return dict(row) if row else {}
 
     except Exception:
         return {}
@@ -114,10 +110,7 @@ def get_security_logs(guild_id):
             (guild_id,)
         ).fetchall()
 
-        return [
-            dict(row)
-            for row in rows
-        ]
+        return [dict(row) for row in rows]
 
     except Exception:
         return []
@@ -141,10 +134,7 @@ def get_tickets(guild_id):
             (guild_id,)
         ).fetchall()
 
-        return [
-            dict(row)
-            for row in rows
-        ]
+        return [dict(row) for row in rows]
 
     except Exception:
         return []
@@ -279,7 +269,7 @@ def callback():
 
 
 # =========================================================
-# GET DISCORD GUILD DATA
+# DISCORD GUILD
 # =========================================================
 
 def get_discord_guild(guild_id):
@@ -289,43 +279,33 @@ def get_discord_guild(guild_id):
         return None
 
     try:
-
         guild_id = int(guild_id)
-
     except Exception:
-
+        print("DASHBOARD: Invalid Guild ID:", guild_id)
         return None
 
-    # المحاولة الأولى من الـ cache
     guild = BOT.get_guild(guild_id)
 
     if guild:
         return guild
 
     print(
-        f"DASHBOARD: Guild {guild_id} not found in bot cache."
-    )
-
-    print(
-        "DASHBOARD: Bot guilds:",
-        [
-            (guild.id, guild.name)
-            for guild in BOT.guilds
-        ]
+        "DASHBOARD: Guild not found in cache:",
+        guild_id
     )
 
     return None
 
 
 # =========================================================
-# GET CHANNELS
+# CHANNELS
 # =========================================================
 
 def get_guild_channels(guild):
 
     channels = []
 
-    if not guild:
+    if guild is None:
         return channels
 
     try:
@@ -336,25 +316,25 @@ def get_guild_channels(guild):
                 getattr(channel, "type", "")
             )
 
-            # القنوات النصية
-            if channel_type == "text":
+            if channel_type != "text":
+                continue
 
-                category_name = "بدون تصنيف"
+            category_name = "بدون تصنيف"
 
-                if channel.category:
-                    category_name = channel.category.name
+            if channel.category:
+                category_name = channel.category.name
 
-                channels.append({
-                    "id": str(channel.id),
-                    "name": channel.name,
-                    "category": category_name
-                })
+            channels.append({
+                "id": str(channel.id),
+                "name": channel.name,
+                "category": category_name
+            })
 
     except Exception as e:
 
         print(
             "DASHBOARD CHANNEL ERROR:",
-            e
+            repr(e)
         )
 
     channels.sort(
@@ -368,21 +348,20 @@ def get_guild_channels(guild):
 
 
 # =========================================================
-# GET ROLES
+# ROLES
 # =========================================================
 
 def get_guild_roles(guild):
 
     roles = []
 
-    if not guild:
+    if guild is None:
         return roles
 
     try:
 
         for role in guild.roles:
 
-            # تجاهل @everyone
             if role.is_default():
                 continue
 
@@ -396,7 +375,7 @@ def get_guild_roles(guild):
 
         print(
             "DASHBOARD ROLE ERROR:",
-            e
+            repr(e)
         )
 
     roles.sort(
@@ -408,7 +387,7 @@ def get_guild_roles(guild):
 
 
 # =========================================================
-# SERVER MANAGEMENT
+# SERVER
 # =========================================================
 
 @app.route("/server/<guild_id>")
@@ -432,7 +411,17 @@ def server(guild_id):
     if not selected_guild:
         return redirect("/")
 
+
+    # =====================================================
+    # SETTINGS
+    # =====================================================
+
     settings = get_settings(guild_id)
+
+
+    # =====================================================
+    # STATS
+    # =====================================================
 
     stats = {
         "criminal_records": 0,
@@ -501,7 +490,7 @@ def server(guild_id):
 
         print(
             "DASHBOARD STATS ERROR:",
-            e
+            repr(e)
         )
 
     finally:
@@ -510,37 +499,99 @@ def server(guild_id):
 
 
     # =====================================================
-    # DISCORD CHANNELS + ROLES
+    # GET DISCORD SERVER
     # =====================================================
 
-    discord_guild = get_discord_guild(
-        guild_id
+    discord_guild = None
+
+    if BOT is not None:
+
+        try:
+
+            discord_guild = BOT.get_guild(
+                int(guild_id)
+            )
+
+        except Exception as e:
+
+            print(
+                "DASHBOARD GUILD ERROR:",
+                repr(e)
+            )
+
+
+    # =====================================================
+    # DEBUG
+    # =====================================================
+
+    print("")
+    print("==========================================")
+    print("       DASHBOARD DISCORD CHECK")
+    print("==========================================")
+    print("Requested Guild ID:", guild_id)
+    print("Bot:", BOT)
+    print(
+        "Bot User:",
+        BOT.user if BOT else None
     )
+
+    if BOT:
+
+        print(
+            "Bot Guild Count:",
+            len(BOT.guilds)
+        )
+
+        for g in BOT.guilds:
+
+            print(
+                "BOT SERVER:",
+                g.id,
+                "|",
+                g.name
+            )
+
+    print(
+        "MATCHED GUILD:",
+        discord_guild
+    )
+
+
+    # =====================================================
+    # CHANNELS
+    # =====================================================
 
     channels = get_guild_channels(
         discord_guild
     )
 
+
+    # =====================================================
+    # ROLES
+    # =====================================================
+
     roles = get_guild_roles(
         discord_guild
     )
 
-    print("========== DASHBOARD DATA ==========")
-    print("Guild ID:", guild_id)
+
     print(
-        "Discord Guild:",
-        discord_guild
-    )
-    print(
-        "Channels:",
+        "CHANNEL COUNT:",
         len(channels)
     )
+
     print(
-        "Roles:",
+        "ROLE COUNT:",
         len(roles)
     )
-    print("====================================")
 
+    print("==========================================")
+    print("")
+
+
+    # =====================================================
+    # OTHER DATA
+    # =====================================================
 
     excluded_roles = get_excluded_roles(
         guild_id
@@ -554,6 +605,10 @@ def server(guild_id):
         guild_id
     )
 
+
+    # =====================================================
+    # RENDER
+    # =====================================================
 
     return render_template(
         "server.html",
@@ -602,7 +657,7 @@ def server_action(guild_id):
 
 
     # =====================================================
-    # GET BOT GUILD
+    # BOT GUILD
     # =====================================================
 
     discord_guild = get_discord_guild(
@@ -875,7 +930,7 @@ def server_action(guild_id):
 
         print(
             "DASHBOARD ACTION ERROR:",
-            e
+            repr(e)
         )
 
     finally:
@@ -921,7 +976,7 @@ def keep_alive(bot):
     )
 
     print(
-        f"DASHBOARD: Flask starting on port {port}"
+        f"DASHBOARD: Starting Flask on port {port}"
     )
 
     flask_thread = threading.Thread(
