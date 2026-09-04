@@ -1,45 +1,31 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
-
 <head>
-
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1.0"
-    >
-
-    <title>
-        {{ guild.name }} — MT BOT
-    </title>
-
-    <link
-        rel="stylesheet"
-        href="{{ url_for('static', filename='style.css') }}"
-    >
-
-    <link
-        href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap"
-        rel="stylesheet"
-    >
+    <title>{{ guild.name }} - MT BOT</title>
 
     <style>
-
         * {
             box-sizing: border-box;
         }
 
         body {
             margin: 0;
-            font-family: Cairo, sans-serif;
-            background: #08090d;
-            color: white;
+            background: #0f1117;
+            color: #fff;
+            font-family: Arial, sans-serif;
         }
 
-        .dashboard {
-            min-height: 100vh;
+        a {
+            color: inherit;
+            text-decoration: none;
+        }
+
+        .layout {
             display: flex;
+            min-height: 100vh;
         }
 
         /* =========================
@@ -47,11 +33,10 @@
         ========================= */
 
         .sidebar {
-            width: 245px;
-            min-height: 100vh;
-            background: #0d0e13;
-            border-left: 1px solid #20222b;
-            padding: 22px 14px;
+            width: 250px;
+            background: #171923;
+            border-left: 1px solid #252837;
+            padding: 20px 14px;
             position: fixed;
             right: 0;
             top: 0;
@@ -60,127 +45,56 @@
         }
 
         .brand {
-            padding: 10px 12px 25px;
-            border-bottom: 1px solid #20222b;
-            margin-bottom: 18px;
+            font-size: 22px;
+            font-weight: 900;
+            text-align: center;
+            margin-bottom: 25px;
         }
 
-        .brand-title {
-            font-size: 18px;
-            font-weight: 800;
+        .guild-box {
+            background: #202330;
+            border-radius: 14px;
+            padding: 14px;
+            margin-bottom: 20px;
         }
 
-        .brand-subtitle {
-            color: #686b78;
-            font-size: 10px;
-            margin-top: 3px;
-        }
-
-        .server-small {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 10px;
-            background: #15161d;
-            border: 1px solid #252833;
-            border-radius: 12px;
-            margin-bottom: 18px;
-        }
-
-        .server-small-icon {
-            width: 38px;
-            height: 38px;
-            min-width: 38px;
-            border-radius: 11px;
-            background: #20222d;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+        .guild-name {
             font-weight: 800;
             overflow: hidden;
-        }
-
-        .server-small-icon img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-
-        .server-small-name {
-            min-width: 0;
-        }
-
-        .server-small-name strong {
-            display: block;
-            font-size: 11px;
             white-space: nowrap;
-            overflow: hidden;
             text-overflow: ellipsis;
         }
 
-        .server-small-name span {
-            color: #656874;
-            font-size: 9px;
-        }
-
         .nav-title {
-            color: #555864;
-            font-size: 9px;
-            padding: 0 10px;
-            margin-bottom: 7px;
+            color: #8d91a3;
+            font-size: 12px;
+            margin: 18px 10px 8px;
         }
 
-        .nav-button {
+        .nav-btn {
+            display: block;
             width: 100%;
-            border: 0;
-            background: transparent;
-            color: #9295a2;
-            padding: 11px;
+            padding: 12px;
+            margin-bottom: 6px;
             border-radius: 10px;
-            font-family: inherit;
-            text-align: right;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 4px;
+            color: #cfd2dc;
             transition: .2s;
         }
 
-        .nav-button:hover {
-            background: #171922;
+        .nav-btn:hover {
+            background: #242735;
+            color: #fff;
+        }
+
+        .nav-btn.active {
+            background: #5865f2;
             color: white;
+            font-weight: 700;
         }
 
-        .nav-button.active {
-            background: rgba(88, 101, 242, .15);
-            color: white;
-        }
-
-        .nav-icon {
-            width: 22px;
-            text-align: center;
-            font-size: 16px;
-        }
-
-        .sidebar-bottom {
-            margin-top: 25px;
-        }
-
-        .back-home {
-            width: 100%;
-            padding: 10px;
-            border-radius: 10px;
-            border: 1px solid #292c38;
-            background: transparent;
-            color: #8e919d;
-            font-family: inherit;
-            cursor: pointer;
-        }
-
-        .back-home:hover {
-            background: #181a21;
-            color: white;
+        .logout {
+            margin-top: 20px;
+            background: #292c38;
         }
 
         /* =========================
@@ -188,53 +102,31 @@
         ========================= */
 
         .main {
-            margin-right: 245px;
-            width: calc(100% - 245px);
-            padding: 32px;
+            width: calc(100% - 250px);
+            margin-right: 250px;
+            padding: 30px;
         }
 
         .topbar {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 28px;
-            gap: 20px;
+            background: #171923;
+            border: 1px solid #252837;
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 20px;
         }
 
         .topbar h1 {
-            margin: 0;
-            font-size: 25px;
+            margin: 0 0 8px;
+            font-size: 26px;
         }
 
         .topbar p {
-            margin: 4px 0 0;
-            color: #676a76;
-            font-size: 11px;
-        }
-
-        .user-box {
-            display: flex;
-            align-items: center;
-            gap: 9px;
-            padding: 8px 12px;
-            border: 1px solid #242630;
-            background: #101117;
-            border-radius: 12px;
-        }
-
-        .user-box img {
-            width: 30px;
-            height: 30px;
-            border-radius: 50%;
-        }
-
-        .user-box span {
-            font-size: 10px;
-            color: #aaa;
+            margin: 0;
+            color: #969aaa;
         }
 
         /* =========================
-           SECTIONS
+           CARDS
         ========================= */
 
         .section {
@@ -245,105 +137,90 @@
             display: block;
         }
 
-        .section-title {
-            margin-bottom: 15px;
-        }
-
-        .section-title h2 {
-            margin: 0;
-            font-size: 18px;
-        }
-
-        .section-title p {
-            color: #686b77;
-            font-size: 10px;
-            margin-top: 3px;
-        }
-
-        /* =========================
-           CARDS
-        ========================= */
-
-        .cards {
-            display: grid;
-            grid-template-columns: repeat(4, minmax(0, 1fr));
-            gap: 12px;
-            margin-bottom: 25px;
-        }
-
         .card {
-            background: #101117;
-            border: 1px solid #23252f;
-            border-radius: 15px;
-            padding: 17px;
+            background: #171923;
+            border: 1px solid #252837;
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 18px;
         }
 
-        .card-label {
-            color: #737682;
-            font-size: 9px;
+        .card h2 {
+            margin-top: 0;
+            margin-bottom: 8px;
+            font-size: 20px;
         }
 
-        .card-value {
-            font-size: 22px;
-            font-weight: 800;
-            margin-top: 6px;
+        .card p {
+            color: #969aaa;
         }
 
         /* =========================
-           SETTINGS
+           STATS
         ========================= */
 
-        .settings-grid {
+        .stats {
             display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
+            grid-template-columns: repeat(4, 1fr);
             gap: 14px;
         }
 
-        .setting-card {
-            background: #101117;
-            border: 1px solid #242630;
-            border-radius: 16px;
-            padding: 20px;
+        .stat {
+            background: #202330;
+            border-radius: 14px;
+            padding: 18px;
         }
 
-        .setting-card h3 {
-            margin: 0;
+        .stat-title {
+            color: #969aaa;
             font-size: 13px;
+            margin-bottom: 8px;
         }
 
-        .setting-card p {
-            color: #666976;
-            font-size: 9px;
-            margin: 5px 0 15px;
+        .stat-value {
+            font-size: 25px;
+            font-weight: 900;
         }
 
         /* =========================
-           SELECT
+           FORM
         ========================= */
 
-        .select {
-            width: 100%;
-            padding: 12px;
-            border-radius: 10px;
-            border: 1px solid #2b2e3a;
-            background: #171820;
-            color: white;
-            font-family: inherit;
-            outline: none;
-            cursor: pointer;
+        .setting-row {
+            background: #202330;
+            border-radius: 13px;
+            padding: 15px;
+            margin-bottom: 12px;
         }
 
-        .select:focus {
+        .setting-title {
+            font-weight: 800;
+            margin-bottom: 8px;
+        }
+
+        .setting-description {
+            color: #8f93a3;
+            font-size: 13px;
+            margin-bottom: 12px;
+        }
+
+        select {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #343849;
+            background: #11131b;
+            color: white;
+            border-radius: 10px;
+            outline: none;
+            font-size: 14px;
+        }
+
+        select:focus {
             border-color: #5865f2;
         }
 
-        .select option {
-            background: #171820;
-            color: white;
-        }
-
         /* =========================
-           CONFIRM BUTTONS
+           CONFIRM / CANCEL
         ========================= */
 
         .confirm-buttons {
@@ -382,70 +259,47 @@
         }
 
         /* =========================
-           AI
+           AI BUTTONS
         ========================= */
 
-        .ai-status {
+        .ai-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 12px;
+        }
+
+        .ai-btn {
+            flex: 1;
+            border: 0;
             padding: 12px;
             border-radius: 10px;
-            margin-bottom: 15px;
-            background: #15161d;
-            border: 1px solid #292c38;
-            font-size: 10px;
-        }
-
-        .enabled {
-            color: #65d68b;
-        }
-
-        .disabled {
-            color: #e47777;
-        }
-
-        .switch-buttons {
-            display: flex;
-            gap: 8px;
-        }
-
-        .switch-buttons button {
-            flex: 1;
-            padding: 10px;
-            border-radius: 9px;
-            border: 1px solid #2a2d38;
-            background: #171820;
             color: white;
-            font-family: inherit;
+            font-weight: 800;
             cursor: pointer;
         }
 
-        .switch-buttons button:hover {
-            border-color: #5865f2;
+        .ai-on {
+            background: #23a559;
+        }
+
+        .ai-off {
+            background: #d83c3e;
         }
 
         /* =========================
            LOGS
         ========================= */
 
-        .logs-list {
-            display: grid;
-            gap: 10px;
+        .log-box {
+            background: #202330;
+            border-radius: 13px;
+            padding: 15px;
+            margin-bottom: 12px;
         }
 
-        .log-item {
-            background: #101117;
-            border: 1px solid #242630;
-            border-radius: 12px;
-            padding: 14px;
-        }
-
-        .log-item strong {
-            font-size: 11px;
-        }
-
-        .log-item p {
-            margin: 4px 0 0;
-            color: #777a86;
-            font-size: 9px;
+        .log-name {
+            font-weight: 800;
+            margin-bottom: 10px;
         }
 
         /* =========================
@@ -453,76 +307,55 @@
         ========================= */
 
         .role-list {
-            max-height: 500px;
-            overflow-y: auto;
-            padding-left: 2px;
+            margin-top: 15px;
         }
 
         .role-item {
+            background: #202330;
+            border-radius: 10px;
+            padding: 12px;
+            margin-bottom: 8px;
             display: flex;
             align-items: center;
             justify-content: space-between;
-            gap: 10px;
-            padding: 11px 12px;
-            margin-bottom: 8px;
-            background: #15161d;
-            border: 1px solid #292c38;
-            border-radius: 10px;
         }
 
-        .role-name {
-            font-size: 10px;
-            font-weight: 700;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-
-        .role-position {
-            color: #555864;
-            font-size: 8px;
-            margin-top: 2px;
-        }
-
-        .remove-btn {
-            padding: 7px 10px;
+        .role-remove {
+            background: #d83c3e;
+            border: 0;
             border-radius: 8px;
-            border: 1px solid #542d35;
-            background: #24161a;
-            color: #e47777;
-            font-family: inherit;
-            font-size: 9px;
+            color: white;
+            padding: 8px 12px;
             cursor: pointer;
-            white-space: nowrap;
-        }
-
-        .remove-btn:hover {
-            background: #351b21;
-        }
-
-        .empty-box {
-            padding: 15px;
-            text-align: center;
-            border-radius: 10px;
-            background: #15161d;
-            border: 1px solid #292c38;
-            color: #666976;
-            font-size: 10px;
-            margin-top: 10px;
+            font-weight: 700;
         }
 
         /* =========================
-           CHANNEL INFO
+           TABLE
         ========================= */
 
-        .channel-count {
-            display: inline-block;
-            padding: 4px 8px;
-            margin-right: 5px;
-            border-radius: 7px;
-            background: #1b1d27;
-            color: #8d91a1;
-            font-size: 8px;
+        .table-wrap {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th,
+        td {
+            padding: 13px;
+            border-bottom: 1px solid #292c38;
+            text-align: right;
+        }
+
+        th {
+            color: #aeb2c1;
+        }
+
+        td {
+            color: #e5e7ed;
         }
 
         /* =========================
@@ -536,416 +369,299 @@
             }
 
             .main {
-                margin-right: 210px;
                 width: calc(100% - 210px);
-                padding: 20px;
+                margin-right: 210px;
+                padding: 18px;
             }
 
-            .cards {
+            .stats {
                 grid-template-columns: repeat(2, 1fr);
             }
-
         }
 
         @media (max-width: 650px) {
 
-            .dashboard {
-                display: block;
-            }
-
             .sidebar {
                 position: relative;
                 width: 100%;
-                min-height: auto;
                 border-left: 0;
-                border-bottom: 1px solid #20222b;
+                border-bottom: 1px solid #252837;
+            }
+
+            .layout {
+                display: block;
             }
 
             .main {
-                margin-right: 0;
                 width: 100%;
-                padding: 17px;
+                margin-right: 0;
+                padding: 15px;
             }
 
-            .settings-grid {
+            .stats {
                 grid-template-columns: 1fr;
             }
 
-            .cards {
-                grid-template-columns: 1fr 1fr;
-            }
-
-            .topbar {
-                align-items: flex-start;
+            .ai-buttons,
+            .confirm-buttons {
                 flex-direction: column;
             }
-
         }
-
     </style>
-
 </head>
 
 <body>
 
-<div class="dashboard">
+<div class="layout">
 
-    <!-- ======================================
+    <!-- =========================
          SIDEBAR
-    ======================================= -->
+    ========================= -->
 
     <aside class="sidebar">
 
         <div class="brand">
-
-            <div class="brand-title">
-                MT BOT
-            </div>
-
-            <div class="brand-subtitle">
-                Advanced Discord Dashboard
-            </div>
-
+            MT BOT
         </div>
 
-        <div class="server-small">
-
-            <div class="server-small-icon">
-
-                {% if guild.icon %}
-
-                <img
-                    src="https://cdn.discordapp.com/icons/{{ guild.id }}/{{ guild.icon }}.png?size=128"
-                    alt=""
-                >
-
-                {% else %}
-
-                {{ guild.name[0]|upper }}
-
-                {% endif %}
-
+        <div class="guild-box">
+            <div class="guild-name">
+                {{ guild.name }}
             </div>
-
-            <div class="server-small-name">
-
-                <strong>
-                    {{ guild.name }}
-                </strong>
-
-                <span>
-                    Server Dashboard
-                </span>
-
-            </div>
-
         </div>
 
         <div class="nav-title">
-            الإدارة
+            لوحة التحكم
         </div>
 
-        <button
-            class="nav-button active"
-            onclick="showSection('overview', this)"
-        >
-            <span class="nav-icon">📊</span>
-            الرئيسية
-        </button>
+        <a href="#overview"
+           class="nav-btn"
+           data-section="overview">
+            🏠 الرئيسية
+        </a>
 
-        <button
-            class="nav-button"
-            onclick="showSection('protection', this)"
-        >
-            <span class="nav-icon">🛡️</span>
-            الحماية
-        </button>
+        <a href="#protection"
+           class="nav-btn"
+           data-section="protection">
+            🛡️ الحماية
+        </a>
 
-        <button
-            class="nav-button"
-            onclick="showSection('logs', this)"
-        >
-            <span class="nav-icon">📋</span>
-            السجلات
-        </button>
+        <a href="#logs"
+           class="nav-btn"
+           data-section="logs">
+            📋 السجلات
+        </a>
 
-        <button
-            class="nav-button"
-            onclick="showSection('tickets', this)"
-        >
-            <span class="nav-icon">🎫</span>
-            التذاكر
-        </button>
+        <a href="#tickets"
+           class="nav-btn"
+           data-section="tickets">
+            🎫 التذاكر
+        </a>
 
-        <button
-            class="nav-button"
-            onclick="showSection('ai', this)"
-        >
-            <span class="nav-icon">🤖</span>
-            الذكاء الاصطناعي
-        </button>
+        <a href="#ai"
+           class="nav-btn"
+           data-section="ai">
+            🤖 الذكاء الاصطناعي
+        </a>
 
-        <button
-            class="nav-button"
-            onclick="showSection('settings', this)"
-        >
-            <span class="nav-icon">⚙️</span>
-            إعدادات السيرفر
-        </button>
+        <a href="#settings"
+           class="nav-btn"
+           data-section="settings">
+            ⚙️ إعدادات السيرفر
+        </a>
 
-        <div class="sidebar-bottom">
-
-            <button
-                class="back-home"
-                onclick="window.location.href='/'"
-            >
-                ← العودة للسيرفرات
-            </button>
-
-        </div>
+        <a href="/logout"
+           class="nav-btn logout">
+            🚪 تسجيل الخروج
+        </a>
 
     </aside>
 
-    <!-- ======================================
+
+    <!-- =========================
          MAIN
-    ======================================= -->
+    ========================= -->
 
     <main class="main">
 
         <div class="topbar">
 
-            <div>
+            <h1>
+                {{ guild.name }}
+            </h1>
 
-                <h1>
-                    لوحة تحكم MT BOT
-                </h1>
-
-                <p>
-                    إدارة السيرفر والتحكم بإعدادات البوت
-                </p>
-
-            </div>
-
-            {% if user %}
-
-            <div class="user-box">
-
-                {% if user.avatar %}
-
-                <img
-                    src="https://cdn.discordapp.com/avatars/{{ user.id }}/{{ user.avatar }}.png?size=64"
-                    alt=""
-                >
-
-                {% endif %}
-
-                <span>
-                    {{ user.global_name }}
-                </span>
-
-            </div>
-
-            {% endif %}
+            <p>
+                لوحة التحكم الخاصة بالسيرفر
+            </p>
 
         </div>
 
-        <!-- ======================================
+
+        <!-- =========================
              OVERVIEW
-        ======================================= -->
+        ========================= -->
 
-        <section
-            id="overview"
-            class="section active"
-        >
+        <section id="overview"
+                 class="section">
 
-            <div class="section-title">
+            <div class="card">
 
                 <h2>
-                    نظرة عامة
+                    📊 نظرة عامة
                 </h2>
 
                 <p>
-                    إحصائيات ومعلومات السيرفر
+                    إحصائيات السيرفر
                 </p>
 
-            </div>
+                <div class="stats">
 
-            <div class="cards">
-
-                <div class="card">
-                    <div class="card-label">
-                        السجلات الجنائية
+                    <div class="stat">
+                        <div class="stat-title">
+                            السجلات الجنائية
+                        </div>
+                        <div class="stat-value">
+                            {{ stats.criminal_records }}
+                        </div>
                     </div>
 
-                    <div class="card-value">
-                        {{ stats.criminal_records }}
-                    </div>
-                </div>
-
-                <div class="card">
-                    <div class="card-label">
-                        التحذيرات
-                    </div>
-
-                    <div class="card-value">
-                        {{ stats.warnings }}
-                    </div>
-                </div>
-
-                <div class="card">
-                    <div class="card-label">
-                        السجلات الأمنية
+                    <div class="stat">
+                        <div class="stat-title">
+                            التحذيرات
+                        </div>
+                        <div class="stat-value">
+                            {{ stats.warnings }}
+                        </div>
                     </div>
 
-                    <div class="card-value">
-                        {{ stats.security_logs }}
-                    </div>
-                </div>
-
-                <div class="card">
-                    <div class="card-label">
-                        التذاكر
-                    </div>
-
-                    <div class="card-value">
-                        {{ stats.tickets }}
-                    </div>
-                </div>
-
-                <div class="card">
-                    <div class="card-label">
-                        الصكوك
+                    <div class="stat">
+                        <div class="stat-title">
+                            سجلات الحماية
+                        </div>
+                        <div class="stat-value">
+                            {{ stats.security_logs }}
+                        </div>
                     </div>
 
-                    <div class="card-value">
-                        {{ stats.deeds }}
-                    </div>
-                </div>
-
-                <div class="card">
-                    <div class="card-label">
-                        أوامر القبض
-                    </div>
-
-                    <div class="card-value">
-                        {{ stats.warrants }}
-                    </div>
-                </div>
-
-                <div class="card">
-                    <div class="card-label">
-                        البلاغات
+                    <div class="stat">
+                        <div class="stat-title">
+                            التذاكر
+                        </div>
+                        <div class="stat-value">
+                            {{ stats.tickets }}
+                        </div>
                     </div>
 
-                    <div class="card-value">
-                        {{ stats.dispatches }}
+                    <div class="stat">
+                        <div class="stat-title">
+                            التعهدات
+                        </div>
+                        <div class="stat-value">
+                            {{ stats.deeds }}
+                        </div>
                     </div>
-                </div>
 
-                <div class="card">
-                    <div class="card-label">
-                        التقارير الطبية
+                    <div class="stat">
+                        <div class="stat-title">
+                            المطلوبين
+                        </div>
+                        <div class="stat-value">
+                            {{ stats.warrants }}
+                        </div>
                     </div>
 
-                    <div class="card-value">
-                        {{ stats.medical_reports }}
+                    <div class="stat">
+                        <div class="stat-title">
+                            البلاغات
+                        </div>
+                        <div class="stat-value">
+                            {{ stats.dispatches }}
+                        </div>
                     </div>
+
+                    <div class="stat">
+                        <div class="stat-title">
+                            التقارير الطبية
+                        </div>
+                        <div class="stat-value">
+                            {{ stats.medical_reports }}
+                        </div>
+                    </div>
+
                 </div>
 
             </div>
 
         </section>
 
-        <!-- ======================================
+
+        <!-- =========================
              PROTECTION
-        ======================================= -->
+        ========================= -->
 
-        <section
-            id="protection"
-            class="section"
-        >
+        <section id="protection"
+                 class="section">
 
-            <div class="section-title">
+            <div class="card">
 
                 <h2>
-                    الحماية
+                    🛡️ الحماية
                 </h2>
 
                 <p>
-                    إدارة حماية السيرفر والاستثناءات
+                    إدارة الرتب المستثناة من أنظمة الحماية.
                 </p>
 
-            </div>
 
-            <div class="settings-grid">
+                <!-- ADD ROLE -->
 
-                <!-- إضافة رتبة -->
+                <div class="setting-row">
 
-                <div class="setting-card">
-
-                    <h3>
+                    <div class="setting-title">
                         إضافة رتبة مستثناة
-                    </h3>
+                    </div>
 
-                    <p>
-                        اختر رتبة من رتب السيرفر مباشرة.
-                    </p>
+                    <div class="setting-description">
+                        اختر الرتبة التي تريد استثنائها.
+                    </div>
 
-                    <form
-                        method="POST"
-                        action="/server/{{ guild.id }}/action"
-                    >
+                    <form method="POST"
+                          action="/server/{{ guild.id }}/action">
 
-                        <input
-                            type="hidden"
-                            name="action"
-                            value="add_excluded_role"
-                        >
+                        <input type="hidden"
+                               name="action"
+                               value="add_excluded_role">
 
-                        <select
-                            class="select"
-                            name="value"
-                            required
-                        >
+                        <select name="value">
 
                             <option value="">
-                                اختر الرتبة
+                                اختر رتبة
                             </option>
 
                             {% for role in roles %}
 
-                            <option
-                                value="{{ role.id }}"
-                            >
-                                @{{ role.name }}
-                            </option>
+                                {% if not role.managed %}
+
+                                    <option value="{{ role.id }}">
+                                        @{{ role.name }}
+                                    </option>
+
+                                {% endif %}
 
                             {% endfor %}
 
                         </select>
 
-                        {% if not roles %}
-
-                        <div class="empty-box">
-                            ⚠️ لم يتم العثور على رتب في هذا السيرفر.
-                        </div>
-
-                        {% endif %}
-
                         <div class="confirm-buttons">
 
-                            <button
-                                class="confirm-btn"
-                                type="submit"
-                            >
+                            <button class="confirm-btn"
+                                    type="submit">
                                 ✅ تأكيد
                             </button>
 
-                            <button
-                                class="cancel-btn"
-                                type="button"
-                                onclick="resetForm(this)"
-                            >
+                            <button class="cancel-btn"
+                                    type="button"
+                                    onclick="resetForm(this)">
                                 ❌ إلغاء
                             </button>
 
@@ -955,86 +671,41 @@
 
                 </div>
 
-                <!-- الرتب المستثناة -->
 
-                <div class="setting-card">
+                <!-- CURRENT EXCLUDED ROLES -->
 
-                    <h3>
+                <div class="setting-row">
+
+                    <div class="setting-title">
                         الرتب المستثناة حالياً
-                    </h3>
-
-                    <p>
-                        الرتب التي تم استثناؤها من نظام الحماية.
-                    </p>
+                    </div>
 
                     <div class="role-list">
 
-                        {% if excluded_roles %}
+                        {% if excluded_role_objects %}
 
-                            {% for role_id in excluded_roles %}
-
-                                {% set found_role = namespace(data=None) %}
-
-                                {% for role in roles %}
-
-                                    {% if role.id|string == role_id|string %}
-
-                                        {% set found_role.data = role %}
-
-                                    {% endif %}
-
-                                {% endfor %}
+                            {% for role in excluded_role_objects %}
 
                                 <div class="role-item">
 
-                                    <div style="min-width:0;">
+                                    <span>
+                                        @{{ role.name }}
+                                    </span>
 
-                                        {% if found_role.data %}
+                                    <form method="POST"
+                                          action="/server/{{ guild.id }}/action">
 
-                                            <div class="role-name">
-                                                @{{ found_role.data.name }}
-                                            </div>
+                                        <input type="hidden"
+                                               name="action"
+                                               value="remove_excluded_role">
 
-                                            <div class="role-position">
-                                                رتبة مستثناة
-                                            </div>
+                                        <input type="hidden"
+                                               name="value"
+                                               value="{{ role.id }}">
 
-                                        {% else %}
-
-                                            <div class="role-name">
-                                                رتبة غير موجودة
-                                            </div>
-
-                                            <div class="role-position">
-                                                تم حذفها من السيرفر
-                                            </div>
-
-                                        {% endif %}
-
-                                    </div>
-
-                                    <form
-                                        method="POST"
-                                        action="/server/{{ guild.id }}/action"
-                                    >
-
-                                        <input
-                                            type="hidden"
-                                            name="action"
-                                            value="remove_excluded_role"
-                                        >
-
-                                        <input
-                                            type="hidden"
-                                            name="value"
-                                            value="{{ role_id }}"
-                                        >
-
-                                        <button
-                                            class="remove-btn"
-                                            type="submit"
-                                        >
-                                            إزالة
+                                        <button class="role-remove"
+                                                type="submit">
+                                            حذف
                                         </button>
 
                                     </form>
@@ -1045,7 +716,7 @@
 
                         {% else %}
 
-                            <div class="empty-box">
+                            <div class="role-item">
                                 لا توجد رتب مستثناة حالياً.
                             </div>
 
@@ -1059,164 +730,116 @@
 
         </section>
 
-        <!-- ======================================
+
+        <!-- =========================
              LOGS
-        ======================================= -->
+        ========================= -->
 
-        <section
-            id="logs"
-            class="section"
-        >
+        <section id="logs"
+                 class="section">
 
-            <div class="section-title">
+            <div class="card">
 
                 <h2>
-                    السجلات
+                    📋 السجلات
                 </h2>
 
                 <p>
-                    اختر أي روم من رومات السيرفر لكل نوع من السجلات.
-
-                    <span class="channel-count">
-                        {{ channels|length }} روم
-                    </span>
+                    اختر روم لكل نوع من أنواع السجلات.
                 </p>
 
-            </div>
-
-            {% if not channels %}
-
-            <div class="empty-box">
-                ⚠️ لم يتم العثور على رومات نصية.
-                تأكد أن البوت موجود في السيرفر وأن التوكن صحيح.
-            </div>
-
-            {% endif %}
-
-            <div class="settings-grid">
 
                 {% set log_channels = [
 
-                    (
-                        "security_log",
-                        "سجل الحماية",
-                        "security_log_channel_id"
-                    ),
+                    ("security_log",
+                     "سجل الحماية",
+                     "security_log_channel_id"),
 
-                    (
-                        "delete_log",
-                        "سجل حذف الرسائل",
-                        "delete_log_channel_id"
-                    ),
+                    ("delete_log",
+                     "سجل حذف الرسائل",
+                     "delete_log_channel_id"),
 
-                    (
-                        "edit_log",
-                        "سجل تعديل الرسائل",
-                        "edit_log_channel_id"
-                    ),
+                    ("edit_log",
+                     "سجل تعديل الرسائل",
+                     "edit_log_channel_id"),
 
-                    (
-                        "member_log",
-                        "سجل الأعضاء",
-                        "member_log_channel_id"
-                    ),
+                    ("member_log",
+                     "سجل الأعضاء",
+                     "member_log_channel_id"),
 
-                    (
-                        "mod_log",
-                        "سجل الإدارة",
-                        "mod_log_channel_id"
-                    ),
+                    ("mod_log",
+                     "سجل الإدارة",
+                     "mod_log_channel_id"),
 
-                    (
-                        "role_log",
-                        "سجل الرتب",
-                        "role_log_channel_id"
-                    ),
+                    ("role_log",
+                     "سجل الرتب",
+                     "role_log_channel_id"),
 
-                    (
-                        "channel_log",
-                        "سجل الرومات",
-                        "channel_log_channel_id"
-                    )
+                    ("channel_log",
+                     "سجل الرومات",
+                     "channel_log_channel_id")
 
                 ] %}
 
-                {% for action_name, title, setting_name in log_channels %}
 
-                <div class="setting-card">
+                {% for action_name, title, setting_key in log_channels %}
 
-                    <h3>
-                        {{ title }}
-                    </h3>
+                    <div class="log-box">
 
-                    <p>
-                        اختر الروم من رومات هذا السيرفر.
-                    </p>
-
-                    <form
-                        method="POST"
-                        action="/server/{{ guild.id }}/action"
-                    >
-
-                        <input
-                            type="hidden"
-                            name="action"
-                            value="{{ action_name }}"
-                        >
-
-                        <select
-                            class="select"
-                            name="value"
-                            required
-                        >
-
-                            <option value="">
-                                اختر الروم
-                            </option>
-
-                            {% for channel in channels %}
-
-                            <option
-                                value="{{ channel.id }}"
-                                {% if settings.get(setting_name) and settings.get(setting_name)|string == channel.id|string %}
-                                    selected
-                                {% endif %}
-                            >
-
-                                # {{ channel.name }}
-
-                                {% if channel.category %}
-                                    — {{ channel.category }}
-                                {% endif %}
-
-                            </option>
-
-                            {% endfor %}
-
-                        </select>
-
-                        <div class="confirm-buttons">
-
-                            <button
-                                class="confirm-btn"
-                                type="submit"
-                            >
-                                ✅ تأكيد
-                            </button>
-
-                            <button
-                                class="cancel-btn"
-                                type="button"
-                                onclick="resetForm(this)"
-                            >
-                                ❌ إلغاء
-                            </button>
-
+                        <div class="log-name">
+                            {{ title }}
                         </div>
 
-                    </form>
+                        <form method="POST"
+                              action="/server/{{ guild.id }}/action">
 
-                </div>
+                            <input type="hidden"
+                                   name="action"
+                                   value="{{ action_name }}">
+
+                            <select name="value">
+
+                                <option value="">
+                                    اختر الروم
+                                </option>
+
+                                {% for channel in channels %}
+
+                                    <option value="{{ channel.id }}"
+                                        {% if settings.get(setting_key)|string == channel.id|string %}
+                                            selected
+                                        {% endif %}>
+
+                                        #{{ channel.name }}
+
+                                        {% if channel.category %}
+                                            — {{ channel.category }}
+                                        {% endif %}
+
+                                    </option>
+
+                                {% endfor %}
+
+                            </select>
+
+                            <div class="confirm-buttons">
+
+                                <button class="confirm-btn"
+                                        type="submit">
+                                    ✅ تأكيد
+                                </button>
+
+                                <button class="cancel-btn"
+                                        type="button"
+                                        onclick="resetForm(this)">
+                                    ❌ إلغاء
+                                </button>
+
+                            </div>
+
+                        </form>
+
+                    </div>
 
                 {% endfor %}
 
@@ -1224,178 +847,158 @@
 
         </section>
 
-        <!-- ======================================
+
+        <!-- =========================
              TICKETS
-        ======================================= -->
+        ========================= -->
 
-        <section
-            id="tickets"
-            class="section"
-        >
+        <section id="tickets"
+                 class="section">
 
-            <div class="section-title">
+            <div class="card">
 
                 <h2>
-                    التذاكر
+                    🎫 التذاكر
                 </h2>
 
                 <p>
-                    متابعة وإدارة التذاكر المسجلة.
+                    آخر التذاكر المسجلة في السيرفر.
                 </p>
 
-            </div>
+                <div class="table-wrap">
 
-            <div class="cards">
+                    <table>
 
-                <div class="card">
+                        <thead>
 
-                    <div class="card-label">
-                        إجمالي التذاكر
-                    </div>
+                            <tr>
+                                <th>ID</th>
+                                <th>المستخدم</th>
+                                <th>الحالة</th>
+                                <th>التاريخ</th>
+                            </tr>
 
-                    <div class="card-value">
-                        {{ stats.tickets }}
-                    </div>
+                        </thead>
+
+                        <tbody>
+
+                            {% if tickets %}
+
+                                {% for ticket in tickets %}
+
+                                    <tr>
+
+                                        <td>
+                                            {{ ticket.id }}
+                                        </td>
+
+                                        <td>
+                                            {{ ticket.user_id or "-" }}
+                                        </td>
+
+                                        <td>
+                                            {{ ticket.status or "-" }}
+                                        </td>
+
+                                        <td>
+                                            {{ ticket.created_at or "-" }}
+                                        </td>
+
+                                    </tr>
+
+                                {% endfor %}
+
+                            {% else %}
+
+                                <tr>
+                                    <td colspan="4">
+                                        لا توجد تذاكر حالياً.
+                                    </td>
+                                </tr>
+
+                            {% endif %}
+
+                        </tbody>
+
+                    </table>
 
                 </div>
-
-            </div>
-
-            <div class="logs-list">
-
-                {% if tickets %}
-
-                    {% for ticket in tickets %}
-
-                    <div class="log-item">
-
-                        <strong>
-                            تذكرة #{{ ticket.id }}
-                        </strong>
-
-                        <p>
-                            المستخدم:
-                            {{ ticket.user_id }}
-                        </p>
-
-                        <p>
-                            الحالة:
-                            {{ ticket.status }}
-                        </p>
-
-                    </div>
-
-                    {% endfor %}
-
-                {% else %}
-
-                    <div class="log-item">
-
-                        <strong>
-                            لا توجد تذاكر
-                        </strong>
-
-                        <p>
-                            لم يتم تسجيل أي تذاكر لهذا السيرفر حالياً.
-                        </p>
-
-                    </div>
-
-                {% endif %}
 
             </div>
 
         </section>
 
-        <!-- ======================================
+
+        <!-- =========================
              AI
-        ======================================= -->
+        ========================= -->
 
-        <section
-            id="ai"
-            class="section"
-        >
+        <section id="ai"
+                 class="section">
 
-            <div class="section-title">
+            <div class="card">
 
                 <h2>
-                    الذكاء الاصطناعي
+                    🤖 الذكاء الاصطناعي
                 </h2>
 
                 <p>
-                    التحكم في تشغيل الذكاء الاصطناعي وتحديد الروم.
+                    تحكم في تشغيل الذكاء الاصطناعي واختيار روم الذكاء الاصطناعي.
                 </p>
 
-            </div>
 
-            <div class="settings-grid">
+                <!-- AI ENABLE -->
 
-                <!-- حالة AI -->
+                <div class="setting-row">
 
-                <div class="setting-card">
-
-                    <h3>
+                    <div class="setting-title">
                         حالة الذكاء الاصطناعي
-                    </h3>
-
-                    <p>
-                        تشغيل أو إيقاف نظام الذكاء الاصطناعي.
-                    </p>
-
-                    {% if settings.get("ai_enabled") %}
-
-                    <div class="ai-status enabled">
-                        ● الذكاء الاصطناعي مفعّل
                     </div>
 
-                    {% else %}
+                    <div class="setting-description">
 
-                    <div class="ai-status disabled">
-                        ● الذكاء الاصطناعي متوقف
+                        {% if settings.get("ai_enabled") %}
+
+                            الذكاء الاصطناعي مفعل حالياً.
+
+                        {% else %}
+
+                            الذكاء الاصطناعي غير مفعل حالياً.
+
+                        {% endif %}
+
                     </div>
 
-                    {% endif %}
 
-                    <div class="switch-buttons">
+                    <div class="ai-buttons">
 
-                        <form
-                            method="POST"
-                            action="/server/{{ guild.id }}/action"
-                            style="flex:1;"
-                        >
+                        <form method="POST"
+                              action="/server/{{ guild.id }}/action"
+                              style="flex:1;">
 
-                            <input
-                                type="hidden"
-                                name="action"
-                                value="ai_enable"
-                            >
+                            <input type="hidden"
+                                   name="action"
+                                   value="ai_enable">
 
-                            <button
-                                type="submit"
-                                style="width:100%;"
-                            >
-                                تشغيل
+                            <button class="ai-btn ai-on"
+                                    type="submit">
+                                ✅ تفعيل
                             </button>
 
                         </form>
 
-                        <form
-                            method="POST"
-                            action="/server/{{ guild.id }}/action"
-                            style="flex:1;"
-                        >
 
-                            <input
-                                type="hidden"
-                                name="action"
-                                value="ai_disable"
-                            >
+                        <form method="POST"
+                              action="/server/{{ guild.id }}/action"
+                              style="flex:1;">
 
-                            <button
-                                type="submit"
-                                style="width:100%;"
-                            >
-                                إيقاف
+                            <input type="hidden"
+                                   name="action"
+                                   value="ai_disable">
+
+                            <button class="ai-btn ai-off"
+                                    type="submit">
+                                ❌ تعطيل
                             </button>
 
                         </form>
@@ -1404,82 +1007,62 @@
 
                 </div>
 
-                <!-- روم AI -->
 
-                <div class="setting-card">
+                <!-- AI CHANNEL -->
 
-                    <h3>
+                <div class="setting-row">
+
+                    <div class="setting-title">
                         روم الذكاء الاصطناعي
-                    </h3>
+                    </div>
 
-                    <p>
+                    <div class="setting-description">
                         اختر الروم الذي يعمل فيه الذكاء الاصطناعي.
-                    </p>
+                    </div>
 
-                    <form
-                        method="POST"
-                        action="/server/{{ guild.id }}/action"
-                    >
+                    <form method="POST"
+                          action="/server/{{ guild.id }}/action">
 
-                        <input
-                            type="hidden"
-                            name="action"
-                            value="ai_channel"
-                        >
+                        <input type="hidden"
+                               name="action"
+                               value="ai_channel">
 
-                        <select
-                            class="select"
-                            name="value"
-                            required
-                        >
+                        <select name="value">
 
                             <option value="">
-                                اختر روم الذكاء الاصطناعي
+                                اختر الروم
                             </option>
 
                             {% for channel in channels %}
 
-                            <option
-                                value="{{ channel.id }}"
-                                {% if settings.get("ai_channel_id") and settings.get("ai_channel_id")|string == channel.id|string %}
-                                    selected
-                                {% endif %}
-                            >
+                                <option value="{{ channel.id }}"
+                                    {% if settings.get("ai_channel_id")|string == channel.id|string %}
+                                        selected
+                                    {% endif %}>
 
-                                # {{ channel.name }}
+                                    #{{ channel.name }}
 
-                                {% if channel.category %}
-                                    — {{ channel.category }}
-                                {% endif %}
+                                    {% if channel.category %}
+                                        — {{ channel.category }}
+                                    {% endif %}
 
-                            </option>
+                                </option>
 
                             {% endfor %}
 
                         </select>
 
-                        {% if not channels %}
-
-                        <div class="empty-box">
-                            ⚠️ لا توجد رومات متاحة.
-                        </div>
-
-                        {% endif %}
 
                         <div class="confirm-buttons">
 
-                            <button
-                                class="confirm-btn"
-                                type="submit"
-                            >
+                            <button class="confirm-btn"
+                                    type="submit">
                                 ✅ تأكيد
                             </button>
 
-                            <button
-                                class="cancel-btn"
-                                type="button"
-                                onclick="resetForm(this)"
-                            >
+                            <button class="cancel-btn"
+                                    type="button"
+                                    onclick="resetForm(this)">
                                 ❌ إلغاء
                             </button>
 
@@ -1493,92 +1076,44 @@
 
         </section>
 
-        <!-- ======================================
-             SERVER SETTINGS
-        ======================================= -->
 
-        <section
-            id="settings"
-            class="section"
-        >
+        <!-- =========================
+             SETTINGS
+        ========================= -->
 
-            <div class="section-title">
+        <section id="settings"
+                 class="section">
+
+            <div class="card">
 
                 <h2>
-                    إعدادات السيرفر
+                    ⚙️ إعدادات السيرفر
                 </h2>
 
                 <p>
-                    معلومات السيرفر المتصل.
+                    معلومات السيرفر الحالية.
                 </p>
 
-            </div>
+                <div class="setting-row">
 
-            <div class="settings-grid">
-
-                <div class="setting-card">
-
-                    <h3>
+                    <div class="setting-title">
                         اسم السيرفر
-                    </h3>
+                    </div>
 
-                    <p>
-                        السيرفر المتصل حالياً.
-                    </p>
-
-                    <div class="ai-status">
+                    <div class="setting-description">
                         {{ guild.name }}
                     </div>
 
                 </div>
 
-                <div class="setting-card">
+                <div class="setting-row">
 
-                    <h3>
+                    <div class="setting-title">
                         Server ID
-                    </h3>
+                    </div>
 
-                    <p>
-                        معرف السيرفر.
-                    </p>
-
-                    <div
-                        class="ai-status"
-                        dir="ltr"
-                    >
+                    <div class="setting-description">
                         {{ guild.id }}
-                    </div>
-
-                </div>
-
-                <div class="setting-card">
-
-                    <h3>
-                        عدد الرومات
-                    </h3>
-
-                    <p>
-                        الرومات النصية التي استطاع البوت قراءتها.
-                    </p>
-
-                    <div class="ai-status">
-                        {{ channels|length }} روم
-                    </div>
-
-                </div>
-
-                <div class="setting-card">
-
-                    <h3>
-                        عدد الرتب
-                    </h3>
-
-                    <p>
-                        الرتب التي استطاع البوت قراءتها.
-                    </p>
-
-                    <div class="ai-status">
-                        {{ roles|length }} رتبة
                     </div>
 
                 </div>
@@ -1591,166 +1126,186 @@
 
 </div>
 
+
 <script>
 
-function showSection(id, button) {
+    /* =========================================
+       SECTION NAVIGATION
+    ========================================= */
 
-    document.querySelectorAll(".section").forEach(
-        section => {
+    function showSection(sectionName) {
+
+        document.querySelectorAll(".section").forEach(section => {
+
             section.classList.remove("active");
+
+        });
+
+
+        const target =
+            document.getElementById(sectionName);
+
+        if (target) {
+
+            target.classList.add("active");
+
         }
-    );
 
-    document.querySelectorAll(".nav-button").forEach(
-        nav => {
-            nav.classList.remove("active");
-        }
-    );
 
-    const target = document.getElementById(id);
+        document.querySelectorAll(".nav-btn[data-section]").forEach(btn => {
 
-    if (target) {
-        target.classList.add("active");
+            btn.classList.remove("active");
+
+            if (
+                btn.getAttribute("data-section")
+                ===
+                sectionName
+            ) {
+
+                btn.classList.add("active");
+
+            }
+
+        });
+
+
+        history.replaceState(
+            null,
+            "",
+            "#" + sectionName
+        );
+
     }
 
-    if (button) {
-        button.classList.add("active");
-    }
 
-    history.replaceState(
-        null,
-        "",
-        "?section=" + encodeURIComponent(id)
-    );
-}
+    document.querySelectorAll(
+        ".nav-btn[data-section]"
+    ).forEach(btn => {
+
+        btn.addEventListener(
+            "click",
+            function(event) {
+
+                event.preventDefault();
+
+                showSection(
+                    this.getAttribute(
+                        "data-section"
+                    )
+                );
+
+            }
+        );
+
+    });
 
 
-/* =========================================
-   إلغاء التغيير وإرجاع القيمة الأصلية
-========================================= */
+    /* =========================================
+       DEFAULT SECTION
+    ========================================= */
 
-function resetForm(button) {
+    const currentHash =
+        window.location.hash.replace(
+            "#",
+            ""
+        );
 
-    const form = button.closest("form");
 
-    if (!form) {
-        return;
-    }
+    if (
+        currentHash &&
+        document.getElementById(
+            currentHash
+        )
+    ) {
 
-    const select = form.querySelector("select");
+        showSection(
+            currentHash
+        );
 
-    if (!select) {
-        return;
-    }
-
-    const originalValue = select.getAttribute(
-        "data-original-value"
-    );
-
-    if (originalValue !== null) {
-        select.value = originalValue;
     } else {
-        select.selectedIndex = 0;
+
+        showSection(
+            "overview"
+        );
+
     }
-}
 
 
-/* =========================================
-   حفظ القيمة الأصلية لكل اختيار
-========================================= */
+    /* =========================================
+       SAVE ORIGINAL SELECT VALUE
+    ========================================= */
 
-document.querySelectorAll("form").forEach(
-    form => {
+    document.querySelectorAll(
+        "form"
+    ).forEach(form => {
 
-        const select = form.querySelector("select");
+        const select =
+            form.querySelector(
+                "select"
+            );
 
         if (!select) {
             return;
         }
 
-        const selectedOption =
-            select.querySelector("option:checked");
 
-        if (selectedOption) {
+        select.setAttribute(
+            "data-original-value",
+            select.value
+        );
 
-            select.setAttribute(
-                "data-original-value",
-                selectedOption.value
+    });
+
+
+    /* =========================================
+       CANCEL
+       يرجع الاختيار القديم بدون إرسال الفورم
+    ========================================= */
+
+    function resetForm(button) {
+
+        const form =
+            button.closest(
+                "form"
             );
+
+        if (!form) {
+            return;
+        }
+
+
+        const select =
+            form.querySelector(
+                "select"
+            );
+
+        if (!select) {
+            return;
+        }
+
+
+        const originalValue =
+            select.getAttribute(
+                "data-original-value"
+            );
+
+
+        if (
+            originalValue !== null
+        ) {
+
+            select.value =
+                originalValue;
 
         } else {
 
-            select.setAttribute(
-                "data-original-value",
-                ""
-            );
+            select.selectedIndex = 0;
 
         }
 
     }
-);
-
-
-/* =========================================
-   فتح القسم من الرابط
-========================================= */
-
-const params = new URLSearchParams(
-    window.location.search
-);
-
-const requestedSection = params.get("section");
-
-if (requestedSection) {
-
-    const target = document.getElementById(
-        requestedSection
-    );
-
-    if (target) {
-
-        document.querySelectorAll(
-            ".section"
-        ).forEach(
-            section => {
-                section.classList.remove("active");
-            }
-        );
-
-        target.classList.add("active");
-
-        document.querySelectorAll(
-            ".nav-button"
-        ).forEach(
-            button => {
-
-                const onclick =
-                    button.getAttribute("onclick");
-
-                if (
-                    onclick &&
-                    onclick.includes(
-                        "'" + requestedSection + "'"
-                    )
-                ) {
-
-                    button.classList.add("active");
-
-                } else {
-
-                    button.classList.remove("active");
-
-                }
-
-            }
-        );
-
-    }
-
-}
 
 </script>
 
 </body>
-
 </html>
