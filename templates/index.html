@@ -23,7 +23,7 @@
 
     <link
         rel="preconnect"
-        href="https://fonts.gstatic.com"
+        href="https://fonts.googleapis.com"
         crossorigin
     >
 
@@ -33,15 +33,9 @@
     >
 </head>
 
-
 <body>
 
-
 {% if not user %}
-
-<!-- =========================
-     صفحة تسجيل الدخول
-========================= -->
 
 <div class="login-page">
 
@@ -78,20 +72,9 @@
 
 </div>
 
-
 {% else %}
 
-
-<!-- =========================
-     التطبيق
-========================= -->
-
 <div class="app">
-
-
-    <!-- =========================
-         الشريط الجانبي
-    ========================= -->
 
     <aside
         class="sidebar"
@@ -116,14 +99,11 @@
 
         </div>
 
-
         <div class="sidebar-line"></div>
-
 
         <div class="menu-title">
             الرئيسية
         </div>
-
 
         <nav class="menu">
 
@@ -140,7 +120,6 @@
 
             </a>
 
-
             <a
                 href="#servers"
                 class="menu-item"
@@ -154,11 +133,9 @@
 
             </a>
 
-
             <div class="menu-title second">
                 الإدارة
             </div>
-
 
             <a
                 href="#protection"
@@ -173,7 +150,6 @@
 
             </a>
 
-
             <a
                 href="#logs"
                 class="menu-item"
@@ -186,7 +162,6 @@
                 </span>
 
             </a>
-
 
             <a
                 href="#tickets"
@@ -201,11 +176,9 @@
 
             </a>
 
-
             <div class="menu-title second">
                 الأدوات
             </div>
-
 
             <a
                 href="#ai"
@@ -219,7 +192,6 @@
                 </span>
 
             </a>
-
 
             <a
                 href="#settings"
@@ -235,11 +207,6 @@
             </a>
 
         </nav>
-
-
-        <!-- =========================
-             الحساب
-        ========================= -->
 
         <div class="sidebar-bottom">
 
@@ -264,7 +231,6 @@
 
                 </div>
 
-
                 <div class="profile-info">
 
                     <strong>
@@ -276,7 +242,6 @@
                     </span>
 
                 </div>
-
 
                 <a
                     href="/logout"
@@ -293,14 +258,7 @@
     </aside>
 
 
-    <!-- =========================
-         المحتوى
-    ========================= -->
-
     <main class="content">
-
-
-        <!-- Header -->
 
         <header class="topbar">
 
@@ -310,7 +268,6 @@
             >
                 ☰
             </button>
-
 
             <div>
 
@@ -324,7 +281,6 @@
 
             </div>
 
-
             <div class="top-user">
 
                 <div class="status-dot"></div>
@@ -337,10 +293,6 @@
 
         </header>
 
-
-        <!-- =========================
-             Welcome
-        ========================= -->
 
         <section class="welcome-card">
 
@@ -360,7 +312,6 @@
 
             </div>
 
-
             <div class="welcome-decoration">
 
                 <div class="decoration-circle circle-one"></div>
@@ -375,12 +326,7 @@
         </section>
 
 
-        <!-- =========================
-             الإحصائيات
-        ========================= -->
-
         <section class="stats-grid">
-
 
             <div class="stat-card">
 
@@ -468,10 +414,6 @@
         </section>
 
 
-        <!-- =========================
-             السيرفرات
-        ========================= -->
-
         <section
             class="section"
             id="servers"
@@ -500,11 +442,9 @@
 
             <div class="servers-grid">
 
-
                 {% for guild in guilds %}
 
                 <div class="server-card">
-
 
                     <div class="server-top">
 
@@ -526,7 +466,6 @@
                             {% endif %}
 
                         </div>
-
 
                         <div class="server-status">
                             ●
@@ -563,11 +502,9 @@
 
                     </button>
 
-
                 </div>
 
                 {% else %}
-
 
                 <div class="empty-card">
 
@@ -585,18 +522,12 @@
 
                 </div>
 
-
                 {% endfor %}
-
 
             </div>
 
         </section>
 
-
-        <!-- =========================
-             الأقسام القادمة
-        ========================= -->
 
         <section
             class="coming-section"
@@ -629,11 +560,9 @@
 
         </section>
 
-
     </main>
 
 </div>
-
 
 {% endif %}
 
@@ -645,21 +574,17 @@ function toggleSidebar() {
     const sidebar =
         document.getElementById("sidebar");
 
-    sidebar.classList.toggle("open");
+    if (sidebar) {
+        sidebar.classList.toggle("open");
+    }
 
 }
 
 
 function manageServer(id) {
 
-    console.log(
-        "Selected server:",
-        id
-    );
-
-    alert(
-        "سيتم فتح إعدادات السيرفر في الخطوة القادمة."
-    );
+    window.location.href =
+        "/server/" + id;
 
 }
 
@@ -689,6 +614,6 @@ document
 
 </script>
 
-
 </body>
+
 </html>
