@@ -669,8 +669,16 @@ def check_role(
 
 
 # =========================================================
-# NEW WHITELIST SYSTEM
+# WHITELIST / PROTECTED ROLES
 # =========================================================
+
+WHITELIST_ROLES = [
+    "MT | CEO",
+    "MT | COowner ↔",
+    "MT | Owner",
+    "Bot"
+]
+
 
 def is_whitelisted(
     member,
@@ -687,6 +695,20 @@ def is_whitelisted(
     if member.id == guild.owner_id:
         return True
 
+    # الرتب المحمية الثابتة
+    # المطابقة تدعم اختلاف الكابيتال والزخارف
+    for role in member.roles:
+
+        for whitelist_role in WHITELIST_ROLES:
+
+            if role_matches(
+                role.name,
+                whitelist_role
+            ):
+
+                return True
+
+    # الرتب المستثناة الموجودة في قاعدة البيانات
     excluded_roles = get_excluded_role_ids(
         guild.id
     )
@@ -1172,7 +1194,6 @@ async def on_member_ban(
 
         return
 
-    # محاولة فك حظر المستهدف
     try:
 
         await guild.unban(
@@ -1186,7 +1207,6 @@ async def on_member_ban(
 
         unban_result = f"فشل فك الحظر: {error}"
 
-    # حظر المنفذ
     actor_result = await ban_unauthorized_actor(
         guild,
         actor,
@@ -1330,7 +1350,6 @@ async def on_member_remove(
 
     await asyncio.sleep(0.5)
 
-    # محاولة معرفة هل هي Kick
     actor = await get_audit_actor(
         member.guild,
         discord.AuditLogAction.kick,
@@ -1662,7 +1681,6 @@ async def on_guild_role_update(
 
         return
 
-    # إذا تغيرت الصلاحيات نحاول إرجاعها
     restore_result = "لم تتم الاستعادة."
 
     if before.permissions != after.permissions:
@@ -2229,11 +2247,29 @@ def can_manage_security(
     if not interaction.guild:
         return False
 
-    # Owner فقط
-    return (
-        interaction.user.id
-        ==
-        interaction.guild.owner_id
+    # -----------------------------------------------------
+    # مالك السيرفر الحقيقي
+    # -----------------------------------------------------
+
+    if interaction.user.id == interaction.guild.owner_id:
+        return True
+
+    # -----------------------------------------------------
+    # Owner + COowner فقط
+    # -----------------------------------------------------
+
+    allowed_roles = [
+        "MT | Owner",
+        "MT | COowner ↔"
+    ]
+
+    return any(
+        role_matches(
+            role.name,
+            allowed_role
+        )
+        for role in interaction.user.roles
+        for allowed_role in allowed_roles
     )
 
 
@@ -2258,7 +2294,7 @@ async def set_excluded_role(
     ):
 
         await interaction.response.send_message(
-            "❌ هذا الأمر للـ Owner فقط.",
+            "❌ هذا الأمر للـ Owner و COowner فقط.",
             ephemeral=True
         )
 
@@ -2317,7 +2353,7 @@ async def remove_excluded_role_command(
     ):
 
         await interaction.response.send_message(
-            "❌ هذا الأمر للـ Owner فقط.",
+            "❌ هذا الأمر للـ Owner و COowner فقط.",
             ephemeral=True
         )
 
@@ -2371,7 +2407,7 @@ async def clear_excluded_roles_command(
     ):
 
         await interaction.response.send_message(
-            "❌ هذا الأمر للـ Owner فقط.",
+            "❌ هذا الأمر للـ Owner و COowner فقط.",
             ephemeral=True
         )
 
@@ -2412,7 +2448,7 @@ async def list_excluded_roles_command(
     ):
 
         await interaction.response.send_message(
-            "❌ هذا الأمر للـ Owner فقط.",
+            "❌ هذا الأمر للـ Owner و COowner فقط.",
             ephemeral=True
         )
 
@@ -2492,7 +2528,7 @@ async def set_log_command(
     ):
 
         await interaction.response.send_message(
-            "❌ هذا الأمر للـ Owner فقط.",
+            "❌ هذا الأمر للـ Owner و COowner فقط.",
             ephemeral=True
         )
 
@@ -2839,7 +2875,6 @@ class TicketCloseView(
         db.commit()
         db.close()
 
-        # إرسال الترانسكريبت إلى Security Log إذا كان محددًا
         security = get_log_channel(
             interaction.guild,
             "security_log_channel_id"
@@ -3031,8 +3066,6 @@ class TicketSelectView(
                 read_message_history=True
             )
 
-        # منع نظام الحماية من اعتبار إنشاء التذكرة اختراقًا
-        # لأن منشئ التذكرة هو البوت نفسه
         channel = await guild.create_text_channel(
             name=f"ticket-{member.name}",
             category=category,
