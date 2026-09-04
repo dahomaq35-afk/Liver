@@ -26,270 +26,572 @@
 
     <style>
 
-        .server-page {
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: Cairo, sans-serif;
+            background: #08090d;
+            color: white;
+        }
+
+        .dashboard {
             min-height: 100vh;
             display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 25px;
-
-            background:
-                radial-gradient(
-                    circle at 50% 15%,
-                    rgba(88, 101, 242, 0.14),
-                    transparent 38%
-                ),
-                #08090d;
         }
 
+        /* =========================
+           SIDEBAR
+        ========================= */
 
-        .server-panel {
-            width: min(560px, 100%);
+        .sidebar {
+            width: 245px;
+            min-height: 100vh;
 
-            background: #101117;
+            background: #0d0e13;
 
-            border: 1px solid #23252f;
+            border-left: 1px solid #20222b;
 
-            border-radius: 24px;
+            padding: 22px 14px;
 
-            padding: 32px;
-
-            box-shadow:
-                0 30px 90px rgba(0, 0, 0, 0.5);
+            position: fixed;
+            right: 0;
+            top: 0;
+            bottom: 0;
         }
 
+        .brand {
+            padding: 10px 12px 25px;
 
-        .server-header {
+            border-bottom: 1px solid #20222b;
+
+            margin-bottom: 18px;
+        }
+
+        .brand-title {
+            font-size: 18px;
+            font-weight: 800;
+        }
+
+        .brand-subtitle {
+            color: #686b78;
+            font-size: 10px;
+            margin-top: 3px;
+        }
+
+        .server-small {
             display: flex;
-
             align-items: center;
+            gap: 10px;
 
-            gap: 17px;
+            padding: 10px;
 
-            margin-bottom: 30px;
+            background: #15161d;
+
+            border: 1px solid #252833;
+
+            border-radius: 12px;
+
+            margin-bottom: 18px;
         }
 
+        .server-small-icon {
+            width: 38px;
+            height: 38px;
 
-        .selected-server-icon {
-            width: 72px;
-            height: 72px;
-
-            flex-shrink: 0;
-
-            border-radius: 20px;
-
-            overflow: hidden;
+            border-radius: 11px;
 
             background: #20222d;
 
             display: flex;
-
             align-items: center;
             justify-content: center;
 
-            font-size: 25px;
-
             font-weight: 800;
+
+            overflow: hidden;
         }
 
-
-        .selected-server-icon img {
+        .server-small-icon img {
             width: 100%;
             height: 100%;
-
             object-fit: cover;
         }
 
-
-        .server-header-info {
+        .server-small-name {
             min-width: 0;
         }
 
-
-        .server-header-info span {
-            color: #8d909d;
+        .server-small-name strong {
+            display: block;
 
             font-size: 11px;
-        }
-
-
-        .server-header-info h1 {
-            font-size: 22px;
-
-            margin-top: 2px;
 
             white-space: nowrap;
-
             overflow: hidden;
-
             text-overflow: ellipsis;
         }
 
-
-        .server-header-info p {
+        .server-small-name span {
             color: #656874;
-
-            font-size: 10px;
-
-            margin-top: 2px;
+            font-size: 9px;
         }
 
+        .nav-title {
+            color: #555864;
 
-        .menu-title {
-            color: #8d909d;
+            font-size: 9px;
 
-            font-size: 11px;
+            padding: 0 10px;
 
-            margin-bottom: 10px;
+            margin-bottom: 7px;
         }
 
+        .nav-button {
+            width: 100%;
 
-        .server-menu {
-            display: grid;
+            border: 0;
 
-            grid-template-columns: 1fr 1fr;
+            background: transparent;
 
-            gap: 11px;
-        }
+            color: #9295a2;
 
+            padding: 11px;
 
-        .server-option {
-            min-height: 90px;
-
-            border-radius: 15px;
-
-            border: 1px solid #292c38;
-
-            background: #15161d;
-
-            color: white;
+            border-radius: 10px;
 
             font-family: inherit;
 
             text-align: right;
 
-            padding: 16px;
-
             cursor: pointer;
 
-            transition: 0.2s;
-
             display: flex;
 
-            flex-direction: column;
-
-            justify-content: center;
-
-            gap: 5px;
-        }
-
-
-        .server-option:hover {
-            transform: translateY(-2px);
-
-            background: #1a1c27;
-
-            border-color: #5865f2;
-
-            box-shadow:
-                0 10px 30px rgba(88, 101, 242, 0.12);
-        }
-
-
-        .option-icon {
-            font-size: 19px;
-
-            color: #8992ff;
-        }
-
-
-        .option-title {
-            font-size: 13px;
-
-            font-weight: 700;
-        }
-
-
-        .option-description {
-            color: #656874;
-
-            font-size: 9px;
-        }
-
-
-        .server-actions {
-            margin-top: 22px;
-
-            display: flex;
+            align-items: center;
 
             gap: 10px;
+
+            margin-bottom: 4px;
+
+            transition: .2s;
         }
 
-
-        .close-btn,
-        .back-btn {
-            flex: 1;
-
-            padding: 12px;
-
-            border-radius: 11px;
-
-            font-family: inherit;
-
-            font-size: 12px;
-
-            font-weight: 700;
-
-            cursor: pointer;
-
-            transition: 0.2s;
+        .nav-button:hover {
+            background: #171922;
+            color: white;
         }
 
+        .nav-button.active {
+            background: rgba(88, 101, 242, .15);
+            color: white;
+        }
 
-        .close-btn {
+        .nav-icon {
+            width: 22px;
+            text-align: center;
+            font-size: 16px;
+        }
+
+        .sidebar-bottom {
+            position: absolute;
+
+            left: 14px;
+            right: 14px;
+            bottom: 18px;
+        }
+
+        .back-home {
+            width: 100%;
+
+            padding: 10px;
+
+            border-radius: 10px;
+
             border: 1px solid #292c38;
 
             background: transparent;
 
-            color: #8d909d;
+            color: #8e919d;
+
+            font-family: inherit;
+
+            cursor: pointer;
         }
 
-
-        .close-btn:hover {
-            background: #191a21;
-
+        .back-home:hover {
+            background: #181a21;
             color: white;
         }
 
+        /* =========================
+           MAIN
+        ========================= */
 
-        .back-btn {
-            border: 1px solid #5865f2;
+        .main {
+            margin-right: 245px;
+
+            width: calc(100% - 245px);
+
+            padding: 32px;
+        }
+
+        .topbar {
+            display: flex;
+
+            align-items: center;
+
+            justify-content: space-between;
+
+            margin-bottom: 28px;
+        }
+
+        .topbar h1 {
+            margin: 0;
+
+            font-size: 25px;
+        }
+
+        .topbar p {
+            margin: 4px 0 0;
+
+            color: #676a76;
+
+            font-size: 11px;
+        }
+
+        .user-box {
+            display: flex;
+
+            align-items: center;
+
+            gap: 9px;
+
+            padding: 8px 12px;
+
+            border: 1px solid #242630;
+
+            background: #101117;
+
+            border-radius: 12px;
+        }
+
+        .user-box img {
+            width: 30px;
+            height: 30px;
+
+            border-radius: 50%;
+        }
+
+        .user-box span {
+            font-size: 10px;
+            color: #aaa;
+        }
+
+        /* =========================
+           SECTIONS
+        ========================= */
+
+        .section {
+            display: none;
+        }
+
+        .section.active {
+            display: block;
+        }
+
+        .section-title {
+            margin-bottom: 15px;
+        }
+
+        .section-title h2 {
+            margin: 0;
+
+            font-size: 18px;
+        }
+
+        .section-title p {
+            color: #686b77;
+
+            font-size: 10px;
+
+            margin-top: 3px;
+        }
+
+        /* =========================
+           CARDS
+        ========================= */
+
+        .cards {
+            display: grid;
+
+            grid-template-columns:
+                repeat(4, minmax(0, 1fr));
+
+            gap: 12px;
+
+            margin-bottom: 25px;
+        }
+
+        .card {
+            background: #101117;
+
+            border: 1px solid #23252f;
+
+            border-radius: 15px;
+
+            padding: 17px;
+        }
+
+        .card-label {
+            color: #737682;
+
+            font-size: 9px;
+        }
+
+        .card-value {
+            font-size: 22px;
+
+            font-weight: 800;
+
+            margin-top: 6px;
+        }
+
+        /* =========================
+           SETTINGS
+        ========================= */
+
+        .settings-grid {
+            display: grid;
+
+            grid-template-columns:
+                repeat(2, minmax(0, 1fr));
+
+            gap: 14px;
+        }
+
+        .setting-card {
+            background: #101117;
+
+            border: 1px solid #242630;
+
+            border-radius: 16px;
+
+            padding: 20px;
+        }
+
+        .setting-card h3 {
+            margin: 0;
+
+            font-size: 13px;
+        }
+
+        .setting-card p {
+            color: #666976;
+
+            font-size: 9px;
+
+            margin: 5px 0 15px;
+        }
+
+        .select {
+            width: 100%;
+
+            padding: 12px;
+
+            border-radius: 10px;
+
+            border: 1px solid #2b2e3a;
+
+            background: #171820;
+
+            color: white;
+
+            font-family: inherit;
+
+            outline: none;
+        }
+
+        .select:focus {
+            border-color: #5865f2;
+        }
+
+        .save-btn {
+            margin-top: 10px;
+
+            width: 100%;
+
+            padding: 11px;
+
+            border: 0;
+
+            border-radius: 10px;
 
             background: #5865f2;
 
             color: white;
+
+            font-family: inherit;
+
+            font-weight: 700;
+
+            cursor: pointer;
         }
 
-
-        .back-btn:hover {
+        .save-btn:hover {
             background: #4752c4;
-
-            border-color: #4752c4;
         }
 
+        /* =========================
+           AI
+        ========================= */
 
-        @media (max-width: 500px) {
+        .ai-status {
+            padding: 12px;
 
-            .server-panel {
-                padding: 23px;
+            border-radius: 10px;
+
+            margin-bottom: 15px;
+
+            background: #15161d;
+
+            border: 1px solid #292c38;
+
+            font-size: 10px;
+        }
+
+        .enabled {
+            color: #65d68b;
+        }
+
+        .disabled {
+            color: #e47777;
+        }
+
+        .switch-buttons {
+            display: flex;
+            gap: 8px;
+        }
+
+        .switch-buttons button {
+            flex: 1;
+
+            padding: 10px;
+
+            border-radius: 9px;
+
+            border: 1px solid #2a2d38;
+
+            background: #171820;
+
+            color: white;
+
+            font-family: inherit;
+
+            cursor: pointer;
+        }
+
+        .switch-buttons button:hover {
+            border-color: #5865f2;
+        }
+
+        /* =========================
+           LOGS
+        ========================= */
+
+        .logs-list {
+            display: grid;
+
+            gap: 10px;
+        }
+
+        .log-item {
+            background: #101117;
+
+            border: 1px solid #242630;
+
+            border-radius: 12px;
+
+            padding: 14px;
+        }
+
+        .log-item strong {
+            font-size: 11px;
+        }
+
+        .log-item p {
+            margin: 4px 0 0;
+
+            color: #777a86;
+
+            font-size: 9px;
+        }
+
+        /* =========================
+           MOBILE
+        ========================= */
+
+        @media (max-width: 900px) {
+
+            .sidebar {
+                width: 210px;
             }
 
-            .server-menu {
+            .main {
+                margin-right: 210px;
+
+                width: calc(100% - 210px);
+
+                padding: 20px;
+            }
+
+            .cards {
+                grid-template-columns:
+                    repeat(2, 1fr);
+            }
+
+        }
+
+        @media (max-width: 650px) {
+
+            .dashboard {
+                display: block;
+            }
+
+            .sidebar {
+                position: relative;
+
+                width: 100%;
+
+                min-height: auto;
+
+                border-left: 0;
+
+                border-bottom: 1px solid #20222b;
+            }
+
+            .sidebar-bottom {
+                position: static;
+
+                margin-top: 15px;
+            }
+
+            .main {
+                margin-right: 0;
+
+                width: 100%;
+
+                padding: 17px;
+            }
+
+            .settings-grid {
                 grid-template-columns: 1fr;
             }
 
-            .server-actions {
-                flex-direction: column;
+            .cards {
+                grid-template-columns: 1fr 1fr;
             }
 
         }
@@ -301,23 +603,38 @@
 
 <body>
 
-<div class="server-page">
-
-    <div class="server-panel">
+<div class="dashboard">
 
 
-        <!-- معلومات السيرفر -->
+    <!-- ======================================
+         SIDEBAR
+    ======================================= -->
 
-        <div class="server-header">
+    <aside class="sidebar">
 
 
-            <div class="selected-server-icon">
+        <div class="brand">
+
+            <div class="brand-title">
+                MT BOT
+            </div>
+
+            <div class="brand-subtitle">
+                Advanced Discord Dashboard
+            </div>
+
+        </div>
+
+
+        <div class="server-small">
+
+            <div class="server-small-icon">
 
                 {% if guild.icon %}
 
                 <img
-                    src="https://cdn.discordapp.com/icons/{{ guild.id }}/{{ guild.icon }}.png?size=256"
-                    alt="{{ guild.name }}"
+                    src="https://cdn.discordapp.com/icons/{{ guild.id }}/{{ guild.icon }}.png?size=128"
+                    alt=""
                 >
 
                 {% else %}
@@ -328,196 +645,921 @@
 
             </div>
 
+            <div class="server-small-name">
 
-            <div class="server-header-info">
+                <strong>
+                    {{ guild.name }}
+                </strong>
 
                 <span>
-                    السيرفر المحدد
+                    Server Dashboard
                 </span>
-
-                <h1>
-                    {{ guild.name }}
-                </h1>
-
-                <p>
-                    MT BOT Dashboard
-                </p>
 
             </div>
 
         </div>
 
 
-        <!-- عنوان القائمة -->
-
-        <div class="menu-title">
-            اختر القسم الذي تريد إدارته
+        <div class="nav-title">
+            الإدارة
         </div>
 
 
-        <!-- قائمة الإدارة -->
-
-        <div class="server-menu">
-
-
-            <button
-                class="server-option"
-                onclick="openSection('الحماية')"
-            >
-
-                <span class="option-icon">
-                    🛡️
-                </span>
-
-                <span class="option-title">
-                    الحماية
-                </span>
-
-                <span class="option-description">
-                    إعدادات حماية السيرفر
-                </span>
-
-            </button>
+        <button
+            class="nav-button active"
+            onclick="showSection('overview', this)"
+        >
+            <span class="nav-icon">📊</span>
+            الرئيسية
+        </button>
 
 
-            <button
-                class="server-option"
-                onclick="openSection('السجلات')"
-            >
-
-                <span class="option-icon">
-                    📋
-                </span>
-
-                <span class="option-title">
-                    السجلات
-                </span>
-
-                <span class="option-description">
-                    متابعة أحداث السيرفر
-                </span>
-
-            </button>
+        <button
+            class="nav-button"
+            onclick="showSection('protection', this)"
+        >
+            <span class="nav-icon">🛡️</span>
+            الحماية
+        </button>
 
 
-            <button
-                class="server-option"
-                onclick="openSection('التذاكر')"
-            >
+        <button
+            class="nav-button"
+            onclick="showSection('logs', this)"
+        >
+            <span class="nav-icon">📋</span>
+            السجلات
+        </button>
 
-                <span class="option-icon">
-                    🎫
-                </span>
 
-                <span class="option-title">
-                    التذاكر
-                </span>
+        <button
+            class="nav-button"
+            onclick="showSection('tickets', this)"
+        >
+            <span class="nav-icon">🎫</span>
+            التذاكر
+        </button>
 
-                <span class="option-description">
-                    إدارة نظام التذاكر
-                </span>
 
-            </button>
+        <button
+            class="nav-button"
+            onclick="showSection('ai', this)"
+        >
+            <span class="nav-icon">🤖</span>
+            الذكاء الاصطناعي
+        </button>
 
+
+        <button
+            class="nav-button"
+            onclick="showSection('settings', this)"
+        >
+            <span class="nav-icon">⚙️</span>
+            إعدادات السيرفر
+        </button>
+
+
+        <div class="sidebar-bottom">
 
             <button
-                class="server-option"
-                onclick="openSection('الذكاء الاصطناعي')"
-            >
-
-                <span class="option-icon">
-                    🤖
-                </span>
-
-                <span class="option-title">
-                    الذكاء الاصطناعي
-                </span>
-
-                <span class="option-description">
-                    إعدادات الذكاء الاصطناعي
-                </span>
-
-            </button>
-
-
-            <button
-                class="server-option"
-                onclick="openSection('إعدادات السيرفر')"
-            >
-
-                <span class="option-icon">
-                    ⚙️
-                </span>
-
-                <span class="option-title">
-                    إعدادات السيرفر
-                </span>
-
-                <span class="option-description">
-                    إعدادات MT BOT
-                </span>
-
-            </button>
-
-
-            <button
-                class="server-option"
-                onclick="openSection('الأوامر')"
-            >
-
-                <span class="option-icon">
-                    ⚡
-                </span>
-
-                <span class="option-title">
-                    الأوامر
-                </span>
-
-                <span class="option-description">
-                    إدارة أوامر البوت
-                </span>
-
-            </button>
-
-
-        </div>
-
-
-        <!-- الأزرار السفلية -->
-
-        <div class="server-actions">
-
-            <button
-                class="back-btn"
+                class="back-home"
                 onclick="window.location.href='/'"
             >
-                ← العودة للرئيسية
-            </button>
-
-
-            <button
-                class="close-btn"
-                onclick="window.close()"
-            >
-                إغلاق
+                ← العودة للسيرفرات
             </button>
 
         </div>
 
 
-    </div>
+    </aside>
+
+
+    <!-- ======================================
+         MAIN
+    ======================================= -->
+
+    <main class="main">
+
+
+        <div class="topbar">
+
+            <div>
+
+                <h1>
+                    لوحة تحكم MT BOT
+                </h1>
+
+                <p>
+                    إدارة السيرفر والتحكم بإعدادات البوت
+                </p>
+
+            </div>
+
+
+            {% if user %}
+
+            <div class="user-box">
+
+                {% if user.avatar %}
+
+                <img
+                    src="https://cdn.discordapp.com/avatars/{{ user.id }}/{{ user.avatar }}.png?size=64"
+                    alt=""
+                >
+
+                {% endif %}
+
+                <span>
+                    {{ user.global_name }}
+                </span>
+
+            </div>
+
+            {% endif %}
+
+        </div>
+
+
+        <!-- ======================================
+             OVERVIEW
+        ======================================= -->
+
+        <section
+            id="overview"
+            class="section active"
+        >
+
+            <div class="section-title">
+
+                <h2>
+                    نظرة عامة
+                </h2>
+
+                <p>
+                    إحصائيات ومعلومات السيرفر
+                </p>
+
+            </div>
+
+
+            <div class="cards">
+
+
+                <div class="card">
+
+                    <div class="card-label">
+                        السجلات الجنائية
+                    </div>
+
+                    <div class="card-value">
+                        {{ stats.criminal_records }}
+                    </div>
+
+                </div>
+
+
+                <div class="card">
+
+                    <div class="card-label">
+                        التحذيرات
+                    </div>
+
+                    <div class="card-value">
+                        {{ stats.warnings }}
+                    </div>
+
+                </div>
+
+
+                <div class="card">
+
+                    <div class="card-label">
+                        السجلات الأمنية
+                    </div>
+
+                    <div class="card-value">
+                        {{ stats.security_logs }}
+                    </div>
+
+                </div>
+
+
+                <div class="card">
+
+                    <div class="card-label">
+                        التذاكر
+                    </div>
+
+                    <div class="card-value">
+                        {{ stats.tickets }}
+                    </div>
+
+                </div>
+
+
+                <div class="card">
+
+                    <div class="card-label">
+                        الصكوك
+                    </div>
+
+                    <div class="card-value">
+                        {{ stats.deeds }}
+                    </div>
+
+                </div>
+
+
+                <div class="card">
+
+                    <div class="card-label">
+                        أوامر القبض
+                    </div>
+
+                    <div class="card-value">
+                        {{ stats.warrants }}
+                    </div>
+
+                </div>
+
+
+                <div class="card">
+
+                    <div class="card-label">
+                        البلاغات
+                    </div>
+
+                    <div class="card-value">
+                        {{ stats.dispatches }}
+                    </div>
+
+                </div>
+
+
+                <div class="card">
+
+                    <div class="card-label">
+                        التقارير الطبية
+                    </div>
+
+                    <div class="card-value">
+                        {{ stats.medical_reports }}
+                    </div>
+
+                </div>
+
+
+            </div>
+
+        </section>
+
+
+        <!-- ======================================
+             PROTECTION
+        ======================================= -->
+
+        <section
+            id="protection"
+            class="section"
+        >
+
+            <div class="section-title">
+
+                <h2>
+                    الحماية
+                </h2>
+
+                <p>
+                    إدارة حماية السيرفر والاستثناءات
+                </p>
+
+            </div>
+
+
+            <div class="settings-grid">
+
+
+                <div class="setting-card">
+
+                    <h3>
+                        الرتب المستثناة
+                    </h3>
+
+                    <p>
+                        اختر الرتبة التي لا تريد تطبيق بعض إجراءات الحماية عليها.
+                    </p>
+
+
+                    <form
+                        method="POST"
+                        action="/server/{{ guild.id }}/action"
+                    >
+
+                        <input
+                            type="hidden"
+                            name="action"
+                            value="add_excluded_role"
+                        >
+
+
+                        <input
+                            class="select"
+                            type="text"
+                            name="value"
+                            placeholder="أدخل ID الرتبة"
+                        >
+
+
+                        <button
+                            class="save-btn"
+                            type="submit"
+                        >
+                            إضافة الرتبة
+                        </button>
+
+                    </form>
+
+                </div>
+
+
+                <div class="setting-card">
+
+                    <h3>
+                        الرتب المستثناة حالياً
+                    </h3>
+
+                    <p>
+                        الرتب الموجودة في قائمة الاستثناء.
+                    </p>
+
+
+                    {% if excluded_roles %}
+
+                    {% for role in excluded_roles %}
+
+                    <div class="ai-status">
+                        رتبة ID: {{ role }}
+                    </div>
+
+                    <form
+                        method="POST"
+                        action="/server/{{ guild.id }}/action"
+                    >
+
+                        <input
+                            type="hidden"
+                            name="action"
+                            value="remove_excluded_role"
+                        >
+
+                        <input
+                            type="hidden"
+                            name="value"
+                            value="{{ role }}"
+                        >
+
+                        <button
+                            class="save-btn"
+                            type="submit"
+                        >
+                            حذف الاستثناء
+                        </button>
+
+                    </form>
+
+                    {% endfor %}
+
+                    {% else %}
+
+                    <div class="ai-status">
+                        لا توجد رتب مستثناة حالياً.
+                    </div>
+
+                    {% endif %}
+
+                </div>
+
+
+            </div>
+
+        </section>
+
+
+        <!-- ======================================
+             LOGS
+        ======================================= -->
+
+        <section
+            id="logs"
+            class="section"
+        >
+
+            <div class="section-title">
+
+                <h2>
+                    السجلات
+                </h2>
+
+                <p>
+                    اختر روم لكل نوع من أنواع السجلات.
+                </p>
+
+            </div>
+
+
+            <div class="settings-grid">
+
+
+                {% set log_channels = [
+                    ("security_log", "سجل الحماية", "security_log_channel_id"),
+                    ("delete_log", "سجل حذف الرسائل", "delete_log_channel_id"),
+                    ("edit_log", "سجل تعديل الرسائل", "edit_log_channel_id"),
+                    ("member_log", "سجل الأعضاء", "member_log_channel_id"),
+                    ("mod_log", "سجل الإدارة", "mod_log_channel_id"),
+                    ("role_log", "سجل الرتب", "role_log_channel_id"),
+                    ("channel_log", "سجل الرومات", "channel_log_channel_id")
+                ] %}
+
+
+                {% for action_name, title, setting_name in log_channels %}
+
+                <div class="setting-card">
+
+                    <h3>
+                        {{ title }}
+                    </h3>
+
+                    <p>
+                        اختر الروم الذي يستقبل هذا النوع من السجلات.
+                    </p>
+
+
+                    <form
+                        method="POST"
+                        action="/server/{{ guild.id }}/action"
+                    >
+
+                        <input
+                            type="hidden"
+                            name="action"
+                            value="{{ action_name }}"
+                        >
+
+
+                        <select
+                            class="select"
+                            name="value"
+                        >
+
+                            <option value="">
+                                اختر الروم
+                            </option>
+
+
+                            {% for channel in channels %}
+
+                            <option
+                                value="{{ channel.id }}"
+                                {% if settings[setting_name] and settings[setting_name]|string == channel.id|string %}
+                                selected
+                                {% endif %}
+                            >
+
+                                # {{ channel.name }}
+
+                                {% if channel.category %}
+                                — {{ channel.category }}
+                                {% endif %}
+
+                            </option>
+
+                            {% endfor %}
+
+                        </select>
+
+
+                        <button
+                            class="save-btn"
+                            type="submit"
+                        >
+                            حفظ الروم
+                        </button>
+
+                    </form>
+
+                </div>
+
+                {% endfor %}
+
+
+            </div>
+
+        </section>
+
+
+        <!-- ======================================
+             TICKETS
+        ======================================= -->
+
+        <section
+            id="tickets"
+            class="section"
+        >
+
+            <div class="section-title">
+
+                <h2>
+                    التذاكر
+                </h2>
+
+                <p>
+                    متابعة وإدارة التذاكر المسجلة.
+                </p>
+
+            </div>
+
+
+            <div class="cards">
+
+                <div class="card">
+
+                    <div class="card-label">
+                        إجمالي التذاكر
+                    </div>
+
+                    <div class="card-value">
+                        {{ stats.tickets }}
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <div class="logs-list">
+
+                {% if tickets %}
+
+                {% for ticket in tickets %}
+
+                <div class="log-item">
+
+                    <strong>
+                        تذكرة #{{ ticket.id }}
+                    </strong>
+
+                    <p>
+                        المستخدم: {{ ticket.user_id }}
+                    </p>
+
+                    <p>
+                        الحالة: {{ ticket.status }}
+                    </p>
+
+                </div>
+
+                {% endfor %}
+
+                {% else %}
+
+                <div class="log-item">
+
+                    <strong>
+                        لا توجد تذاكر
+                    </strong>
+
+                    <p>
+                        لم يتم تسجيل أي تذاكر لهذا السيرفر حالياً.
+                    </p>
+
+                </div>
+
+                {% endif %}
+
+            </div>
+
+        </section>
+
+
+        <!-- ======================================
+             AI
+        ======================================= -->
+
+        <section
+            id="ai"
+            class="section"
+        >
+
+            <div class="section-title">
+
+                <h2>
+                    الذكاء الاصطناعي
+                </h2>
+
+                <p>
+                    التحكم في تشغيل الذكاء الاصطناعي وتحديد رومه.
+                </p>
+
+            </div>
+
+
+            <div class="settings-grid">
+
+
+                <div class="setting-card">
+
+                    <h3>
+                        حالة الذكاء الاصطناعي
+                    </h3>
+
+                    <p>
+                        تشغيل أو إيقاف نظام الذكاء الاصطناعي.
+                    </p>
+
+
+                    {% if settings.ai_enabled %}
+
+                    <div class="ai-status enabled">
+                        ● الذكاء الاصطناعي مفعّل
+                    </div>
+
+                    {% else %}
+
+                    <div class="ai-status disabled">
+                        ● الذكاء الاصطناعي متوقف
+                    </div>
+
+                    {% endif %}
+
+
+                    <div class="switch-buttons">
+
+
+                        <form
+                            method="POST"
+                            action="/server/{{ guild.id }}/action"
+                            style="flex:1;"
+                        >
+
+                            <input
+                                type="hidden"
+                                name="action"
+                                value="ai_enable"
+                            >
+
+                            <button
+                                type="submit"
+                                style="width:100%;"
+                            >
+                                تشغيل
+                            </button>
+
+                        </form>
+
+
+                        <form
+                            method="POST"
+                            action="/server/{{ guild.id }}/action"
+                            style="flex:1;"
+                        >
+
+                            <input
+                                type="hidden"
+                                name="action"
+                                value="ai_disable"
+                            >
+
+                            <button
+                                type="submit"
+                                style="width:100%;"
+                            >
+                                إيقاف
+                            </button>
+
+                        </form>
+
+
+                    </div>
+
+                </div>
+
+
+                <div class="setting-card">
+
+                    <h3>
+                        روم الذكاء الاصطناعي
+                    </h3>
+
+                    <p>
+                        اختر الروم الذي يعمل فيه الذكاء الاصطناعي.
+                    </p>
+
+
+                    <form
+                        method="POST"
+                        action="/server/{{ guild.id }}/action"
+                    >
+
+                        <input
+                            type="hidden"
+                            name="action"
+                            value="ai_channel"
+                        >
+
+
+                        <select
+                            class="select"
+                            name="value"
+                        >
+
+                            <option value="">
+                                اختر روم الذكاء الاصطناعي
+                            </option>
+
+
+                            {% for channel in channels %}
+
+                            <option
+                                value="{{ channel.id }}"
+                                {% if settings.ai_channel_id and settings.ai_channel_id|string == channel.id|string %}
+                                selected
+                                {% endif %}
+                            >
+
+                                # {{ channel.name }}
+
+                                {% if channel.category %}
+                                — {{ channel.category }}
+                                {% endif %}
+
+                            </option>
+
+                            {% endfor %}
+
+                        </select>
+
+
+                        <button
+                            class="save-btn"
+                            type="submit"
+                        >
+                            حفظ روم الذكاء الاصطناعي
+                        </button>
+
+                    </form>
+
+                </div>
+
+
+            </div>
+
+        </section>
+
+
+        <!-- ======================================
+             SERVER SETTINGS
+        ======================================= -->
+
+        <section
+            id="settings"
+            class="section"
+        >
+
+            <div class="section-title">
+
+                <h2>
+                    إعدادات السيرفر
+                </h2>
+
+                <p>
+                    معلومات وإعدادات MT BOT.
+                </p>
+
+            </div>
+
+
+            <div class="settings-grid">
+
+
+                <div class="setting-card">
+
+                    <h3>
+                        اسم السيرفر
+                    </h3>
+
+                    <p>
+                        السيرفر المتصل حالياً.
+                    </p>
+
+                    <div class="ai-status">
+                        {{ guild.name }}
+                    </div>
+
+                </div>
+
+
+                <div class="setting-card">
+
+                    <h3>
+                        Server ID
+                    </h3>
+
+                    <p>
+                        معرف السيرفر.
+                    </p>
+
+                    <div class="ai-status">
+                        {{ guild.id }}
+                    </div>
+
+                </div>
+
+
+            </div>
+
+        </section>
+
+
+    </main>
 
 </div>
 
 
 <script>
 
-function openSection(section) {
+function showSection(id, button) {
 
-    alert(
-        "قسم " + section + " سيتم تفعيله في الخطوة القادمة."
+    document.querySelectorAll(".section").forEach(
+        section => section.classList.remove("active")
     );
 
+    document.querySelectorAll(".nav-button").forEach(
+        nav => nav.classList.remove("active")
+    );
+
+    const target = document.getElementById(id);
+
+    if (target) {
+        target.classList.add("active");
+    }
+
+    if (button) {
+        button.classList.add("active");
+    }
+
+    history.replaceState(
+        null,
+        "",
+        "?section=" + encodeURIComponent(id)
+    );
+}
+
+
+/* فتح القسم من الرابط */
+
+const params = new URLSearchParams(
+    window.location.search
+);
+
+const requestedSection = params.get("section");
+
+if (requestedSection) {
+
+    const target = document.getElementById(
+        requestedSection
+    );
+
+    if (target) {
+
+        target.classList.add("active");
+
+        document.querySelector(
+            ".nav-button.active"
+        )?.classList.remove("active");
+
+        document.querySelectorAll(
+            ".nav-button"
+        ).forEach(button => {
+
+            const onclick = button.getAttribute(
+                "onclick"
+            );
+
+            if (
+                onclick &&
+                onclick.includes(
+                    "'" + requestedSection + "'"
+                )
+            ) {
+                button.classList.add("active");
+            }
+
+        });
+
+        document.getElementById(
+            "overview"
+        )?.classList.remove("active");
+    }
 }
 
 </script>
