@@ -9,7 +9,6 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 
 app = Flask(__name__)
 
-# Render يعمل خلف Reverse Proxy
 app.wsgi_app = ProxyFix(
     app.wsgi_app,
     x_for=1,
@@ -17,15 +16,11 @@ app.wsgi_app = ProxyFix(
     x_host=1
 )
 
-
-# مفتاح الجلسة
 app.secret_key = os.getenv(
     "FLASK_SECRET_KEY",
     "temporary-secret-key"
 )
 
-
-# إعدادات Session
 app.config.update(
     SESSION_COOKIE_NAME="mtbot_session",
     SESSION_COOKIE_SECURE=True,
@@ -34,8 +29,6 @@ app.config.update(
     SESSION_COOKIE_PATH="/"
 )
 
-
-# Discord OAuth
 CLIENT_ID = os.getenv("DISCORD_CLIENT_ID")
 CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
 
@@ -51,7 +44,6 @@ REDIRECT_URI = os.getenv(
 
 @app.route("/")
 def home():
-
     app.logger.info(
         "HOME SESSION USER: %s",
         bool(session.get("user"))
@@ -75,13 +67,9 @@ def home():
 
 @app.route("/login")
 def login():
-
     state = secrets.token_urlsafe(32)
 
-    # نحذف الجلسة القديمة
     session.clear()
-
-    # نحفظ state فقط
     session["oauth_state"] = state
 
     app.logger.info(
@@ -110,9 +98,7 @@ def login():
 
 @app.route("/callback")
 def callback():
-
     try:
-
         code = request.args.get("code")
         state = request.args.get("state")
 
@@ -121,9 +107,7 @@ def callback():
             bool(session.get("oauth_state"))
         )
 
-        # التأكد من وجود code
         if not code:
-
             app.logger.error(
                 "CALLBACK ERROR: NO CODE"
             )
@@ -133,14 +117,9 @@ def callback():
                 400
             )
 
-
-        # التأكد من State
-        saved_state = session.get(
-            "oauth_state"
-        )
+        saved_state = session.get("oauth_state")
 
         if not saved_state:
-
             app.logger.error(
                 "STATE LOST"
             )
@@ -150,9 +129,7 @@ def callback():
                 400
             )
 
-
         if state != saved_state:
-
             app.logger.error(
                 "STATE MISMATCH"
             )
@@ -162,14 +139,12 @@ def callback():
                 400
             )
 
-
         # =========================
         # الحصول على Access Token
         # =========================
 
         token_response = requests.post(
             "https://discord.com/api/v10/oauth2/token",
-
             data={
                 "client_id": CLIENT_ID,
                 "client_secret": CLIENT_SECRET,
@@ -177,18 +152,14 @@ def callback():
                 "code": code,
                 "redirect_uri": REDIRECT_URI
             },
-
             headers={
                 "Content-Type":
                     "application/x-www-form-urlencoded"
             },
-
             timeout=15
         )
 
-
         if not token_response.ok:
-
             app.logger.error(
                 "TOKEN ERROR %s: %s",
                 token_response.status_code,
@@ -200,16 +171,13 @@ def callback():
                 500
             )
 
-
         token_data = token_response.json()
 
         access_token = token_data.get(
             "access_token"
         )
 
-
         if not access_token:
-
             app.logger.error(
                 "NO ACCESS TOKEN"
             )
@@ -219,12 +187,10 @@ def callback():
                 500
             )
 
-
         headers = {
             "Authorization":
                 f"Bearer {access_token}"
         }
-
 
         # =========================
         # بيانات المستخدم
@@ -232,15 +198,11 @@ def callback():
 
         user_response = requests.get(
             "https://discord.com/api/v10/users/@me",
-
             headers=headers,
-
             timeout=15
         )
 
-
         if not user_response.ok:
-
             app.logger.error(
                 "USER ERROR %s: %s",
                 user_response.status_code,
@@ -252,11 +214,8 @@ def callback():
                 500
             )
 
-
         user_data = user_response.json()
 
-
-        # نخزن البيانات الضرورية فقط
         user = {
             "id": user_data.get("id"),
             "username": user_data.get("username"),
@@ -264,22 +223,17 @@ def callback():
             "avatar": user_data.get("avatar")
         }
 
-
         # =========================
         # سيرفرات المستخدم
         # =========================
 
         guild_response = requests.get(
             "https://discord.com/api/v10/users/@me/guilds",
-
             headers=headers,
-
             timeout=15
         )
 
-
         if not guild_response.ok:
-
             app.logger.error(
                 "GUILD ERROR %s: %s",
                 guild_response.status_code,
@@ -291,24 +245,19 @@ def callback():
                 500
             )
 
-
         guild_data = guild_response.json()
 
-
-        # نخزن فقط البيانات التي نحتاجها للموقع
         guilds = []
 
         for guild in guild_data:
-
             guilds.append({
                 "id": guild.get("id"),
                 "name": guild.get("name"),
                 "icon": guild.get("icon")
             })
 
-
         # =========================
-        # حفظ Session
+        # حفظ الجلسة
         # =========================
 
         session.clear()
@@ -316,19 +265,15 @@ def callback():
         session["user"] = user
         session["guilds"] = guilds
 
-
         app.logger.info(
             "LOGIN SUCCESS - USER: %s - GUILDS: %s",
             user.get("username"),
             len(guilds)
         )
 
-
         return redirect("/")
 
-
     except Exception:
-
         app.logger.exception(
             "OAUTH CALLBACK CRASH"
         )
@@ -340,12 +285,46 @@ def callback():
 
 
 # =========================
+# إدارة السيرفر
+# =========================
+
+@app.route("/server/<guild_id>")
+def server(guild_id):
+
+    # التأكد أن المستخدم مسجل دخول
+    user = session.get("user")
+
+    if not user:
+        return redirect("/")
+
+    # السيرفرات الموجودة في جلسة المستخدم
+    guilds = session.get("guilds", [])
+
+    # البحث عن السيرفر المطلوب
+    selected_guild = None
+
+    for guild in guilds:
+        if guild.get("id") == guild_id:
+            selected_guild = guild
+            break
+
+    # إذا حاول فتح سيرفر غير موجود عنده
+    if not selected_guild:
+        return redirect("/")
+
+    return render_template(
+        "server.html",
+        user=user,
+        guild=selected_guild
+    )
+
+
+# =========================
 # تسجيل الخروج
 # =========================
 
 @app.route("/logout")
 def logout():
-
     session.clear()
 
     return redirect("/")
@@ -356,7 +335,6 @@ def logout():
 # =========================
 
 def run():
-
     port = int(
         os.environ.get(
             "PORT",
@@ -370,15 +348,9 @@ def run():
     )
 
 
-# =========================
-# Keep Alive
-# =========================
-
 def keep_alive():
-
-    t = Thread(
-        target=run
-    )
+    t = Thread(target=run)
 
     t.daemon = True
+
     t.start()
