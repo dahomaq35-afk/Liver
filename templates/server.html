@@ -342,21 +342,43 @@
             color: white;
         }
 
-        .save-btn {
+        /* =========================
+           CONFIRM BUTTONS
+        ========================= */
+
+        .confirm-buttons {
+            display: flex;
+            gap: 8px;
             margin-top: 10px;
-            width: 100%;
+        }
+
+        .confirm-btn,
+        .cancel-btn {
+            flex: 1;
             padding: 11px;
             border: 0;
             border-radius: 10px;
-            background: #5865f2;
             color: white;
             font-family: inherit;
             font-weight: 700;
             cursor: pointer;
+            transition: .2s;
         }
 
-        .save-btn:hover {
+        .confirm-btn {
+            background: #5865f2;
+        }
+
+        .confirm-btn:hover {
             background: #4752c4;
+        }
+
+        .cancel-btn {
+            background: #292c38;
+        }
+
+        .cancel-btn:hover {
+            background: #383b48;
         }
 
         /* =========================
@@ -751,7 +773,6 @@
             <div class="cards">
 
                 <div class="card">
-
                     <div class="card-label">
                         السجلات الجنائية
                     </div>
@@ -759,11 +780,9 @@
                     <div class="card-value">
                         {{ stats.criminal_records }}
                     </div>
-
                 </div>
 
                 <div class="card">
-
                     <div class="card-label">
                         التحذيرات
                     </div>
@@ -771,11 +790,9 @@
                     <div class="card-value">
                         {{ stats.warnings }}
                     </div>
-
                 </div>
 
                 <div class="card">
-
                     <div class="card-label">
                         السجلات الأمنية
                     </div>
@@ -783,11 +800,9 @@
                     <div class="card-value">
                         {{ stats.security_logs }}
                     </div>
-
                 </div>
 
                 <div class="card">
-
                     <div class="card-label">
                         التذاكر
                     </div>
@@ -795,11 +810,9 @@
                     <div class="card-value">
                         {{ stats.tickets }}
                     </div>
-
                 </div>
 
                 <div class="card">
-
                     <div class="card-label">
                         الصكوك
                     </div>
@@ -807,11 +820,9 @@
                     <div class="card-value">
                         {{ stats.deeds }}
                     </div>
-
                 </div>
 
                 <div class="card">
-
                     <div class="card-label">
                         أوامر القبض
                     </div>
@@ -819,11 +830,9 @@
                     <div class="card-value">
                         {{ stats.warrants }}
                     </div>
-
                 </div>
 
                 <div class="card">
-
                     <div class="card-label">
                         البلاغات
                     </div>
@@ -831,11 +840,9 @@
                     <div class="card-value">
                         {{ stats.dispatches }}
                     </div>
-
                 </div>
 
                 <div class="card">
-
                     <div class="card-label">
                         التقارير الطبية
                     </div>
@@ -843,7 +850,6 @@
                     <div class="card-value">
                         {{ stats.medical_reports }}
                     </div>
-
                 </div>
 
             </div>
@@ -926,12 +932,24 @@
 
                         {% endif %}
 
-                        <button
-                            class="save-btn"
-                            type="submit"
-                        >
-                            إضافة الرتبة
-                        </button>
+                        <div class="confirm-buttons">
+
+                            <button
+                                class="confirm-btn"
+                                type="submit"
+                            >
+                                ✅ تأكيد
+                            </button>
+
+                            <button
+                                class="cancel-btn"
+                                type="button"
+                                onclick="resetForm(this)"
+                            >
+                                ❌ إلغاء
+                            </button>
+
+                        </div>
 
                     </form>
 
@@ -1058,6 +1076,7 @@
 
                 <p>
                     اختر أي روم من رومات السيرفر لكل نوع من السجلات.
+
                     <span class="channel-count">
                         {{ channels|length }} روم
                     </span>
@@ -1176,12 +1195,24 @@
 
                         </select>
 
-                        <button
-                            class="save-btn"
-                            type="submit"
-                        >
-                            حفظ الروم
-                        </button>
+                        <div class="confirm-buttons">
+
+                            <button
+                                class="confirm-btn"
+                                type="submit"
+                            >
+                                ✅ تأكيد
+                            </button>
+
+                            <button
+                                class="cancel-btn"
+                                type="button"
+                                onclick="resetForm(this)"
+                            >
+                                ❌ إلغاء
+                            </button>
+
+                        </div>
 
                     </form>
 
@@ -1435,12 +1466,24 @@
 
                         {% endif %}
 
-                        <button
-                            class="save-btn"
-                            type="submit"
-                        >
-                            حفظ روم الذكاء الاصطناعي
-                        </button>
+                        <div class="confirm-buttons">
+
+                            <button
+                                class="confirm-btn"
+                                type="submit"
+                            >
+                                ✅ تأكيد
+                            </button>
+
+                            <button
+                                class="cancel-btn"
+                                type="button"
+                                onclick="resetForm(this)"
+                            >
+                                ❌ إلغاء
+                            </button>
+
+                        </div>
 
                     </form>
 
@@ -1580,6 +1623,72 @@ function showSection(id, button) {
         "?section=" + encodeURIComponent(id)
     );
 }
+
+
+/* =========================================
+   إلغاء التغيير وإرجاع القيمة الأصلية
+========================================= */
+
+function resetForm(button) {
+
+    const form = button.closest("form");
+
+    if (!form) {
+        return;
+    }
+
+    const select = form.querySelector("select");
+
+    if (!select) {
+        return;
+    }
+
+    const originalValue = select.getAttribute(
+        "data-original-value"
+    );
+
+    if (originalValue !== null) {
+        select.value = originalValue;
+    } else {
+        select.selectedIndex = 0;
+    }
+}
+
+
+/* =========================================
+   حفظ القيمة الأصلية لكل اختيار
+========================================= */
+
+document.querySelectorAll("form").forEach(
+    form => {
+
+        const select = form.querySelector("select");
+
+        if (!select) {
+            return;
+        }
+
+        const selectedOption =
+            select.querySelector("option:checked");
+
+        if (selectedOption) {
+
+            select.setAttribute(
+                "data-original-value",
+                selectedOption.value
+            );
+
+        } else {
+
+            select.setAttribute(
+                "data-original-value",
+                ""
+            );
+
+        }
+
+    }
+);
 
 
 /* =========================================
