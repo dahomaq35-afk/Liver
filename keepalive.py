@@ -2,6 +2,7 @@ import os
 import sqlite3
 import threading
 import requests
+import time
 
 from flask import Flask, redirect, request, session, render_template, url_for
 
@@ -32,9 +33,7 @@ def db_connect():
 
 
 def safe_count(conn, table, guild_id):
-
     try:
-
         row = conn.execute(
             f"""
             SELECT COUNT(*) AS c
@@ -47,16 +46,13 @@ def safe_count(conn, table, guild_id):
         return row["c"] if row else 0
 
     except Exception:
-
         return 0
 
 
 def get_settings(guild_id):
-
     conn = db_connect()
 
     try:
-
         row = conn.execute(
             """
             SELECT *
@@ -72,20 +68,16 @@ def get_settings(guild_id):
         return {}
 
     except Exception:
-
         return {}
 
     finally:
-
         conn.close()
 
 
 def get_excluded_roles(guild_id):
-
     conn = db_connect()
 
     try:
-
         rows = conn.execute(
             """
             SELECT role_id
@@ -101,20 +93,16 @@ def get_excluded_roles(guild_id):
         ]
 
     except Exception:
-
         return []
 
     finally:
-
         conn.close()
 
 
 def get_security_logs(guild_id):
-
     conn = db_connect()
 
     try:
-
         rows = conn.execute(
             """
             SELECT *
@@ -132,20 +120,16 @@ def get_security_logs(guild_id):
         ]
 
     except Exception:
-
         return []
 
     finally:
-
         conn.close()
 
 
 def get_tickets(guild_id):
-
     conn = db_connect()
 
     try:
-
         rows = conn.execute(
             """
             SELECT *
@@ -163,11 +147,9 @@ def get_tickets(guild_id):
         ]
 
     except Exception:
-
         return []
 
     finally:
-
         conn.close()
 
 
@@ -232,6 +214,11 @@ def callback():
     )
 
     if token_response.status_code != 200:
+        print(
+            "Discord OAuth Token Error:",
+            token_response.status_code,
+            token_response.text
+        )
         return "Discord OAuth Error", 400
 
     token_data = token_response.json()
@@ -289,6 +276,135 @@ def callback():
     ]
 
     return redirect("/")
+
+
+# =========================================================
+# GET DISCORD GUILD DATA
+# =========================================================
+
+def get_discord_guild(guild_id):
+
+    if BOT is None:
+        print("DASHBOARD: BOT is None")
+        return None
+
+    try:
+
+        guild_id = int(guild_id)
+
+    except Exception:
+
+        return None
+
+    # المحاولة الأولى من الـ cache
+    guild = BOT.get_guild(guild_id)
+
+    if guild:
+        return guild
+
+    print(
+        f"DASHBOARD: Guild {guild_id} not found in bot cache."
+    )
+
+    print(
+        "DASHBOARD: Bot guilds:",
+        [
+            (guild.id, guild.name)
+            for guild in BOT.guilds
+        ]
+    )
+
+    return None
+
+
+# =========================================================
+# GET CHANNELS
+# =========================================================
+
+def get_guild_channels(guild):
+
+    channels = []
+
+    if not guild:
+        return channels
+
+    try:
+
+        for channel in guild.channels:
+
+            channel_type = str(
+                getattr(channel, "type", "")
+            )
+
+            # القنوات النصية
+            if channel_type == "text":
+
+                category_name = "بدون تصنيف"
+
+                if channel.category:
+                    category_name = channel.category.name
+
+                channels.append({
+                    "id": str(channel.id),
+                    "name": channel.name,
+                    "category": category_name
+                })
+
+    except Exception as e:
+
+        print(
+            "DASHBOARD CHANNEL ERROR:",
+            e
+        )
+
+    channels.sort(
+        key=lambda x: (
+            x["category"].lower(),
+            x["name"].lower()
+        )
+    )
+
+    return channels
+
+
+# =========================================================
+# GET ROLES
+# =========================================================
+
+def get_guild_roles(guild):
+
+    roles = []
+
+    if not guild:
+        return roles
+
+    try:
+
+        for role in guild.roles:
+
+            # تجاهل @everyone
+            if role.is_default():
+                continue
+
+            roles.append({
+                "id": str(role.id),
+                "name": role.name,
+                "position": role.position
+            })
+
+    except Exception as e:
+
+        print(
+            "DASHBOARD ROLE ERROR:",
+            e
+        )
+
+    roles.sort(
+        key=lambda x: x["position"],
+        reverse=True
+    )
+
+    return roles
 
 
 # =========================================================
@@ -381,81 +497,49 @@ def server(guild_id):
             guild_id
         )
 
+    except Exception as e:
+
+        print(
+            "DASHBOARD STATS ERROR:",
+            e
+        )
+
     finally:
 
         conn.close()
 
 
     # =====================================================
-    # GET CHANNELS + ROLES FROM BOT
+    # DISCORD CHANNELS + ROLES
     # =====================================================
 
-    channels = []
-    roles = []
-
-    if BOT:
-
-        discord_guild = BOT.get_guild(
-            int(guild_id)
-        )
-
-        if discord_guild:
-
-            # =================================================
-            # CHANNELS
-            # =================================================
-
-            for channel in discord_guild.channels:
-
-                channel_type = str(
-                    getattr(channel, "type", "")
-                )
-
-                # الرومات النصية فقط
-                if channel_type == "text":
-
-                    channels.append({
-                        "id": str(channel.id),
-                        "name": channel.name,
-                        "category": (
-                            channel.category.name
-                            if channel.category
-                            else "بدون تصنيف"
-                        )
-                    })
-
-
-            # =================================================
-            # ROLES
-            # =================================================
-
-            for role in discord_guild.roles:
-
-                # تجاهل @everyone
-                if role.is_default():
-                    continue
-
-                roles.append({
-                    "id": str(role.id),
-                    "name": role.name,
-                    "position": role.position
-                })
-
-
-    # ترتيب الرومات
-    channels.sort(
-        key=lambda x: (
-            x["category"].lower(),
-            x["name"].lower()
-        )
+    discord_guild = get_discord_guild(
+        guild_id
     )
 
-
-    # ترتيب الرتب من الأعلى إلى الأسفل
-    roles.sort(
-        key=lambda x: x["position"],
-        reverse=True
+    channels = get_guild_channels(
+        discord_guild
     )
+
+    roles = get_guild_roles(
+        discord_guild
+    )
+
+    print("========== DASHBOARD DATA ==========")
+    print("Guild ID:", guild_id)
+    print(
+        "Discord Guild:",
+        discord_guild
+    )
+    print(
+        "Channels:",
+        len(channels)
+    )
+    print(
+        "Roles:",
+        len(roles)
+    )
+    print("====================================")
 
 
     excluded_roles = get_excluded_roles(
@@ -510,6 +594,7 @@ def server_action(guild_id):
         return redirect("/")
 
     action = request.form.get("action")
+
     value = request.form.get(
         "value",
         ""
@@ -517,22 +602,12 @@ def server_action(guild_id):
 
 
     # =====================================================
-    # VERIFY BOT GUILD
+    # GET BOT GUILD
     # =====================================================
 
-    discord_guild = None
-
-    if BOT:
-
-        try:
-
-            discord_guild = BOT.get_guild(
-                int(guild_id)
-            )
-
-        except Exception:
-
-            discord_guild = None
+    discord_guild = get_discord_guild(
+        guild_id
+    )
 
 
     conn = db_connect()
@@ -719,7 +794,10 @@ def server_action(guild_id):
                     int(value)
                 )
 
-                if role and not role.is_default():
+                if (
+                    role
+                    and not role.is_default()
+                ):
 
                     existing = conn.execute(
                         """
@@ -842,8 +920,9 @@ def keep_alive(bot):
         )
     )
 
-    # تشغيل Flask في Thread
-    # حتى يكمل البوت تشغيله بشكل طبيعي
+    print(
+        f"DASHBOARD: Flask starting on port {port}"
+    )
 
     flask_thread = threading.Thread(
         target=lambda: app.run(
@@ -856,3 +935,7 @@ def keep_alive(bot):
     )
 
     flask_thread.start()
+
+    print(
+        "DASHBOARD: Flask thread started."
+    )
