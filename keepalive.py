@@ -45,13 +45,21 @@ REDIRECT_URI = os.getenv(
 )
 
 
+# =========================
 # الصفحة الرئيسية
+# =========================
+
 @app.route("/")
 def home():
 
     app.logger.info(
-        "HOME SESSION: %s",
-        dict(session)
+        "HOME SESSION USER: %s",
+        bool(session.get("user"))
+    )
+
+    app.logger.info(
+        "HOME SESSION GUILDS: %s",
+        len(session.get("guilds", []))
     )
 
     return render_template(
@@ -61,12 +69,19 @@ def home():
     )
 
 
+# =========================
 # تسجيل الدخول
+# =========================
+
 @app.route("/login")
 def login():
 
     state = secrets.token_urlsafe(32)
 
+    # نحذف الجلسة القديمة
+    session.clear()
+
+    # نحفظ state فقط
     session["oauth_state"] = state
 
     app.logger.info(
@@ -89,7 +104,10 @@ def login():
     return redirect(url)
 
 
+# =========================
 # Discord Callback
+# =========================
+
 @app.route("/callback")
 def callback():
 
@@ -99,10 +117,11 @@ def callback():
         state = request.args.get("state")
 
         app.logger.info(
-            "CALLBACK SESSION: %s",
-            dict(session)
+            "CALLBACK SESSION HAS STATE: %s",
+            bool(session.get("oauth_state"))
         )
 
+        # التأكد من وجود code
         if not code:
 
             app.logger.error(
@@ -114,6 +133,8 @@ def callback():
                 400
             )
 
+
+        # التأكد من State
         saved_state = session.get(
             "oauth_state"
         )
@@ -121,13 +142,14 @@ def callback():
         if not saved_state:
 
             app.logger.error(
-                "STATE LOST: session has no oauth_state"
+                "STATE LOST"
             )
 
             return (
                 "الجلسة ضاعت أثناء تسجيل الدخول.",
                 400
             )
+
 
         if state != saved_state:
 
@@ -141,7 +163,10 @@ def callback():
             )
 
 
-        # طلب Access Token
+        # =========================
+        # الحصول على Access Token
+        # =========================
+
         token_response = requests.post(
             "https://discord.com/api/v10/oauth2/token",
 
@@ -195,12 +220,15 @@ def callback():
             )
 
 
-        # بيانات المستخدم
         headers = {
             "Authorization":
                 f"Bearer {access_token}"
         }
 
+
+        # =========================
+        # بيانات المستخدم
+        # =========================
 
         user_response = requests.get(
             "https://discord.com/api/v10/users/@me",
@@ -225,10 +253,22 @@ def callback():
             )
 
 
-        user = user_response.json()
+        user_data = user_response.json()
 
 
+        # نخزن البيانات الضرورية فقط
+        user = {
+            "id": user_data.get("id"),
+            "username": user_data.get("username"),
+            "global_name": user_data.get("global_name"),
+            "avatar": user_data.get("avatar")
+        }
+
+
+        # =========================
         # سيرفرات المستخدم
+        # =========================
+
         guild_response = requests.get(
             "https://discord.com/api/v10/users/@me/guilds",
 
@@ -252,22 +292,35 @@ def callback():
             )
 
 
-        guilds = guild_response.json()
+        guild_data = guild_response.json()
 
 
-        # حفظ بيانات المستخدم
+        # نخزن فقط البيانات التي نحتاجها للموقع
+        guilds = []
+
+        for guild in guild_data:
+
+            guilds.append({
+                "id": guild.get("id"),
+                "name": guild.get("name"),
+                "icon": guild.get("icon")
+            })
+
+
+        # =========================
+        # حفظ Session
+        # =========================
+
+        session.clear()
+
         session["user"] = user
-
         session["guilds"] = guilds
-
-        session.pop(
-            "oauth_state",
-            None
-        )
 
 
         app.logger.info(
-            "LOGIN SUCCESS - SESSION USER SAVED"
+            "LOGIN SUCCESS - USER: %s - GUILDS: %s",
+            user.get("username"),
+            len(guilds)
         )
 
 
@@ -286,7 +339,10 @@ def callback():
         )
 
 
+# =========================
 # تسجيل الخروج
+# =========================
+
 @app.route("/logout")
 def logout():
 
@@ -295,7 +351,10 @@ def logout():
     return redirect("/")
 
 
+# =========================
 # تشغيل Flask
+# =========================
+
 def run():
 
     port = int(
@@ -311,7 +370,10 @@ def run():
     )
 
 
-# تشغيل السيرفر
+# =========================
+# Keep Alive
+# =========================
+
 def keep_alive():
 
     t = Thread(
@@ -319,5 +381,4 @@ def keep_alive():
     )
 
     t.daemon = True
-
     t.start()
