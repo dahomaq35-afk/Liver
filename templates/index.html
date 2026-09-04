@@ -4,49 +4,112 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MT BOT</title>
+
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
+
 <body>
+
+{% if not user %}
+
+    <div style="
+        min-height: 100vh;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        text-align: center;
+    ">
+
+        <div class="card">
+
+            <h1>🤖 MT BOT</h1>
+
+            <p style="margin-top: 15px;">
+                لوحة تحكم MT BOT
+            </p>
+
+            <a href="/login">
+                <button>تسجيل الدخول عبر Discord</button>
+            </a>
+
+        </div>
+
+    </div>
+
+{% else %}
+
     <button class="menu-btn" onclick="toggleMenu()">☰</button>
+
     <div class="sidebar" id="sidebar">
+
         <h2>MT BOT</h2>
+
+        <div style="margin: 20px 0;">
+            👤 {{ user.username }}
+        </div>
+
         <a href="#">🏠 الرئيسية</a>
         <a href="#">🛡️ الحماية</a>
         <a href="#">📋 السجلات</a>
         <a href="#">🎫 التذاكر</a>
         <a href="#">🤖 الذكاء الاصطناعي</a>
         <a href="#">⚙️ الإعدادات</a>
+
+        <a href="/logout">🚪 تسجيل الخروج</a>
+
     </div>
+
     <main>
+
         <h1>لوحة تحكم MT BOT</h1>
-        <p>مرحباً بك في لوحة التحكم 👋</p>
+
+        <p style="margin-top: 10px;">
+            مرحباً {{ user.username }} 👋
+        </p>
+
+        <h2 style="margin-top: 40px;">
+            سيرفراتك
+        </h2>
+
         <div class="cards">
+
+            {% for guild in guilds %}
+
             <div class="card">
-                <h3>🛡️ الحماية</h3>
-                <p>إدارة إعدادات حماية السيرفر.</p>
-                <button>إدارة</button>
+
+                <h3>🏠 {{ guild.name }}</h3>
+
+                <p style="margin-top: 10px;">
+                    إدارة إعدادات البوت
+                </p>
+
+                <button>
+                    إدارة السيرفر
+                </button>
+
             </div>
+
+            {% else %}
+
             <div class="card">
-                <h3>📋 السجلات</h3>
-                <p>إدارة رومات السجلات.</p>
-                <button>إدارة</button>
+                <h3>لا توجد سيرفرات</h3>
+                <p>لم يتم العثور على سيرفرات مرتبطة بحسابك.</p>
             </div>
-            <div class="card">
-                <h3>🎫 التذاكر</h3>
-                <p>إدارة نظام التذاكر.</p>
-                <button>إدارة</button>
-            </div>
-            <div class="card">
-                <h3>🤖 الذكاء الاصطناعي</h3>
-                <p>إدارة إعدادات الذكاء الاصطناعي.</p>
-                <button>إدارة</button>
-            </div>
+
+            {% endfor %}
+
         </div>
+
     </main>
-    <script>
-        function toggleMenu() {
-            document.getElementById("sidebar").classList.toggle("open");
-        }
-    </script>
+
+{% endif %}
+
+
+<script>
+function toggleMenu() {
+    document.getElementById("sidebar").classList.toggle("open");
+}
+</script>
+
 </body>
 </html>
