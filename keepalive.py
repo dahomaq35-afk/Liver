@@ -108,9 +108,8 @@ def callback():
         return redirect("/")
 
     except Exception as e:
-        print("OAuth Error:", e)
-        return "حدث خطأ أثناء تسجيل الدخول.", 500
-
+    print("OAuth Error:", repr(e))
+    return "حدث خطأ أثناء تسجيل الدخول.", 500
 
 @app.route("/logout")
 def logout():
