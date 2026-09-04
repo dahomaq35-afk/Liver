@@ -607,6 +607,10 @@ def normalize_text(text):
             ""
         )
 
+        # -------------------------------------------------
+        # تحويل الحروف الرياضية المزخرفة
+        # -------------------------------------------------
+
         if "MATHEMATICAL" in name:
 
             last = name.split()[-1]
@@ -617,14 +621,66 @@ def normalize_text(text):
 
                 continue
 
+        # -------------------------------------------------
+        # تجاهل الرموز والإيموجي والأسهم
+        #
+        # So = Symbol, other
+        # Sk = Symbol, modifier
+        # Sm = Symbol, math
+        # Sc = Symbol, currency
+        #
+        # هذا يجعل مثل:
+        #
+        # MT | COowner
+        # MT | COowner 🔥
+        # MT | COowner ➜
+        # MT | COowner ↔
+        # MT | COowner ★
+        #
+        # كلها تتعرف كـ MT COowner
+        # -------------------------------------------------
+
+        category = unicodedata.category(char)
+
+        if category.startswith("S"):
+
+            continue
+
+        # -------------------------------------------------
+        # تجاهل علامات الترقيم والزخارف
+        #
+        # P = Punctuation
+        #
+        # هذا يجعل:
+        #
+        # MT | COowner
+        # MT • COowner
+        # MT - COowner
+        # MT 『COowner』
+        #
+        # قابلة للمطابقة
+        # -------------------------------------------------
+
+        if category.startswith("P"):
+
+            continue
+
         result.append(char)
 
     text = "".join(result)
+
+    # -----------------------------------------------------
+    # توحيد Unicode
+    # -----------------------------------------------------
 
     text = unicodedata.normalize(
         "NFKC",
         text
     )
+
+    # -----------------------------------------------------
+    # إزالة التشكيل
+    # -----------------------------------------------------
 
     text = "".join(
         char
@@ -632,11 +688,17 @@ def normalize_text(text):
         if unicodedata.category(char) != "Mn"
     )
 
-    return re.sub(
+    # -----------------------------------------------------
+    # توحيد المسافات
+    # -----------------------------------------------------
+
+    text = re.sub(
         r"\s+",
         " ",
         text
     ).strip().casefold()
+
+    return text
 
 
 def role_matches(
@@ -674,7 +736,7 @@ def check_role(
 
 WHITELIST_ROLES = [
     "MT | CEO",
-    "MT | COowner ↔",
+    "MT | COowner",
     "MT | Owner",
     "Bot"
 ]
@@ -691,12 +753,11 @@ def is_whitelisted(
     if guild is None:
         guild = member.guild
 
-    # Owner مستثنى دائمًا حتى لا يستطيع النظام حظره
+    # Owner مستثنى دائمًا
     if member.id == guild.owner_id:
         return True
 
     # الرتب المحمية الثابتة
-    # المطابقة تدعم اختلاف الكابيتال والزخارف
     for role in member.roles:
 
         for whitelist_role in WHITELIST_ROLES:
@@ -708,7 +769,7 @@ def is_whitelisted(
 
                 return True
 
-    # الرتب المستثناة الموجودة في قاعدة البيانات
+    # الرتب المستثناة من قاعدة البيانات
     excluded_roles = get_excluded_role_ids(
         guild.id
     )
@@ -2247,20 +2308,14 @@ def can_manage_security(
     if not interaction.guild:
         return False
 
-    # -----------------------------------------------------
     # مالك السيرفر الحقيقي
-    # -----------------------------------------------------
-
     if interaction.user.id == interaction.guild.owner_id:
         return True
 
-    # -----------------------------------------------------
     # Owner + COowner فقط
-    # -----------------------------------------------------
-
     allowed_roles = [
         "MT | Owner",
-        "MT | COowner ↔"
+        "MT | COowner"
     ]
 
     return any(
@@ -2271,6 +2326,20 @@ def can_manage_security(
         for role in interaction.user.roles
         for allowed_role in allowed_roles
     )
+
+
+# =========================================================
+# ADMINISTRATOR PERMISSION
+# =========================================================
+
+def has_administrator(
+    interaction
+):
+
+    if not interaction.guild:
+        return False
+
+    return interaction.user.guild_permissions.administrator
 
 
 # =========================================================
@@ -2523,12 +2592,17 @@ async def set_log_command(
     channel
 ):
 
-    if not can_manage_security(
+    # -----------------------------------------------------
+    # أوامر اللوق = Administrator
+    # وليست Owner / COowner
+    # -----------------------------------------------------
+
+    if not has_administrator(
         interaction
     ):
 
         await interaction.response.send_message(
-            "❌ هذا الأمر للـ Owner و COowner فقط.",
+            "❌ هذا الأمر يحتاج Administrator.",
             ephemeral=True
         )
 
