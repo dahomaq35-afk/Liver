@@ -25,22 +25,11 @@ logging.basicConfig(
 )
 
 BOT_PREFIX = "-"
-SECURITY_CHANNEL_NAME = "📑┃حماية"
 
 ROLE_JUSTICE = "𝗠𝗧 | Justice"
 ROLE_POLICE = "𝗠𝗧 | LSPD"
 ROLE_SWAT = "𝗠𝗧 | S.W.A.T"
 ROLE_HEALTH = "𝗠𝗧 | PHMC"
-
-WHITELIST_ROLES = [
-    "#",
-    "MT | Owner ↔",
-    "MT | COowner ↔",
-    "MT | Ceo",
-    "Appy",
-    "Bot",
-    "bot"
-]
 
 
 # =========================================================
@@ -87,6 +76,10 @@ def setup_database():
     db = db_connect()
     cursor = db.cursor()
 
+    # -----------------------------------------------------
+    # SETTINGS
+    # -----------------------------------------------------
+
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS settings (
             guild_id INTEGER PRIMARY KEY,
@@ -94,6 +87,56 @@ def setup_database():
             ai_channel_id INTEGER DEFAULT 0
         )
     """)
+
+    # -----------------------------------------------------
+    # إضافة أعمدة اللوق إذا كانت قاعدة البيانات قديمة
+    # -----------------------------------------------------
+
+    cursor.execute(
+        "PRAGMA table_info(settings)"
+    )
+
+    existing_columns = {
+        row[1]
+        for row in cursor.fetchall()
+    }
+
+    new_columns = {
+        "security_log_channel_id": "INTEGER DEFAULT 0",
+        "delete_log_channel_id": "INTEGER DEFAULT 0",
+        "edit_log_channel_id": "INTEGER DEFAULT 0",
+        "member_log_channel_id": "INTEGER DEFAULT 0",
+        "mod_log_channel_id": "INTEGER DEFAULT 0",
+        "role_log_channel_id": "INTEGER DEFAULT 0",
+        "channel_log_channel_id": "INTEGER DEFAULT 0"
+    }
+
+    for column_name, column_type in new_columns.items():
+
+        if column_name not in existing_columns:
+
+            cursor.execute(
+                f"""
+                ALTER TABLE settings
+                ADD COLUMN {column_name} {column_type}
+                """
+            )
+
+    # -----------------------------------------------------
+    # الرتب المستثناة
+    # -----------------------------------------------------
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS excluded_roles (
+            guild_id INTEGER NOT NULL,
+            role_id INTEGER NOT NULL,
+            PRIMARY KEY (guild_id, role_id)
+        )
+    """)
+
+    # -----------------------------------------------------
+    # Criminal Records
+    # -----------------------------------------------------
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS criminal_records (
@@ -108,6 +151,10 @@ def setup_database():
         )
     """)
 
+    # -----------------------------------------------------
+    # Warnings
+    # -----------------------------------------------------
+
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS warnings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -118,6 +165,10 @@ def setup_database():
             created_at TEXT NOT NULL
         )
     """)
+
+    # -----------------------------------------------------
+    # Security Logs
+    # -----------------------------------------------------
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS security_logs (
@@ -130,6 +181,10 @@ def setup_database():
             created_at TEXT NOT NULL
         )
     """)
+
+    # -----------------------------------------------------
+    # Tickets
+    # -----------------------------------------------------
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS tickets (
@@ -144,6 +199,10 @@ def setup_database():
         )
     """)
 
+    # -----------------------------------------------------
+    # Deeds
+    # -----------------------------------------------------
+
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS deeds (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -155,6 +214,10 @@ def setup_database():
             created_at TEXT NOT NULL
         )
     """)
+
+    # -----------------------------------------------------
+    # Warrants
+    # -----------------------------------------------------
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS warrants (
@@ -168,6 +231,10 @@ def setup_database():
         )
     """)
 
+    # -----------------------------------------------------
+    # Dispatches
+    # -----------------------------------------------------
+
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS dispatches (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -178,6 +245,10 @@ def setup_database():
             created_at TEXT NOT NULL
         )
     """)
+
+    # -----------------------------------------------------
+    # Medical Reports
+    # -----------------------------------------------------
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS medical_reports (
@@ -203,6 +274,7 @@ setup_database()
 # =========================================================
 
 def now_utc():
+
     return datetime.datetime.now(
         datetime.timezone.utc
     ).isoformat()
@@ -215,7 +287,16 @@ def get_guild_settings(guild_id):
 
     cursor.execute(
         """
-        SELECT ai_enabled, ai_channel_id
+        SELECT
+            ai_enabled,
+            ai_channel_id,
+            security_log_channel_id,
+            delete_log_channel_id,
+            edit_log_channel_id,
+            member_log_channel_id,
+            mod_log_channel_id,
+            role_log_channel_id,
+            channel_log_channel_id
         FROM settings
         WHERE guild_id = ?
         """,
@@ -228,9 +309,19 @@ def get_guild_settings(guild_id):
 
         cursor.execute(
             """
-            INSERT INTO settings
-            (guild_id, ai_enabled, ai_channel_id)
-            VALUES (?, 0, 0)
+            INSERT INTO settings (
+                guild_id,
+                ai_enabled,
+                ai_channel_id,
+                security_log_channel_id,
+                delete_log_channel_id,
+                edit_log_channel_id,
+                member_log_channel_id,
+                mod_log_channel_id,
+                role_log_channel_id,
+                channel_log_channel_id
+            )
+            VALUES (?, 0, 0, 0, 0, 0, 0, 0, 0, 0)
             """,
             (guild_id,)
         )
@@ -240,14 +331,28 @@ def get_guild_settings(guild_id):
 
         return {
             "ai_enabled": False,
-            "ai_channel_id": 0
+            "ai_channel_id": 0,
+            "security_log_channel_id": 0,
+            "delete_log_channel_id": 0,
+            "edit_log_channel_id": 0,
+            "member_log_channel_id": 0,
+            "mod_log_channel_id": 0,
+            "role_log_channel_id": 0,
+            "channel_log_channel_id": 0
         }
 
     db.close()
 
     return {
         "ai_enabled": bool(row[0]),
-        "ai_channel_id": row[1]
+        "ai_channel_id": row[1] or 0,
+        "security_log_channel_id": row[2] or 0,
+        "delete_log_channel_id": row[3] or 0,
+        "edit_log_channel_id": row[4] or 0,
+        "member_log_channel_id": row[5] or 0,
+        "mod_log_channel_id": row[6] or 0,
+        "role_log_channel_id": row[7] or 0,
+        "channel_log_channel_id": row[8] or 0
     }
 
 
@@ -257,7 +362,9 @@ def set_ai_settings(
     channel_id=None
 ):
 
-    current = get_guild_settings(guild_id)
+    current = get_guild_settings(
+        guild_id
+    )
 
     if enabled is None:
         enabled = current["ai_enabled"]
@@ -271,7 +378,11 @@ def set_ai_settings(
     cursor.execute(
         """
         INSERT INTO settings
-        (guild_id, ai_enabled, ai_channel_id)
+        (
+            guild_id,
+            ai_enabled,
+            ai_channel_id
+        )
         VALUES (?, ?, ?)
 
         ON CONFLICT(guild_id)
@@ -283,6 +394,46 @@ def set_ai_settings(
             guild_id,
             int(enabled),
             int(channel_id)
+        )
+    )
+
+    db.commit()
+    db.close()
+
+
+def set_log_channel(
+    guild_id,
+    setting_name,
+    channel_id
+):
+
+    allowed = {
+        "security_log_channel_id",
+        "delete_log_channel_id",
+        "edit_log_channel_id",
+        "member_log_channel_id",
+        "mod_log_channel_id",
+        "role_log_channel_id",
+        "channel_log_channel_id"
+    }
+
+    if setting_name not in allowed:
+        raise ValueError("Invalid log setting")
+
+    get_guild_settings(guild_id)
+
+    db = db_connect()
+    cursor = db.cursor()
+
+    cursor.execute(
+        f"""
+        UPDATE settings
+        SET {setting_name} = ?
+        WHERE guild_id = ?
+        """,
+        (
+            channel_id,
+            guild_id
         )
     )
 
@@ -329,6 +480,116 @@ def save_security_log(
 
 
 # =========================================================
+# EXCLUDED ROLES DATABASE
+# =========================================================
+
+def get_excluded_role_ids(guild_id):
+
+    db = db_connect()
+    cursor = db.cursor()
+
+    cursor.execute(
+        """
+        SELECT role_id
+        FROM excluded_roles
+        WHERE guild_id = ?
+        """,
+        (guild_id,)
+    )
+
+    rows = cursor.fetchall()
+
+    db.close()
+
+    return {
+        row[0]
+        for row in rows
+    }
+
+
+def add_excluded_role(
+    guild_id,
+    role_id
+):
+
+    db = db_connect()
+    cursor = db.cursor()
+
+    cursor.execute(
+        """
+        INSERT OR IGNORE INTO excluded_roles
+        (
+            guild_id,
+            role_id
+        )
+        VALUES (?, ?)
+        """,
+        (
+            guild_id,
+            role_id
+        )
+    )
+
+    added = cursor.rowcount > 0
+
+    db.commit()
+    db.close()
+
+    return added
+
+
+def remove_excluded_role(
+    guild_id,
+    role_id
+):
+
+    db = db_connect()
+    cursor = db.cursor()
+
+    cursor.execute(
+        """
+        DELETE FROM excluded_roles
+        WHERE guild_id = ?
+        AND role_id = ?
+        """,
+        (
+            guild_id,
+            role_id
+        )
+    )
+
+    removed = cursor.rowcount > 0
+
+    db.commit()
+    db.close()
+
+    return removed
+
+
+def clear_excluded_roles(
+    guild_id
+):
+
+    db = db_connect()
+    cursor = db.cursor()
+
+    cursor.execute(
+        """
+        DELETE FROM excluded_roles
+        WHERE guild_id = ?
+        """,
+        (guild_id,)
+    )
+
+    count = cursor.rowcount
+
+    db.commit()
+    db.close()
+
+    return count
+
+
+# =========================================================
 # ROLE NORMALIZATION
 # =========================================================
 
@@ -346,13 +607,14 @@ def normalize_text(text):
             ""
         )
 
-        # تحويل الحروف المزخرفة الرياضية إلى الحروف العادية
         if "MATHEMATICAL" in name:
 
             last = name.split()[-1]
 
             if len(last) == 1 and last.isalnum():
+
                 result.append(last)
+
                 continue
 
         result.append(char)
@@ -406,6 +668,10 @@ def check_role(
     )
 
 
+# =========================================================
+# NEW WHITELIST SYSTEM
+# =========================================================
+
 def is_whitelisted(
     member,
     guild=None
@@ -414,27 +680,21 @@ def is_whitelisted(
     if not member:
         return False
 
-    if guild and member.id == guild.owner_id:
+    if guild is None:
+        guild = member.guild
+
+    # Owner مستثنى دائمًا حتى لا يستطيع النظام حظره
+    if member.id == guild.owner_id:
         return True
 
-    if getattr(
-        member.guild_permissions,
-        "administrator",
-        False
-    ):
-        return True
+    excluded_roles = get_excluded_role_ids(
+        guild.id
+    )
 
-    for role in member.roles:
-
-        for allowed_role in WHITELIST_ROLES:
-
-            if role_matches(
-                role.name,
-                allowed_role
-            ):
-                return True
-
-    return False
+    return any(
+        role.id in excluded_roles
+        for role in member.roles
+    )
 
 
 # =========================================================
@@ -453,6 +713,13 @@ bot = commands.Bot(
     command_prefix=BOT_PREFIX,
     intents=intents
 )
+
+
+# =========================================================
+# INTERNAL SECURITY ACTIONS
+# =========================================================
+
+security_internal_actions = set()
 
 
 # =========================================================
@@ -503,10 +770,8 @@ async def ask_ai(
 
 افهم كلام العضو وسياقه بشكل طبيعي.
 
-مهم جدًا:
-
 إذا كان السؤال عن معلومة خاصة بسيرفر MT
-وقد تكون متغيرة أو تحتاج مصدرًا رسميًا، مثل:
+وقد تكون متغيرة أو تحتاج مصدرًا رسميًا مثل:
 
 - متى يفتح الماب؟
 - متى يبدأ الرول بلاي؟
@@ -523,7 +788,7 @@ async def ask_ai(
 قل:
 "يرجى التوجه إلى الدعم الفني للحصول على المعلومة الرسمية."
 
-أما الأسئلة العامة، فأجب عنها بشكل طبيعي ومفيد.
+أما الأسئلة العامة فأجب عنها بشكل طبيعي ومفيد.
 
 لا تدّعي أنك من إدارة MT.
 
@@ -558,45 +823,112 @@ async def ask_ai(
 
 
 # =========================================================
-# SECURITY CHANNEL
+# GET LOG CHANNEL
 # =========================================================
 
-async def get_security_channel(
-    guild
+def get_log_channel(
+    guild,
+    setting_name
 ):
 
-    channel = discord.utils.get(
-        guild.text_channels,
-        name=SECURITY_CHANNEL_NAME
+    settings = get_guild_settings(
+        guild.id
     )
 
-    if channel:
-        return channel
+    channel_id = settings.get(
+        setting_name,
+        0
+    )
+
+    if not channel_id:
+        return None
+
+    return guild.get_channel(
+        channel_id
+    )
+
+
+# =========================================================
+# GENERIC LOG
+# =========================================================
+
+async def send_log(
+    guild,
+    setting_name,
+    title,
+    description,
+    color=discord.Color.blurple(),
+    actor=None,
+    target=None,
+    extra_fields=None
+):
+
+    channel = get_log_channel(
+        guild,
+        setting_name
+    )
+
+    if not channel:
+        return False
+
+    embed = discord.Embed(
+        title=title,
+        description=description,
+        color=color,
+        timestamp=datetime.datetime.now(
+            datetime.timezone.utc
+        )
+    )
+
+    if actor:
+
+        embed.add_field(
+            name="👤 المنفذ",
+            value=(
+                actor.mention
+                if hasattr(actor, "mention")
+                else str(actor)
+            ),
+            inline=True
+        )
+
+    if target:
+
+        embed.add_field(
+            name="🎯 المستهدف",
+            value=(
+                target.mention
+                if hasattr(target, "mention")
+                else str(target)
+            ),
+            inline=True
+        )
+
+    if extra_fields:
+
+        for name, value in extra_fields:
+
+            embed.add_field(
+                name=name,
+                value=str(value)[:1024],
+                inline=False
+            )
 
     try:
 
-        overwrites = {
-            guild.default_role:
-                discord.PermissionOverwrite(
-                    view_channel=False
-                )
-        }
-
-        channel = await guild.create_text_channel(
-            SECURITY_CHANNEL_NAME,
-            overwrites=overwrites,
-            reason="MT Security System"
+        await channel.send(
+            embed=embed
         )
 
-        return channel
+        return True
 
     except Exception as error:
 
         logging.error(
-            f"Security channel error: {error}"
+            f"Log send error: {error}"
         )
 
-        return None
+        return False
 
 
 # =========================================================
@@ -621,59 +953,16 @@ async def security_report(
         description
     )
 
-    channel = await get_security_channel(
-        guild
+    await send_log(
+        guild,
+        "security_log_channel_id",
+        title,
+        description,
+        color,
+        actor,
+        target,
+        extra_fields
     )
-
-    if not channel:
-        return
-
-    embed = discord.Embed(
-        title=title,
-        description=description,
-        color=color,
-        timestamp=datetime.datetime.now(
-            datetime.timezone.utc
-        )
-    )
-
-    if actor:
-
-        embed.add_field(
-            name="👤 المنفذ",
-            value=actor.mention,
-            inline=True
-        )
-
-    if target:
-
-        embed.add_field(
-            name="🎯 المستهدف",
-            value=target.mention,
-            inline=True
-        )
-
-    if extra_fields:
-
-        for name, value in extra_fields:
-
-            embed.add_field(
-                name=name,
-                value=str(value)[:1024],
-                inline=False
-            )
-
-    try:
-
-        await channel.send(
-            embed=embed
-        )
-
-    except Exception as error:
-
-        logging.error(
-            f"Security send error: {error}"
-        )
 
 
 # =========================================================
@@ -689,7 +978,7 @@ async def get_audit_actor(
     try:
 
         async for entry in guild.audit_logs(
-            limit=8,
+            limit=10,
             action=action
         ):
 
@@ -703,13 +992,15 @@ async def get_audit_actor(
 
                     continue
 
-            if (
+            age = (
                 datetime.datetime.now(
                     datetime.timezone.utc
                 )
                 -
                 entry.created_at
-            ).total_seconds() > 15:
+            ).total_seconds()
+
+            if age > 15:
 
                 continue
 
@@ -724,8 +1015,93 @@ async def get_audit_actor(
     return None
 
 
+async def get_audit_actor_multiple(
+    guild,
+    actions,
+    target_id=None
+):
+
+    for action in actions:
+
+        actor = await get_audit_actor(
+            guild,
+            action,
+            target_id
+        )
+
+        if actor:
+
+            return actor
+
+    return None
+
+
 # =========================================================
-# BAN PROTECTION
+# BAN ACTOR
+# =========================================================
+
+async def ban_unauthorized_actor(
+    guild,
+    actor,
+    reason
+):
+
+    if not actor:
+        return "لم يتم تحديد المنفذ."
+
+    if actor.id == guild.owner_id:
+
+        return "تعذر الحظر: المنفذ هو Owner."
+
+    if bot.user and actor.id == bot.user.id:
+
+        return "المنفذ هو البوت نفسه."
+
+    actor_member = guild.get_member(
+        actor.id
+    )
+
+    if not actor_member:
+
+        return "المنفذ غير موجود داخل السيرفر."
+
+    if is_whitelisted(
+        actor_member,
+        guild
+    ):
+
+        return "المنفذ مستثنى."
+
+    me = guild.me
+
+    if not me:
+
+        return "تعذر معرفة رتبة البوت."
+
+    if actor_member.top_role >= me.top_role:
+
+        return "تعذر الحظر بسبب Role Hierarchy."
+
+    try:
+
+        await guild.ban(
+            actor_member,
+            reason=reason
+        )
+
+        return "تم حظر المنفذ تلقائيًا."
+
+    except Exception as error:
+
+        logging.error(
+            f"Auto ban error: {error}"
+        )
+
+        return f"فشل الحظر: {error}"
+
+
+# =========================================================
+# MEMBER BAN PROTECTION
 # =========================================================
 
 @bot.event
@@ -734,7 +1110,7 @@ async def on_member_ban(
     user
 ):
 
-    await asyncio.sleep(0.25)
+    await asyncio.sleep(0.5)
 
     actor = await get_audit_actor(
         guild,
@@ -752,10 +1128,18 @@ async def on_member_ban(
             target=user
         )
 
+        await send_log(
+            guild,
+            "mod_log_channel_id",
+            "⚠️ حظر بدون تحديد المنفذ",
+            f"تم حظر {user.mention}.",
+            discord.Color.orange(),
+            target=user
+        )
+
         return
 
-    if actor.id == bot.user.id:
-
+    if bot.user and actor.id == bot.user.id:
         return
 
     actor_member = guild.get_member(
@@ -776,9 +1160,19 @@ async def on_member_ban(
             target=user
         )
 
+        await send_log(
+            guild,
+            "mod_log_channel_id",
+            "✅ حظر مصرح",
+            f"تم تنفيذ حظر مصرح به على {user.mention}.",
+            discord.Color.green(),
+            actor=actor_member,
+            target=user
+        )
+
         return
 
-    # فك حظر الشخص المحظور
+    # محاولة فك حظر المستهدف
     try:
 
         await guild.unban(
@@ -786,70 +1180,84 @@ async def on_member_ban(
             reason="MT Security: Unauthorized ban"
         )
 
-        target_unbanned = "تم فك الحظر"
+        unban_result = "تم فك حظر المستهدف."
 
     except Exception as error:
 
-        target_unbanned = (
-            f"فشل فك الحظر: {error}"
-        )
+        unban_result = f"فشل فك الحظر: {error}"
 
     # حظر المنفذ
-    actor_banned = "لم يتم"
-
-    if actor_member:
-
-        try:
-
-            if (
-                actor_member != guild.owner
-                and actor_member.top_role
-                < guild.me.top_role
-            ):
-
-                await guild.ban(
-                    actor_member,
-                    reason="MT Security: Unauthorized ban"
-                )
-
-                actor_banned = "تم حظر المنفذ"
-
-            else:
-
-                actor_banned = (
-                    "تعذر حظر المنفذ بسبب Owner/Role Hierarchy"
-                )
-
-        except Exception as error:
-
-            actor_banned = (
-                f"فشل حظر المنفذ: {error}"
-            )
+    actor_result = await ban_unauthorized_actor(
+        guild,
+        actor,
+        "MT Security: Unauthorized ban"
+    )
 
     await security_report(
         guild,
         "🚨 حظر غير مصرح به",
-        "تم اكتشاف حظر غير مصرح به بواسطة عضو غير موجود في قائمة الحماية.",
+        "تم اكتشاف حظر غير مصرح به.",
         discord.Color.red(),
         actor=actor_member or actor,
         target=user,
         extra_fields=[
-            ("🔓 حالة المستهدف", target_unbanned),
-            ("🔨 حالة المنفذ", actor_banned)
+            ("🔓 المستهدف", unban_result),
+            ("🔨 المنفذ", actor_result)
+        ]
+    )
+
+    await send_log(
+        guild,
+        "mod_log_channel_id",
+        "🚨 حظر غير مصرح به",
+        "تم اكتشاف حظر غير مصرح به.",
+        discord.Color.red(),
+        actor=actor_member or actor,
+        target=user,
+        extra_fields=[
+            ("🔓 المستهدف", unban_result),
+            ("🔨 المنفذ", actor_result)
         ]
     )
 
 
 # =========================================================
-# MEMBER JOIN SECURITY SCAN
+# MEMBER UNBAN
+# =========================================================
+
+@bot.event
+async def on_member_unban(
+    guild,
+    user
+):
+
+    await asyncio.sleep(0.5)
+
+    actor = await get_audit_actor(
+        guild,
+        discord.AuditLogAction.unban,
+        user.id
+    )
+
+    await send_log(
+        guild,
+        "mod_log_channel_id",
+        "🔓 فك حظر",
+        f"تم فك حظر {user.mention}.",
+        discord.Color.green(),
+        actor=actor,
+        target=user
+    )
+
+
+# =========================================================
+# MEMBER JOIN
 # =========================================================
 
 @bot.event
 async def on_member_join(
     member
 ):
-
-    await asyncio.sleep(0)
 
     if member.bot:
 
@@ -870,14 +1278,24 @@ async def on_member_join(
 
                 except Exception as error:
 
-                    result = (
-                        f"فشل الحظر: {error}"
-                    )
+                    result = f"فشل الحظر: {error}"
 
                 await security_report(
                     member.guild,
                     "🚨 بوت مشبوه",
-                    "تم اكتشاف بوت جديد يمتلك صلاحيات Administrator.",
+                    "تم اكتشاف بوت جديد يمتلك Administrator.",
+                    discord.Color.red(),
+                    target=member,
+                    extra_fields=[
+                        ("⚡ الإجراء", result)
+                    ]
+                )
+
+                await send_log(
+                    member.guild,
+                    "member_log_channel_id",
+                    "🚨 بوت مشبوه",
+                    "تم اكتشاف بوت جديد يمتلك Administrator.",
                     discord.Color.red(),
                     target=member,
                     extra_fields=[
@@ -887,20 +1305,266 @@ async def on_member_join(
 
                 return
 
-    await security_report(
+    await send_log(
         member.guild,
-        "👋 عضو جديد",
-        "تم تسجيل دخول عضو جديد إلى السيرفر.",
-        discord.Color.blue(),
+        "member_log_channel_id",
+        "👋 دخول عضو",
+        f"دخل العضو {member.mention} إلى السيرفر.",
+        discord.Color.green(),
         target=member,
         extra_fields=[
-            ("🤖 Bot", str(member.bot))
+            ("🤖 Bot", str(member.bot)),
+            ("🆔 ID", member.id)
         ]
     )
 
 
 # =========================================================
-# ROLE UPDATE PROTECTION
+# MEMBER LEAVE
+# =========================================================
+
+@bot.event
+async def on_member_remove(
+    member
+):
+
+    await asyncio.sleep(0.5)
+
+    # محاولة معرفة هل هي Kick
+    actor = await get_audit_actor(
+        member.guild,
+        discord.AuditLogAction.kick,
+        member.id
+    )
+
+    if actor:
+
+        actor_member = member.guild.get_member(
+            actor.id
+        )
+
+        if actor_member and is_whitelisted(
+            actor_member,
+            member.guild
+        ):
+
+            await send_log(
+                member.guild,
+                "member_log_channel_id",
+                "👢 طرد عضو مصرح",
+                f"تم طرد {member.mention}.",
+                discord.Color.orange(),
+                actor=actor_member,
+                target=member
+            )
+
+        else:
+
+            result = await ban_unauthorized_actor(
+                member.guild,
+                actor,
+                "MT Security: Unauthorized kick"
+            )
+
+            await security_report(
+                member.guild,
+                "🚨 طرد غير مصرح",
+                f"تم اكتشاف طرد غير مصرح للعضو {member.mention}.",
+                discord.Color.red(),
+                actor=actor_member or actor,
+                target=member,
+                extra_fields=[
+                    ("🔨 الإجراء", result)
+                ]
+            )
+
+        return
+
+    await send_log(
+        member.guild,
+        "member_log_channel_id",
+        "👋 خروج عضو",
+        f"غادر العضو {member.mention} السيرفر.",
+        discord.Color.orange(),
+        target=member
+    )
+
+
+# =========================================================
+# ROLE CREATE
+# =========================================================
+
+@bot.event
+async def on_guild_role_create(
+    role
+):
+
+    key = (
+        role.guild.id,
+        "role",
+        role.id
+    )
+
+    if key in security_internal_actions:
+
+        security_internal_actions.discard(key)
+
+        return
+
+    actor = await get_audit_actor(
+        role.guild,
+        discord.AuditLogAction.role_create,
+        role.id
+    )
+
+    actor_member = (
+        role.guild.get_member(actor.id)
+        if actor
+        else None
+    )
+
+    if actor_member and is_whitelisted(
+        actor_member,
+        role.guild
+    ):
+
+        await send_log(
+            role.guild,
+            "role_log_channel_id",
+            "✅ إنشاء رتبة مصرح",
+            f"تم إنشاء الرتبة `{role.name}`.",
+            discord.Color.green(),
+            actor=actor_member,
+            extra_fields=[
+                ("🆔 Role ID", role.id)
+            ]
+        )
+
+        return
+
+    result = "لم يتم تحديد المنفذ."
+
+    if actor:
+
+        result = await ban_unauthorized_actor(
+            role.guild,
+            actor,
+            "MT Security: Unauthorized role creation"
+        )
+
+    await security_report(
+        role.guild,
+        "🚨 إنشاء رتبة غير مصرح",
+        f"تم إنشاء الرتبة `{role.name}` بدون تصريح.",
+        discord.Color.red(),
+        actor=actor_member or actor,
+        extra_fields=[
+            ("🆔 Role ID", role.id),
+            ("🔨 الإجراء", result)
+        ]
+    )
+
+    await send_log(
+        role.guild,
+        "role_log_channel_id",
+        "🚨 إنشاء رتبة غير مصرح",
+        f"تم إنشاء الرتبة `{role.name}` بدون تصريح.",
+        discord.Color.red(),
+        actor=actor_member or actor,
+        extra_fields=[
+            ("🆔 Role ID", role.id),
+            ("🔨 الإجراء", result)
+        ]
+    )
+
+
+# =========================================================
+# ROLE DELETE
+# =========================================================
+
+@bot.event
+async def on_guild_role_delete(
+    role
+):
+
+    key = (
+        role.guild.id,
+        "role_delete",
+        role.id
+    )
+
+    if key in security_internal_actions:
+
+        security_internal_actions.discard(key)
+
+        return
+
+    actor = await get_audit_actor(
+        role.guild,
+        discord.AuditLogAction.role_delete,
+        role.id
+    )
+
+    actor_member = (
+        role.guild.get_member(actor.id)
+        if actor
+        else None
+    )
+
+    if actor_member and is_whitelisted(
+        actor_member,
+        role.guild
+    ):
+
+        await send_log(
+            role.guild,
+            "role_log_channel_id",
+            "✅ حذف رتبة مصرح",
+            f"تم حذف الرتبة `{role.name}`.",
+            discord.Color.green(),
+            actor=actor_member
+        )
+
+        return
+
+    result = "لم يتم تحديد المنفذ."
+
+    if actor:
+
+        result = await ban_unauthorized_actor(
+            role.guild,
+            actor,
+            "MT Security: Unauthorized role deletion"
+        )
+
+    await security_report(
+        role.guild,
+        "🚨 حذف رتبة غير مصرح",
+        f"تم حذف الرتبة `{role.name}`.",
+        discord.Color.red(),
+        actor=actor_member or actor,
+        extra_fields=[
+            ("🆔 Role ID", role.id),
+            ("🔨 الإجراء", result)
+        ]
+    )
+
+    await send_log(
+        role.guild,
+        "role_log_channel_id",
+        "🚨 حذف رتبة غير مصرح",
+        f"تم حذف الرتبة `{role.name}`.",
+        discord.Color.red(),
+        actor=actor_member or actor,
+        extra_fields=[
+            ("🆔 Role ID", role.id),
+            ("🔨 الإجراء", result)
+        ]
+    )
+
+
+# =========================================================
+# ROLE UPDATE
 # =========================================================
 
 @bot.event
@@ -909,7 +1573,57 @@ async def on_guild_role_update(
     after
 ):
 
-    if before.permissions == after.permissions:
+    key = (
+        after.guild.id,
+        "role",
+        after.id
+    )
+
+    if key in security_internal_actions:
+
+        security_internal_actions.discard(key)
+
+        return
+
+    changed = []
+
+    if before.name != after.name:
+
+        changed.append(
+            f"الاسم: `{before.name}` → `{after.name}`"
+        )
+
+    if before.permissions != after.permissions:
+
+        changed.append(
+            "تم تعديل صلاحيات الرتبة"
+        )
+
+    if before.position != after.position:
+
+        changed.append(
+            f"الموقع: `{before.position}` → `{after.position}`"
+        )
+
+    if before.colour != after.colour:
+
+        changed.append(
+            "تم تعديل لون الرتبة"
+        )
+
+    if before.hoist != after.hoist:
+
+        changed.append(
+            "تم تعديل إظهار الرتبة بشكل منفصل"
+        )
+
+    if before.mentionable != after.mentionable:
+
+        changed.append(
+            "تم تعديل قابلية المنشن"
+        )
+
+    if not changed:
 
         return
 
@@ -919,12 +1633,14 @@ async def on_guild_role_update(
         after.id
     )
 
-    if not actor:
+    actor_member = (
+        after.guild.get_member(actor.id)
+        if actor
+        else None
+    )
 
-        return
-
-    actor_member = after.guild.get_member(
-        actor.id
+    details = "\n".join(
+        changed
     )
 
     if actor_member and is_whitelisted(
@@ -932,58 +1648,166 @@ async def on_guild_role_update(
         after.guild
     ):
 
-        await security_report(
+        await send_log(
             after.guild,
-            "🛡️ تعديل صلاحيات مصرح",
-            f"تم تعديل صلاحيات الرتبة {after.mention}.",
+            "role_log_channel_id",
+            "🛡️ تعديل رتبة مصرح",
+            details,
             discord.Color.green(),
             actor=actor_member,
             extra_fields=[
-                ("🎭 الرتبة", after.name)
+                ("🎭 الرتبة", after.mention)
             ]
         )
 
         return
 
-    try:
+    # إذا تغيرت الصلاحيات نحاول إرجاعها
+    restore_result = "لم تتم الاستعادة."
 
-        if (
-            not after.managed
-            and after < after.guild.me.top_role
-        ):
+    if before.permissions != after.permissions:
+
+        try:
+
+            security_internal_actions.add(
+                key
+            )
 
             await after.edit(
                 permissions=before.permissions,
-                reason="MT Security: Unauthorized permission change"
+                reason="MT Security: Restore unauthorized role permissions"
             )
 
-            result = "تمت استعادة الصلاحيات السابقة."
+            restore_result = (
+                "تمت استعادة صلاحيات الرتبة."
+            )
 
-        else:
+        except Exception as error:
 
-            result = "تعذر الاستعادة بسبب Hierarchy."
+            security_internal_actions.discard(
+                key
+            )
 
-    except Exception as error:
+            restore_result = (
+                f"فشل الاستعادة: {error}"
+            )
 
-        result = (
-            f"فشل الاستعادة: {error}"
+    ban_result = "لم يتم تحديد المنفذ."
+
+    if actor:
+
+        ban_result = await ban_unauthorized_actor(
+            after.guild,
+            actor,
+            "MT Security: Unauthorized role modification"
         )
 
     await security_report(
         after.guild,
-        "🚨 تعديل صلاحيات غير مصرح",
-        "تم اكتشاف تعديل غير مصرح على صلاحيات رتبة.",
+        "🚨 تعديل رتبة غير مصرح",
+        details,
         discord.Color.red(),
         actor=actor_member or actor,
         extra_fields=[
-            ("🎭 الرتبة", after.name),
-            ("🔄 الإجراء", result)
+            ("🎭 الرتبة", after.mention),
+            ("🔄 الاستعادة", restore_result),
+            ("🔨 الإجراء", ban_result)
+        ]
+    )
+
+    await send_log(
+        after.guild,
+        "role_log_channel_id",
+        "🚨 تعديل رتبة غير مصرح",
+        details,
+        discord.Color.red(),
+        actor=actor_member or actor,
+        extra_fields=[
+            ("🎭 الرتبة", after.mention),
+            ("🔄 الاستعادة", restore_result),
+            ("🔨 الإجراء", ban_result)
         ]
     )
 
 
 # =========================================================
-# CHANNEL DELETE PROTECTION
+# CHANNEL CREATE
+# =========================================================
+
+@bot.event
+async def on_guild_channel_create(
+    channel
+):
+
+    actor = await get_audit_actor(
+        channel.guild,
+        discord.AuditLogAction.channel_create,
+        channel.id
+    )
+
+    actor_member = (
+        channel.guild.get_member(actor.id)
+        if actor
+        else None
+    )
+
+    if actor_member and is_whitelisted(
+        actor_member,
+        channel.guild
+    ):
+
+        await send_log(
+            channel.guild,
+            "channel_log_channel_id",
+            "✅ إنشاء روم مصرح",
+            f"تم إنشاء الروم {channel.mention}.",
+            discord.Color.green(),
+            actor=actor_member,
+            extra_fields=[
+                ("🆔 Channel ID", channel.id)
+            ]
+        )
+
+        return
+
+    result = "لم يتم تحديد المنفذ."
+
+    if actor:
+
+        result = await ban_unauthorized_actor(
+            channel.guild,
+            actor,
+            "MT Security: Unauthorized channel creation"
+        )
+
+    await security_report(
+        channel.guild,
+        "🚨 إنشاء روم غير مصرح",
+        f"تم إنشاء الروم `{channel.name}` بدون تصريح.",
+        discord.Color.red(),
+        actor=actor_member or actor,
+        extra_fields=[
+            ("🆔 Channel ID", channel.id),
+            ("🔨 الإجراء", result)
+        ]
+    )
+
+    await send_log(
+        channel.guild,
+        "channel_log_channel_id",
+        "🚨 إنشاء روم غير مصرح",
+        f"تم إنشاء الروم `{channel.name}` بدون تصريح.",
+        discord.Color.red(),
+        actor=actor_member or actor,
+        extra_fields=[
+            ("🆔 Channel ID", channel.id),
+            ("🔨 الإجراء", result)
+        ]
+    )
+
+
+# =========================================================
+# CHANNEL DELETE
 # =========================================================
 
 @bot.event
@@ -997,19 +1821,10 @@ async def on_guild_channel_delete(
         channel.id
     )
 
-    if not actor:
-
-        await security_report(
-            channel.guild,
-            "🚨 حذف روم",
-            f"تم حذف الروم `{channel.name}` ولم يتم تحديد المنفذ.",
-            discord.Color.orange()
-        )
-
-        return
-
-    actor_member = channel.guild.get_member(
-        actor.id
+    actor_member = (
+        channel.guild.get_member(actor.id)
+        if actor
+        else None
     )
 
     if actor_member and is_whitelisted(
@@ -1017,44 +1832,268 @@ async def on_guild_channel_delete(
         channel.guild
     ):
 
-        await security_report(
+        await send_log(
             channel.guild,
+            "channel_log_channel_id",
             "✅ حذف روم مصرح",
-            f"تم حذف الروم `{channel.name}` بواسطة عضو مصرح.",
+            f"تم حذف الروم `{channel.name}`.",
             discord.Color.green(),
-            actor=actor_member
+            actor=actor_member,
+            extra_fields=[
+                ("🆔 Channel ID", channel.id)
+            ]
         )
 
         return
 
+    result = "لم يتم تحديد المنفذ."
+
+    if actor:
+
+        result = await ban_unauthorized_actor(
+            channel.guild,
+            actor,
+            "MT Security: Unauthorized channel deletion"
+        )
+
     await security_report(
         channel.guild,
         "🚨 حذف روم غير مصرح",
-        f"تم اكتشاف حذف الروم `{channel.name}` بواسطة عضو غير مصرح.",
+        f"تم حذف الروم `{channel.name}`.",
         discord.Color.red(),
         actor=actor_member or actor,
         extra_fields=[
-            ("🆔 Channel ID", channel.id)
+            ("🆔 Channel ID", channel.id),
+            ("🔨 الإجراء", result)
         ]
     )
 
-    if actor_member:
+    await send_log(
+        channel.guild,
+        "channel_log_channel_id",
+        "🚨 حذف روم غير مصرح",
+        f"تم حذف الروم `{channel.name}`.",
+        discord.Color.red(),
+        actor=actor_member or actor,
+        extra_fields=[
+            ("🆔 Channel ID", channel.id),
+            ("🔨 الإجراء", result)
+        ]
+    )
 
-        try:
 
-            if (
-                actor_member != channel.guild.owner
-                and actor_member.top_role
-                < channel.guild.me.top_role
-            ):
+# =========================================================
+# CHANNEL UPDATE
+# =========================================================
 
-                await channel.guild.ban(
-                    actor_member,
-                    reason="MT Security: Unauthorized channel deletion"
-                )
+@bot.event
+async def on_guild_channel_update(
+    before,
+    after
+):
 
-        except Exception:
-            pass
+    changes = []
+
+    if before.name != after.name:
+
+        changes.append(
+            f"الاسم: `{before.name}` → `{after.name}`"
+        )
+
+    if before.category_id != after.category_id:
+
+        changes.append(
+            "تم تغيير التصنيف"
+        )
+
+    before_topic = getattr(
+        before,
+        "topic",
+        None
+    )
+
+    after_topic = getattr(
+        after,
+        "topic",
+        None
+    )
+
+    if before_topic != after_topic:
+
+        changes.append(
+            "تم تعديل وصف/موضوع الروم"
+        )
+
+    if before.slowmode_delay != after.slowmode_delay:
+
+        changes.append(
+            f"Slowmode: `{before.slowmode_delay}` → `{after.slowmode_delay}`"
+        )
+
+    permission_changed = (
+        before.overwrites != after.overwrites
+    )
+
+    if permission_changed:
+
+        changes.append(
+            "🚨 تم تعديل صلاحيات الروم"
+        )
+
+    if not changes:
+
+        return
+
+    actor = await get_audit_actor_multiple(
+        after.guild,
+        [
+            discord.AuditLogAction.overwrite_update,
+            discord.AuditLogAction.overwrite_create,
+            discord.AuditLogAction.overwrite_delete,
+            discord.AuditLogAction.channel_update
+        ],
+        after.id
+    )
+
+    actor_member = (
+        after.guild.get_member(actor.id)
+        if actor
+        else None
+    )
+
+    details = "\n".join(
+        changes
+    )
+
+    if actor_member and is_whitelisted(
+        actor_member,
+        after.guild
+    ):
+
+        await send_log(
+            after.guild,
+            "channel_log_channel_id",
+            "🛡️ تعديل روم مصرح",
+            details,
+            discord.Color.green(),
+            actor=actor_member,
+            extra_fields=[
+                ("📍 الروم", after.mention)
+            ]
+        )
+
+        return
+
+    ban_result = "لم يتم تحديد المنفذ."
+
+    if actor:
+
+        ban_result = await ban_unauthorized_actor(
+            after.guild,
+            actor,
+            "MT Security: Unauthorized channel modification"
+        )
+
+    await security_report(
+        after.guild,
+        "🚨 تعديل روم غير مصرح",
+        details,
+        discord.Color.red(),
+        actor=actor_member or actor,
+        extra_fields=[
+            ("📍 الروم", after.mention),
+            ("🔨 الإجراء", ban_result)
+        ]
+    )
+
+    await send_log(
+        after.guild,
+        "channel_log_channel_id",
+        "🚨 تعديل روم غير مصرح",
+        details,
+        discord.Color.red(),
+        actor=actor_member or actor,
+        extra_fields=[
+            ("📍 الروم", after.mention),
+            ("🔨 الإجراء", ban_result)
+        ]
+    )
+
+
+# =========================================================
+# MESSAGE DELETE LOG
+# =========================================================
+
+@bot.event
+async def on_message_delete(
+    message
+):
+
+    if not message.guild:
+        return
+
+    if message.author.bot:
+        return
+
+    content = message.content
+
+    if not content:
+
+        content = (
+            "[لا يوجد محتوى نصي — ربما صورة/ملف/Embed]"
+        )
+
+    await send_log(
+        message.guild,
+        "delete_log_channel_id",
+        "🗑️ رسالة محذوفة",
+        f"تم حذف رسالة من {message.channel.mention}.",
+        discord.Color.red(),
+        actor=message.author,
+        extra_fields=[
+            ("📍 القناة", message.channel.mention),
+            ("📝 المحتوى", content[:1000]),
+            ("🆔 Message ID", message.id)
+        ]
+    )
+
+
+# =========================================================
+# MESSAGE EDIT LOG
+# =========================================================
+
+@bot.event
+async def on_message_edit(
+    before,
+    after
+):
+
+    if not after.guild:
+        return
+
+    if after.author.bot:
+        return
+
+    if before.content == after.content:
+        return
+
+    old_content = before.content or "[فارغ]"
+    new_content = after.content or "[فارغ]"
+
+    await send_log(
+        after.guild,
+        "edit_log_channel_id",
+        "✏️ رسالة معدلة",
+        f"تم تعديل رسالة في {after.channel.mention}.",
+        discord.Color.orange(),
+        actor=after.author,
+        extra_fields=[
+            ("📍 القناة", after.channel.mention),
+            ("📝 قبل التعديل", old_content[:1000]),
+            ("📝 بعد التعديل", new_content[:1000]),
+            ("🆔 Message ID", after.id)
+        ]
+    )
 
 
 # =========================================================
@@ -1075,7 +2114,7 @@ async def on_message(
     member = message.author
 
     # -----------------------------------------------------
-    # منع @everyone و @here
+    # @everyone / @here
     # -----------------------------------------------------
 
     if (
@@ -1083,29 +2122,34 @@ async def on_message(
         or "@here" in message.content
     ):
 
-        if not member.guild_permissions.administrator:
+        if not is_whitelisted(
+            member,
+            message.guild
+        ):
 
             try:
+
                 await message.delete()
+
             except Exception:
                 pass
 
             await security_report(
                 message.guild,
                 "⚠️ منع المنشن العام",
-                "تم حذف رسالة تحتوي على منشن عام بدون صلاحية.",
+                "تم حذف رسالة تحتوي على منشن عام بدون استثناء.",
                 discord.Color.gold(),
                 actor=member,
                 extra_fields=[
                     ("📍 القناة", message.channel.mention),
-                    ("📝 المحتوى", message.content)
+                    ("📝 المحتوى", message.content[:1000])
                 ]
             )
 
             return
 
     # -----------------------------------------------------
-    # منع الروابط
+    # الروابط
     # -----------------------------------------------------
 
     content_lower = message.content.lower()
@@ -1122,7 +2166,9 @@ async def on_message(
         ):
 
             try:
+
                 await message.delete()
+
             except Exception:
                 pass
 
@@ -1134,7 +2180,7 @@ async def on_message(
                 actor=member,
                 extra_fields=[
                     ("📍 القناة", message.channel.mention),
-                    ("📝 المحتوى", message.content)
+                    ("📝 المحتوى", message.content[:1000])
                 ]
             )
 
@@ -1173,6 +2219,474 @@ async def on_message(
 
 
 # =========================================================
+# EXCLUDED ROLES COMMAND PERMISSION
+# =========================================================
+
+def can_manage_security(
+    interaction
+):
+
+    if not interaction.guild:
+        return False
+
+    # Owner فقط
+    return (
+        interaction.user.id
+        ==
+        interaction.guild.owner_id
+    )
+
+
+# =========================================================
+# SET EXCLUDED ROLE
+# =========================================================
+
+@bot.tree.command(
+    name="set-excluded-role",
+    description="إضافة رتبة إلى الرتب المستثناة من الحماية"
+)
+@app_commands.describe(
+    role="الرتبة التي تريد استثنائها"
+)
+async def set_excluded_role(
+    interaction: discord.Interaction,
+    role: discord.Role
+):
+
+    if not can_manage_security(
+        interaction
+    ):
+
+        await interaction.response.send_message(
+            "❌ هذا الأمر للـ Owner فقط.",
+            ephemeral=True
+        )
+
+        return
+
+    added = add_excluded_role(
+        interaction.guild.id,
+        role.id
+    )
+
+    if not added:
+
+        await interaction.response.send_message(
+            f"⚠️ الرتبة {role.mention} مستثناة بالفعل.",
+            ephemeral=True
+        )
+
+        return
+
+    await interaction.response.send_message(
+        f"✅ تمت إضافة {role.mention} إلى الرتب المستثناة.",
+        ephemeral=True
+    )
+
+    await security_report(
+        interaction.guild,
+        "🛡️ إضافة رتبة مستثناة",
+        f"تمت إضافة الرتبة `{role.name}` إلى قائمة الاستثناءات.",
+        discord.Color.green(),
+        actor=interaction.user,
+        extra_fields=[
+            ("🎭 الرتبة", role.mention),
+            ("🆔 Role ID", role.id)
+        ]
+    )
+
+
+# =========================================================
+# REMOVE EXCLUDED ROLE
+# =========================================================
+
+@bot.tree.command(
+    name="remove-excluded-role",
+    description="إزالة رتبة من الرتب المستثناة"
+)
+@app_commands.describe(
+    role="الرتبة التي تريد إزالتها"
+)
+async def remove_excluded_role_command(
+    interaction: discord.Interaction,
+    role: discord.Role
+):
+
+    if not can_manage_security(
+        interaction
+    ):
+
+        await interaction.response.send_message(
+            "❌ هذا الأمر للـ Owner فقط.",
+            ephemeral=True
+        )
+
+        return
+
+    removed = remove_excluded_role(
+        interaction.guild.id,
+        role.id
+    )
+
+    if not removed:
+
+        await interaction.response.send_message(
+            f"⚠️ الرتبة {role.mention} ليست ضمن الاستثناءات.",
+            ephemeral=True
+        )
+
+        return
+
+    await interaction.response.send_message(
+        f"✅ تمت إزالة {role.mention} من الرتب المستثناة.",
+        ephemeral=True
+    )
+
+    await security_report(
+        interaction.guild,
+        "🔓 إزالة رتبة مستثناة",
+        f"تمت إزالة الرتبة `{role.name}` من الاستثناءات.",
+        discord.Color.orange(),
+        actor=interaction.user,
+        extra_fields=[
+            ("🎭 الرتبة", role.mention)
+        ]
+    )
+
+
+# =========================================================
+# CLEAR EXCLUDED ROLES
+# =========================================================
+
+@bot.tree.command(
+    name="clear-excluded-roles",
+    description="حذف جميع الرتب المستثناة"
+)
+async def clear_excluded_roles_command(
+    interaction: discord.Interaction
+):
+
+    if not can_manage_security(
+        interaction
+    ):
+
+        await interaction.response.send_message(
+            "❌ هذا الأمر للـ Owner فقط.",
+            ephemeral=True
+        )
+
+        return
+
+    count = clear_excluded_roles(
+        interaction.guild.id
+    )
+
+    await interaction.response.send_message(
+        f"🗑️ تم حذف **{count}** رتبة من قائمة الاستثناءات.",
+        ephemeral=True
+    )
+
+    await security_report(
+        interaction.guild,
+        "🗑️ مسح الرتب المستثناة",
+        f"تم حذف جميع الرتب المستثناة وعددها **{count}**.",
+        discord.Color.red(),
+        actor=interaction.user
+    )
+
+
+# =========================================================
+# LIST EXCLUDED ROLES
+# =========================================================
+
+@bot.tree.command(
+    name="list-excluded-roles",
+    description="عرض جميع الرتب المستثناة"
+)
+async def list_excluded_roles_command(
+    interaction: discord.Interaction
+):
+
+    if not can_manage_security(
+        interaction
+    ):
+
+        await interaction.response.send_message(
+            "❌ هذا الأمر للـ Owner فقط.",
+            ephemeral=True
+        )
+
+        return
+
+    role_ids = get_excluded_role_ids(
+        interaction.guild.id
+    )
+
+    if not role_ids:
+
+        await interaction.response.send_message(
+            "📋 لا توجد أي رتب مستثناة حاليًا.",
+            ephemeral=True
+        )
+
+        return
+
+    lines = []
+
+    for index, role_id in enumerate(
+        sorted(role_ids),
+        1
+    ):
+
+        role = interaction.guild.get_role(
+            role_id
+        )
+
+        if role:
+
+            lines.append(
+                f"**{index}.** {role.mention} — `{role.name}`"
+            )
+
+        else:
+
+            lines.append(
+                f"**{index}.** رتبة محذوفة — `{role_id}`"
+            )
+
+    description = "\n".join(
+        lines
+    )
+
+    embed = discord.Embed(
+        title="🛡️ الرتب المستثناة",
+        description=description[:4000],
+        color=discord.Color.blurple()
+    )
+
+    embed.add_field(
+        name="📊 العدد",
+        value=str(len(role_ids)),
+        inline=False
+    )
+
+    await interaction.response.send_message(
+        embed=embed,
+        ephemeral=True
+    )
+
+
+# =========================================================
+# GENERIC SET LOG COMMAND
+# =========================================================
+
+async def set_log_command(
+    interaction,
+    setting_name,
+    title,
+    channel
+):
+
+    if not can_manage_security(
+        interaction
+    ):
+
+        await interaction.response.send_message(
+            "❌ هذا الأمر للـ Owner فقط.",
+            ephemeral=True
+        )
+
+        return
+
+    set_log_channel(
+        interaction.guild.id,
+        setting_name,
+        channel.id
+    )
+
+    await interaction.response.send_message(
+        f"✅ تم تعيين {title} إلى {channel.mention}.",
+        ephemeral=True
+    )
+
+    await security_report(
+        interaction.guild,
+        f"📍 تغيير {title}",
+        f"تم تعيين {title} إلى {channel.mention}.",
+        discord.Color.blue(),
+        actor=interaction.user
+    )
+
+
+# =========================================================
+# SECURITY LOG
+# =========================================================
+
+@bot.tree.command(
+    name="set-security-log",
+    description="تحديد روم سجل الحماية"
+)
+@app_commands.describe(
+    channel="روم سجل الحماية"
+)
+async def set_security_log(
+    interaction: discord.Interaction,
+    channel: discord.TextChannel
+):
+
+    await set_log_command(
+        interaction,
+        "security_log_channel_id",
+        "سجل الحماية",
+        channel
+    )
+
+
+# =========================================================
+# DELETE LOG
+# =========================================================
+
+@bot.tree.command(
+    name="set-delete-log",
+    description="تحديد روم سجل الرسائل المحذوفة"
+)
+@app_commands.describe(
+    channel="روم الرسائل المحذوفة"
+)
+async def set_delete_log(
+    interaction: discord.Interaction,
+    channel: discord.TextChannel
+):
+
+    await set_log_command(
+        interaction,
+        "delete_log_channel_id",
+        "سجل الحذف",
+        channel
+    )
+
+
+# =========================================================
+# EDIT LOG
+# =========================================================
+
+@bot.tree.command(
+    name="set-edit-log",
+    description="تحديد روم سجل الرسائل المعدلة"
+)
+@app_commands.describe(
+    channel="روم الرسائل المعدلة"
+)
+async def set_edit_log(
+    interaction: discord.Interaction,
+    channel: discord.TextChannel
+):
+
+    await set_log_command(
+        interaction,
+        "edit_log_channel_id",
+        "سجل التعديل",
+        channel
+    )
+
+
+# =========================================================
+# MEMBER LOG
+# =========================================================
+
+@bot.tree.command(
+    name="set-member-log",
+    description="تحديد روم سجل دخول وخروج الأعضاء"
+)
+@app_commands.describe(
+    channel="روم الأعضاء"
+)
+async def set_member_log(
+    interaction: discord.Interaction,
+    channel: discord.TextChannel
+):
+
+    await set_log_command(
+        interaction,
+        "member_log_channel_id",
+        "سجل الأعضاء",
+        channel
+    )
+
+
+# =========================================================
+# MOD LOG
+# =========================================================
+
+@bot.tree.command(
+    name="set-mod-log",
+    description="تحديد روم سجل العمليات الإدارية"
+)
+@app_commands.describe(
+    channel="روم العمليات الإدارية"
+)
+async def set_mod_log(
+    interaction: discord.Interaction,
+    channel: discord.TextChannel
+):
+
+    await set_log_command(
+        interaction,
+        "mod_log_channel_id",
+        "سجل الإدارة",
+        channel
+    )
+
+
+# =========================================================
+# ROLE LOG
+# =========================================================
+
+@bot.tree.command(
+    name="set-role-log",
+    description="تحديد روم سجل الرتب"
+)
+@app_commands.describe(
+    channel="روم الرتب"
+)
+async def set_role_log(
+    interaction: discord.Interaction,
+    channel: discord.TextChannel
+):
+
+    await set_log_command(
+        interaction,
+        "role_log_channel_id",
+        "سجل الرتب",
+        channel
+    )
+
+
+# =========================================================
+# CHANNEL LOG
+# =========================================================
+
+@bot.tree.command(
+    name="set-channel-log",
+    description="تحديد روم سجل الرومات والصلاحيات"
+)
+@app_commands.describe(
+    channel="روم الرومات"
+)
+async def set_channel_log(
+    interaction: discord.Interaction,
+    channel: discord.TextChannel
+):
+
+    await set_log_command(
+        interaction,
+        "channel_log_channel_id",
+        "سجل الرومات",
+        channel
+    )
+
+
+# =========================================================
 # TICKET SYSTEM
 # =========================================================
 
@@ -1200,6 +2714,10 @@ def find_role(
 
     return None
 
+
+# =========================================================
+# TICKET CLOSE
+# =========================================================
 
 class TicketCloseView(
     discord.ui.View
@@ -1271,7 +2789,6 @@ class TicketCloseView(
             ephemeral=True
         )
 
-        # Transcript
         lines = []
 
         try:
@@ -1288,6 +2805,7 @@ class TicketCloseView(
                 content = msg.content
 
                 if not content:
+
                     content = "[Embed / Attachment]"
 
                 lines.append(
@@ -1321,8 +2839,10 @@ class TicketCloseView(
         db.commit()
         db.close()
 
-        security = await get_security_channel(
-            interaction.guild
+        # إرسال الترانسكريبت إلى Security Log إذا كان محددًا
+        security = get_log_channel(
+            interaction.guild,
+            "security_log_channel_id"
         )
 
         if security:
@@ -1337,24 +2857,38 @@ class TicketCloseView(
                 filename=f"ticket-{channel.id}.txt"
             )
 
-            await security.send(
-                content=(
-                    f"🔒 **تم إغلاق تذكرة**\n"
-                    f"القناة: `{channel.name}`\n"
-                    f"بواسطة: {interaction.user.mention}"
-                ),
-                file=file
-            )
+            try:
+
+                await security.send(
+                    content=(
+                        f"🔒 **تم إغلاق تذكرة**\n"
+                        f"القناة: `{channel.name}`\n"
+                        f"بواسطة: {interaction.user.mention}"
+                    ),
+                    file=file
+                )
+
+            except Exception as error:
+
+                logging.error(
+                    f"Ticket transcript error: {error}"
+                )
 
         await asyncio.sleep(2)
 
         try:
+
             await channel.delete(
                 reason="MT Ticket Closed"
             )
+
         except Exception:
             pass
 
+
+# =========================================================
+# TICKET SELECT
+# =========================================================
 
 class TicketSelectView(
     discord.ui.View
@@ -1402,6 +2936,7 @@ class TicketSelectView(
         member = interaction.user
 
         sector_key = select.values[0]
+
         sector_role_name = SECTOR_OPTIONS[
             sector_key
         ]
@@ -1424,6 +2959,7 @@ class TicketSelectView(
         )
 
         existing = cursor.fetchone()
+
         db.close()
 
         if existing:
@@ -1495,6 +3031,8 @@ class TicketSelectView(
                 read_message_history=True
             )
 
+        # منع نظام الحماية من اعتبار إنشاء التذكرة اختراقًا
+        # لأن منشئ التذكرة هو البوت نفسه
         channel = await guild.create_text_channel(
             name=f"ticket-{member.name}",
             category=category,
@@ -1799,9 +3337,7 @@ async def issue_warrant(
 
     embed = discord.Embed(
         title="⚖️ مذكرة رسمية",
-        description=(
-            "تم إصدار مذكرة رسمية."
-        ),
+        description="تم إصدار مذكرة رسمية.",
         color=discord.Color.red()
     )
 
@@ -2211,9 +3747,7 @@ async def swat_deploy(
 
     embed = discord.Embed(
         title="🛡️ S.W.A.T DEPLOYMENT",
-        description=(
-            "تم إصدار أمر انتشار S.W.A.T."
-        ),
+        description="تم إصدار أمر انتشار S.W.A.T.",
         color=discord.Color.orange()
     )
 
@@ -2254,7 +3788,7 @@ async def swat_deploy(
 
 
 # =========================================================
-# PHMC - MEDICAL REPORT
+# PHMC
 # =========================================================
 
 @bot.tree.command(
@@ -2414,10 +3948,6 @@ async def ai_command(
         interaction.guild.id
     )
 
-    # -------------------------
-    # تفعيل
-    # -------------------------
-
     if action.value == "enable":
 
         if not settings["ai_channel_id"]:
@@ -2453,10 +3983,6 @@ async def ai_command(
             ]
         )
 
-    # -------------------------
-    # تعطيل
-    # -------------------------
-
     elif action.value == "disable":
 
         set_ai_settings(
@@ -2476,10 +4002,6 @@ async def ai_command(
             discord.Color.red(),
             actor=interaction.user
         )
-
-    # -------------------------
-    # تحديد روم
-    # -------------------------
 
     elif action.value == "channel":
 
@@ -2564,7 +4086,9 @@ if __name__ == "__main__":
 
     keep_alive()
 
-    TOKEN = os.getenv("TOKEN")
+    TOKEN = os.getenv(
+        "TOKEN"
+    )
 
     if not TOKEN:
 
@@ -2572,4 +4096,6 @@ if __name__ == "__main__":
             "❌ لم يتم العثور على Environment Variable باسم TOKEN في Render."
         )
 
-    bot.run(TOKEN)
+    bot.run(
+        TOKEN
+    )
