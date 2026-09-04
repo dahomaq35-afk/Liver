@@ -3,74 +3,71 @@
     margin: 0;
     padding: 0;
 }
-
 body {
     background: #0b0b0f;
     color: white;
     font-family: Arial, sans-serif;
 }
-
+/* القائمة الجانبية */
 .sidebar {
     position: fixed;
-    right: 0;
+    left: 0;
     top: 0;
-    width: 250px;
+    width: 310px;
     height: 100vh;
     background: #111116;
     padding: 25px;
+    z-index: 1000;
 }
-
-.sidebar h2 {
-    text-align: center;
-    margin-bottom: 30px;
+/* المحتوى */
+main {
+    margin-left: 310px;
+    padding: 45px;
 }
-
+/* روابط القائمة */
 .sidebar a {
     display: block;
     color: #aaa;
     text-decoration: none;
-    padding: 14px;
+    padding: 15px;
     margin-bottom: 8px;
     border-radius: 10px;
 }
-
 .sidebar a:hover {
     background: #1d1d25;
     color: white;
 }
-
-main {
-    margin-right: 250px;
-    padding: 45px;
+/* زر الثلاث شرطات */
+.menu-btn {
+    display: none;
+    position: fixed;
+    top: 18px;
+    right: 18px;
+    z-index: 2000;
+    background: #181820;
+    color: white;
+    border: 1px solid #292933;
+    border-radius: 10px;
+    padding: 10px 13px;
+    font-size: 22px;
+    cursor: pointer;
 }
-
-main h1 {
-    font-size: 32px;
-    margin-bottom: 10px;
-}
-
-main p {
-    color: #888;
-}
-
+/* البطاقات */
 .cards {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
     gap: 20px;
     margin-top: 35px;
 }
-
 .card {
     background: #131319;
     border: 1px solid #24242d;
     border-radius: 15px;
     padding: 25px;
 }
-
 .card h3 {
     margin-bottom: 12px;
 }
-
 .card button {
     margin-top: 20px;
     padding: 10px 20px;
@@ -79,4 +76,24 @@ main p {
     background: #5865f2;
     color: white;
     cursor: pointer;
+}
+/* الجوال */
+@media (max-width: 700px) {
+    .sidebar {
+        left: -310px;
+        transition: 0.25s ease;
+    }
+    .sidebar.open {
+        left: 0;
+    }
+    main {
+        margin-left: 0;
+        padding: 25px;
+    }
+    .menu-btn {
+        display: block;
+    }
+    .cards {
+        grid-template-columns: 1fr;
+    }
 }
