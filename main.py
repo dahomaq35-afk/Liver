@@ -820,7 +820,6 @@ async def send_log(
 
 # =========================================================
 # CONFIGURATION LOG
-# لا يذهب إلى Security
 # =========================================================
 
 async def send_config_log(
@@ -3545,8 +3544,6 @@ async def on_ready():
 
 if __name__ == "__main__":
 
-    keep_alive()
-
     TOKEN = os.getenv(
         "TOKEN"
     )
@@ -3556,6 +3553,11 @@ if __name__ == "__main__":
         raise RuntimeError(
             "❌ لم يتم العثور على Environment Variable باسم TOKEN في Render."
         )
+
+    # مهم:
+    # نرسل كائن البوت إلى keepalive
+    # حتى لوحة التحكم تستطيع جلب رومات السيرفر مباشرة من البوت.
+    keep_alive(bot)
 
     bot.run(
         TOKEN
