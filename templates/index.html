@@ -2,6 +2,7 @@
 <html lang="ar" dir="rtl">
 
 <head>
+
     <meta charset="UTF-8">
 
     <meta
@@ -31,16 +32,24 @@
         href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap"
         rel="stylesheet"
     >
+
 </head>
+
 
 <body>
 
+
 {% if not user %}
+
+<!-- =====================================================
+     LOGIN
+===================================================== -->
 
 <div class="login-page">
 
     <div class="login-glow glow-one"></div>
     <div class="login-glow glow-two"></div>
+
 
     <div class="login-card">
 
@@ -48,21 +57,30 @@
             <span>MT</span>
         </div>
 
+
         <div class="login-title">
             MT BOT
         </div>
+
 
         <div class="login-subtitle">
             لوحة تحكم احترافية لسيرفر Discord
         </div>
 
+
         <a
             href="/login"
             class="discord-login"
         >
-            <span class="discord-icon">◉</span>
+
+            <span class="discord-icon">
+                ◉
+            </span>
+
             تسجيل الدخول عبر Discord
+
         </a>
+
 
         <div class="login-note">
             تسجيل دخول آمن باستخدام Discord OAuth2
@@ -72,14 +90,26 @@
 
 </div>
 
+
 {% else %}
 
+
+<!-- =====================================================
+     APP
+===================================================== -->
+
 <div class="app">
+
+
+    <!-- =================================================
+         SIDEBAR
+    ================================================== -->
 
     <aside
         class="sidebar"
         id="sidebar"
     >
+
 
         <div class="brand">
 
@@ -87,9 +117,12 @@
                 MT
             </div>
 
+
             <div class="brand-text">
 
-                <strong>MT BOT</strong>
+                <strong>
+                    MT BOT
+                </strong>
 
                 <span>
                     Dashboard
@@ -99,20 +132,26 @@
 
         </div>
 
+
         <div class="sidebar-line"></div>
+
 
         <div class="menu-title">
             الرئيسية
         </div>
 
+
         <nav class="menu">
 
+
             <a
-                href="#"
+                href="#home"
                 class="menu-item active"
             >
 
-                <span class="menu-icon">⌂</span>
+                <span class="menu-icon">
+                    ⌂
+                </span>
 
                 <span>
                     الرئيسية
@@ -120,12 +159,15 @@
 
             </a>
 
+
             <a
                 href="#servers"
                 class="menu-item"
             >
 
-                <span class="menu-icon">▣</span>
+                <span class="menu-icon">
+                    ▣
+                </span>
 
                 <span>
                     السيرفرات
@@ -133,16 +175,20 @@
 
             </a>
 
+
             <div class="menu-title second">
                 الإدارة
             </div>
+
 
             <a
                 href="#protection"
                 class="menu-item"
             >
 
-                <span class="menu-icon">◈</span>
+                <span class="menu-icon">
+                    ◈
+                </span>
 
                 <span>
                     الحماية
@@ -150,12 +196,15 @@
 
             </a>
 
+
             <a
                 href="#logs"
                 class="menu-item"
             >
 
-                <span class="menu-icon">≡</span>
+                <span class="menu-icon">
+                    ≡
+                </span>
 
                 <span>
                     السجلات
@@ -163,12 +212,15 @@
 
             </a>
 
+
             <a
                 href="#tickets"
                 class="menu-item"
             >
 
-                <span class="menu-icon">□</span>
+                <span class="menu-icon">
+                    □
+                </span>
 
                 <span>
                     التذاكر
@@ -176,16 +228,20 @@
 
             </a>
 
+
             <div class="menu-title second">
                 الأدوات
             </div>
+
 
             <a
                 href="#ai"
                 class="menu-item"
             >
 
-                <span class="menu-icon">✦</span>
+                <span class="menu-icon">
+                    ✦
+                </span>
 
                 <span>
                     الذكاء الاصطناعي
@@ -193,12 +249,15 @@
 
             </a>
 
+
             <a
                 href="#settings"
                 class="menu-item"
             >
 
-                <span class="menu-icon">⚙</span>
+                <span class="menu-icon">
+                    ⚙
+                </span>
 
                 <span>
                     الإعدادات
@@ -208,9 +267,15 @@
 
         </nav>
 
+
+        <!-- =================================================
+             PROFILE
+        ================================================== -->
+
         <div class="sidebar-bottom">
 
             <div class="profile">
+
 
                 <div class="profile-avatar">
 
@@ -231,6 +296,7 @@
 
                 </div>
 
+
                 <div class="profile-info">
 
                     <strong>
@@ -242,6 +308,7 @@
                     </span>
 
                 </div>
+
 
                 <a
                     href="/logout"
@@ -255,19 +322,32 @@
 
         </div>
 
+
     </aside>
 
 
-    <main class="content">
+    <!-- =================================================
+         CONTENT
+    ================================================== -->
+
+    <main class="content" id="home">
+
+
+        <!-- =================================================
+             TOPBAR
+        ================================================== -->
 
         <header class="topbar">
+
 
             <button
                 class="mobile-menu"
                 onclick="toggleSidebar()"
+                type="button"
             >
                 ☰
             </button>
+
 
             <div>
 
@@ -281,6 +361,7 @@
 
             </div>
 
+
             <div class="top-user">
 
                 <div class="status-dot"></div>
@@ -291,10 +372,16 @@
 
             </div>
 
+
         </header>
 
 
+        <!-- =================================================
+             WELCOME
+        ================================================== -->
+
         <section class="welcome-card">
+
 
             <div class="welcome-content">
 
@@ -302,9 +389,11 @@
                     أهلاً بك 👋
                 </span>
 
+
                 <h2>
                     {{ user.global_name or user.username }}
                 </h2>
+
 
                 <p>
                     تحكم في بوت MT وإدارة سيرفراتك من مكان واحد.
@@ -312,10 +401,13 @@
 
             </div>
 
+
             <div class="welcome-decoration">
 
                 <div class="decoration-circle circle-one"></div>
+
                 <div class="decoration-circle circle-two"></div>
+
 
                 <div class="decoration-logo">
                     MT
@@ -323,16 +415,23 @@
 
             </div>
 
+
         </section>
 
 
+        <!-- =================================================
+             STATS
+        ================================================== -->
+
         <section class="stats-grid">
+
 
             <div class="stat-card">
 
                 <div class="stat-icon">
                     ◈
                 </div>
+
 
                 <div class="stat-info">
 
@@ -355,6 +454,7 @@
                     ✓
                 </div>
 
+
                 <div class="stat-info">
 
                     <span>
@@ -375,6 +475,7 @@
                 <div class="stat-icon">
                     ⚡
                 </div>
+
 
                 <div class="stat-info">
 
@@ -397,6 +498,7 @@
                     🔒
                 </div>
 
+
                 <div class="stat-info">
 
                     <span>
@@ -411,15 +513,22 @@
 
             </div>
 
+
         </section>
 
+
+        <!-- =================================================
+             SERVERS
+        ================================================== -->
 
         <section
             class="section"
             id="servers"
         >
 
+
             <div class="section-header">
+
 
                 <div>
 
@@ -433,22 +542,29 @@
 
                 </div>
 
+
                 <span class="section-count">
                     {{ guilds|length }} سيرفر
                 </span>
+
 
             </div>
 
 
             <div class="servers-grid">
 
+
                 {% for guild in guilds %}
+
 
                 <div class="server-card">
 
+
                     <div class="server-top">
 
+
                         <div class="server-icon">
+
 
                             {% if guild.icon %}
 
@@ -465,11 +581,14 @@
 
                             {% endif %}
 
+
                         </div>
+
 
                         <div class="server-status">
                             ●
                         </div>
+
 
                     </div>
 
@@ -480,6 +599,7 @@
                             {{ guild.name }}
                         </h3>
 
+
                         <p>
                             إدارة إعدادات البوت
                         </p>
@@ -487,8 +607,11 @@
                     </div>
 
 
+                    <!-- الزر يفتح صفحة السيرفر -->
+
                     <button
                         class="manage-btn"
+                        type="button"
                         onclick="manageServer('{{ guild.id }}')"
                     >
 
@@ -502,9 +625,12 @@
 
                     </button>
 
+
                 </div>
 
+
                 {% else %}
+
 
                 <div class="empty-card">
 
@@ -512,9 +638,11 @@
                         ◇
                     </div>
 
+
                     <h3>
                         لا توجد سيرفرات
                     </h3>
+
 
                     <p>
                         لم يتم العثور على سيرفرات مرتبطة بحسابك.
@@ -522,17 +650,25 @@
 
                 </div>
 
+
                 {% endfor %}
+
 
             </div>
 
+
         </section>
 
+
+        <!-- =================================================
+             PROTECTION
+        ================================================== -->
 
         <section
             class="coming-section"
             id="protection"
         >
+
 
             <div class="coming-card">
 
@@ -540,79 +676,356 @@
                     ◈
                 </div>
 
+
                 <div>
 
                     <span>
-                        قادم قريباً
+                        نظام الحماية
                     </span>
 
+
                     <h3>
-                        نظام الحماية
+                        حماية السيرفر
                     </h3>
 
+
                     <p>
-                        سيتم ربط إعدادات الحماية بالبوت في الخطوة القادمة.
+                        لإدارة الحماية، اختر السيرفر من قسم السيرفرات ثم اضغط «إدارة السيرفر».
                     </p>
 
                 </div>
 
             </div>
 
+
         </section>
+
+
+        <!-- =================================================
+             LOGS
+        ================================================== -->
+
+        <section
+            class="coming-section"
+            id="logs"
+        >
+
+
+            <div class="coming-card">
+
+                <div class="coming-icon">
+                    ≡
+                </div>
+
+
+                <div>
+
+                    <span>
+                        السجلات
+                    </span>
+
+
+                    <h3>
+                        سجلات البوت
+                    </h3>
+
+
+                    <p>
+                        اختر السيرفر الذي تريد إدارة سجلاته من قسم السيرفرات.
+                    </p>
+
+                </div>
+
+            </div>
+
+
+        </section>
+
+
+        <!-- =================================================
+             TICKETS
+        ================================================== -->
+
+        <section
+            class="coming-section"
+            id="tickets"
+        >
+
+
+            <div class="coming-card">
+
+                <div class="coming-icon">
+                    □
+                </div>
+
+
+                <div>
+
+                    <span>
+                        التذاكر
+                    </span>
+
+
+                    <h3>
+                        نظام التذاكر
+                    </h3>
+
+
+                    <p>
+                        اختر السيرفر لإدارة ومتابعة التذاكر الخاصة به.
+                    </p>
+
+                </div>
+
+            </div>
+
+
+        </section>
+
+
+        <!-- =================================================
+             AI
+        ================================================== -->
+
+        <section
+            class="coming-section"
+            id="ai"
+        >
+
+
+            <div class="coming-card">
+
+                <div class="coming-icon">
+                    ✦
+                </div>
+
+
+                <div>
+
+                    <span>
+                        MT AI
+                    </span>
+
+
+                    <h3>
+                        الذكاء الاصطناعي
+                    </h3>
+
+
+                    <p>
+                        يمكنك التحكم بإعدادات الذكاء الاصطناعي من صفحة إدارة السيرفر.
+                    </p>
+
+                </div>
+
+            </div>
+
+
+        </section>
+
+
+        <!-- =================================================
+             SETTINGS
+        ================================================== -->
+
+        <section
+            class="coming-section"
+            id="settings"
+        >
+
+
+            <div class="coming-card">
+
+                <div class="coming-icon">
+                    ⚙
+                </div>
+
+
+                <div>
+
+                    <span>
+                        الإعدادات
+                    </span>
+
+
+                    <h3>
+                        إعدادات السيرفر
+                    </h3>
+
+
+                    <p>
+                        اختر السيرفر الذي تريد تعديل إعداداته من قسم السيرفرات.
+                    </p>
+
+                </div>
+
+            </div>
+
+
+        </section>
+
 
     </main>
 
+
 </div>
+
 
 {% endif %}
 
 
+<!-- =====================================================
+     JAVASCRIPT
+===================================================== -->
+
 <script>
+
+
+/* =====================================================
+   القائمة الجانبية للجوال
+===================================================== */
 
 function toggleSidebar() {
 
     const sidebar =
         document.getElementById("sidebar");
 
+
     if (sidebar) {
+
         sidebar.classList.toggle("open");
+
     }
 
 }
 
 
+/* =====================================================
+   إدارة السيرفر
+===================================================== */
+
 function manageServer(id) {
 
+    if (!id) {
+        return;
+    }
+
+
     window.location.href =
-        "/server/" + id;
+        "/server/" + encodeURIComponent(id);
 
 }
 
 
-document
-    .querySelectorAll(".menu-item")
-    .forEach(function(item) {
+/* =====================================================
+   تفعيل عناصر القائمة
+===================================================== */
 
-        item.addEventListener(
-            "click",
-            function() {
+const menuItems =
+    document.querySelectorAll(".menu-item");
 
-                document
-                    .querySelectorAll(".menu-item")
-                    .forEach(function(el) {
 
-                        el.classList.remove("active");
+menuItems.forEach(function(item) {
 
-                    });
 
-                this.classList.add("active");
+    item.addEventListener(
+        "click",
+        function() {
+
+
+            menuItems.forEach(
+                function(el) {
+
+                    el.classList.remove(
+                        "active"
+                    );
+
+                }
+            );
+
+
+            this.classList.add(
+                "active"
+            );
+
+
+            const sidebar =
+                document.getElementById(
+                    "sidebar"
+                );
+
+
+            if (sidebar) {
+
+                sidebar.classList.remove(
+                    "open"
+                );
 
             }
+
+        }
+    );
+
+
+});
+
+
+/* =====================================================
+   تحديد القسم عند فتح الصفحة
+===================================================== */
+
+function updateActiveMenu() {
+
+    const hash =
+        window.location.hash;
+
+
+    if (!hash) {
+        return;
+    }
+
+
+    menuItems.forEach(
+        function(item) {
+
+            item.classList.remove(
+                "active"
+            );
+
+        }
+    );
+
+
+    const selected =
+        document.querySelector(
+            '.menu-item[href="' +
+            hash +
+            '"]'
         );
 
-    });
+
+    if (selected) {
+
+        selected.classList.add(
+            "active"
+        );
+
+    }
+
+}
+
+
+window.addEventListener(
+    "hashchange",
+    updateActiveMenu
+);
+
+
+updateActiveMenu();
+
 
 </script>
+
 
 </body>
 
