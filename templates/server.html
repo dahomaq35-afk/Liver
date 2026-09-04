@@ -2,109 +2,302 @@
 <html lang="ar" dir="rtl">
 
 <head>
+
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <title>{{ guild.name }} — MT BOT</title>
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
 
-    <link rel="stylesheet"
-          href="{{ url_for('static', filename='style.css') }}">
+    <title>
+        {{ guild.name }} — MT BOT
+    </title>
 
-    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap"
-          rel="stylesheet">
+    <link
+        rel="stylesheet"
+        href="{{ url_for('static', filename='style.css') }}"
+    >
+
+    <link
+        href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap"
+        rel="stylesheet"
+    >
 
     <style>
+
         .server-page {
             min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
             padding: 25px;
+
             background:
                 radial-gradient(
-                    circle at 50% 20%,
-                    rgba(88, 101, 242, 0.12),
-                    transparent 35%
+                    circle at 50% 15%,
+                    rgba(88, 101, 242, 0.14),
+                    transparent 38%
                 ),
                 #08090d;
         }
 
+
         .server-panel {
-            width: min(520px, 100%);
+            width: min(560px, 100%);
+
             background: #101117;
+
             border: 1px solid #23252f;
-            border-radius: 22px;
-            padding: 30px;
-            text-align: center;
-            box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
+
+            border-radius: 24px;
+
+            padding: 32px;
+
+            box-shadow:
+                0 30px 90px rgba(0, 0, 0, 0.5);
         }
 
-        .selected-server-icon {
-            width: 90px;
-            height: 90px;
-            margin: 0 auto 20px;
-            border-radius: 25px;
-            overflow: hidden;
-            background: #20222d;
+
+        .server-header {
             display: flex;
+
+            align-items: center;
+
+            gap: 17px;
+
+            margin-bottom: 30px;
+        }
+
+
+        .selected-server-icon {
+            width: 72px;
+            height: 72px;
+
+            flex-shrink: 0;
+
+            border-radius: 20px;
+
+            overflow: hidden;
+
+            background: #20222d;
+
+            display: flex;
+
             align-items: center;
             justify-content: center;
-            font-size: 30px;
+
+            font-size: 25px;
+
             font-weight: 800;
         }
+
 
         .selected-server-icon img {
             width: 100%;
             height: 100%;
+
             object-fit: cover;
         }
 
-        .server-panel h1 {
-            font-size: 25px;
-            margin-bottom: 5px;
+
+        .server-header-info {
+            min-width: 0;
         }
 
-        .server-panel p {
+
+        .server-header-info span {
             color: #8d909d;
-            font-size: 12px;
-            margin-bottom: 25px;
+
+            font-size: 11px;
         }
+
+
+        .server-header-info h1 {
+            font-size: 22px;
+
+            margin-top: 2px;
+
+            white-space: nowrap;
+
+            overflow: hidden;
+
+            text-overflow: ellipsis;
+        }
+
+
+        .server-header-info p {
+            color: #656874;
+
+            font-size: 10px;
+
+            margin-top: 2px;
+        }
+
+
+        .menu-title {
+            color: #8d909d;
+
+            font-size: 11px;
+
+            margin-bottom: 10px;
+        }
+
 
         .server-menu {
+            display: grid;
+
+            grid-template-columns: 1fr 1fr;
+
+            gap: 11px;
+        }
+
+
+        .server-option {
+            min-height: 90px;
+
+            border-radius: 15px;
+
+            border: 1px solid #292c38;
+
+            background: #15161d;
+
+            color: white;
+
+            font-family: inherit;
+
+            text-align: right;
+
+            padding: 16px;
+
+            cursor: pointer;
+
+            transition: 0.2s;
+
             display: flex;
+
             flex-direction: column;
+
+            justify-content: center;
+
+            gap: 5px;
+        }
+
+
+        .server-option:hover {
+            transform: translateY(-2px);
+
+            background: #1a1c27;
+
+            border-color: #5865f2;
+
+            box-shadow:
+                0 10px 30px rgba(88, 101, 242, 0.12);
+        }
+
+
+        .option-icon {
+            font-size: 19px;
+
+            color: #8992ff;
+        }
+
+
+        .option-title {
+            font-size: 13px;
+
+            font-weight: 700;
+        }
+
+
+        .option-description {
+            color: #656874;
+
+            font-size: 9px;
+        }
+
+
+        .server-actions {
+            margin-top: 22px;
+
+            display: flex;
+
             gap: 10px;
         }
 
-        .server-menu button {
-            width: 100%;
-            padding: 14px;
-            border-radius: 12px;
-            border: 1px solid #292c38;
-            background: #171820;
-            color: white;
+
+        .close-btn,
+        .back-btn {
+            flex: 1;
+
+            padding: 12px;
+
+            border-radius: 11px;
+
             font-family: inherit;
-            font-size: 13px;
+
+            font-size: 12px;
+
             font-weight: 700;
+
             cursor: pointer;
+
+            transition: 0.2s;
         }
 
-        .server-menu button:hover {
-            background: #5865f2;
-            border-color: #5865f2;
-        }
 
-        .server-menu .close-btn {
+        .close-btn {
+            border: 1px solid #292c38;
+
             background: transparent;
+
             color: #8d909d;
         }
 
-        .server-menu .close-btn:hover {
-            background: #1a1b22;
+
+        .close-btn:hover {
+            background: #191a21;
+
             color: white;
         }
+
+
+        .back-btn {
+            border: 1px solid #5865f2;
+
+            background: #5865f2;
+
+            color: white;
+        }
+
+
+        .back-btn:hover {
+            background: #4752c4;
+
+            border-color: #4752c4;
+        }
+
+
+        @media (max-width: 500px) {
+
+            .server-panel {
+                padding: 23px;
+            }
+
+            .server-menu {
+                grid-template-columns: 1fr;
+            }
+
+            .server-actions {
+                flex-direction: column;
+            }
+
+        }
+
     </style>
+
 </head>
+
 
 <body>
 
@@ -112,45 +305,224 @@
 
     <div class="server-panel">
 
-        <div class="selected-server-icon">
 
-            {% if guild.icon %}
+        <!-- معلومات السيرفر -->
 
-            <img
-                src="https://cdn.discordapp.com/icons/{{ guild.id }}/{{ guild.icon }}.png?size=256"
-                alt="{{ guild.name }}"
-            >
+        <div class="server-header">
 
-            {% else %}
 
-            {{ guild.name[0]|upper }}
+            <div class="selected-server-icon">
 
-            {% endif %}
+                {% if guild.icon %}
+
+                <img
+                    src="https://cdn.discordapp.com/icons/{{ guild.id }}/{{ guild.icon }}.png?size=256"
+                    alt="{{ guild.name }}"
+                >
+
+                {% else %}
+
+                {{ guild.name[0]|upper }}
+
+                {% endif %}
+
+            </div>
+
+
+            <div class="server-header-info">
+
+                <span>
+                    السيرفر المحدد
+                </span>
+
+                <h1>
+                    {{ guild.name }}
+                </h1>
+
+                <p>
+                    MT BOT Dashboard
+                </p>
+
+            </div>
 
         </div>
 
-        <h1>{{ guild.name }}</h1>
 
-        <p>إدارة السيرفر</p>
+        <!-- عنوان القائمة -->
+
+        <div class="menu-title">
+            اختر القسم الذي تريد إدارته
+        </div>
+
+
+        <!-- قائمة الإدارة -->
 
         <div class="server-menu">
 
-            <button onclick="alert('سيتم إضافة إعدادات السيرفر قريباً.')">
-                إدارة السيرفر
+
+            <button
+                class="server-option"
+                onclick="openSection('الحماية')"
+            >
+
+                <span class="option-icon">
+                    🛡️
+                </span>
+
+                <span class="option-title">
+                    الحماية
+                </span>
+
+                <span class="option-description">
+                    إعدادات حماية السيرفر
+                </span>
+
             </button>
+
+
+            <button
+                class="server-option"
+                onclick="openSection('السجلات')"
+            >
+
+                <span class="option-icon">
+                    📋
+                </span>
+
+                <span class="option-title">
+                    السجلات
+                </span>
+
+                <span class="option-description">
+                    متابعة أحداث السيرفر
+                </span>
+
+            </button>
+
+
+            <button
+                class="server-option"
+                onclick="openSection('التذاكر')"
+            >
+
+                <span class="option-icon">
+                    🎫
+                </span>
+
+                <span class="option-title">
+                    التذاكر
+                </span>
+
+                <span class="option-description">
+                    إدارة نظام التذاكر
+                </span>
+
+            </button>
+
+
+            <button
+                class="server-option"
+                onclick="openSection('الذكاء الاصطناعي')"
+            >
+
+                <span class="option-icon">
+                    🤖
+                </span>
+
+                <span class="option-title">
+                    الذكاء الاصطناعي
+                </span>
+
+                <span class="option-description">
+                    إعدادات الذكاء الاصطناعي
+                </span>
+
+            </button>
+
+
+            <button
+                class="server-option"
+                onclick="openSection('إعدادات السيرفر')"
+            >
+
+                <span class="option-icon">
+                    ⚙️
+                </span>
+
+                <span class="option-title">
+                    إعدادات السيرفر
+                </span>
+
+                <span class="option-description">
+                    إعدادات MT BOT
+                </span>
+
+            </button>
+
+
+            <button
+                class="server-option"
+                onclick="openSection('الأوامر')"
+            >
+
+                <span class="option-icon">
+                    ⚡
+                </span>
+
+                <span class="option-title">
+                    الأوامر
+                </span>
+
+                <span class="option-description">
+                    إدارة أوامر البوت
+                </span>
+
+            </button>
+
+
+        </div>
+
+
+        <!-- الأزرار السفلية -->
+
+        <div class="server-actions">
+
+            <button
+                class="back-btn"
+                onclick="window.location.href='/'"
+            >
+                ← العودة للرئيسية
+            </button>
+
 
             <button
                 class="close-btn"
-                onclick="window.location.href='/'"
+                onclick="window.close()"
             >
                 إغلاق
             </button>
 
         </div>
 
+
     </div>
 
 </div>
 
+
+<script>
+
+function openSection(section) {
+
+    alert(
+        "قسم " + section + " سيتم تفعيله في الخطوة القادمة."
+    );
+
+}
+
+</script>
+
+
 </body>
+
 </html>
