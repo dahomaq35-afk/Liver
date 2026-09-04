@@ -6,9 +6,9 @@ import datetime
 import logging
 import sqlite3
 import unicodedata
-from threading import Thread
 
-from flask import Flask
+from keep_alive import keep_alive
+
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -30,27 +30,6 @@ ROLE_JUSTICE = "𝗠𝗧 | Justice"
 ROLE_POLICE = "𝗠𝗧 | LSPD"
 ROLE_SWAT = "𝗠𝗧 | S.W.A.T"
 ROLE_HEALTH = "𝗠𝗧 | PHMC"
-
-
-# =========================================================
-# KEEP ALIVE
-# =========================================================
-
-web_app = Flask(__name__)
-
-
-@web_app.route("/")
-def home():
-    return "MT Bot Core & Security System is Online!"
-
-
-def run_web():
-    port = int(os.environ.get("PORT", 8080))
-    web_app.run(host="0.0.0.0", port=port)
-
-
-def keep_alive():
-    Thread(target=run_web, daemon=True).start()
 
 
 # =========================================================
@@ -1005,9 +984,6 @@ async def ban_unauthorized_actor(
     if not actor_member:
         return "المنفذ غير موجود داخل السيرفر."
 
-    # مهم:
-    # Administrator لوحده لا يعني حظر.
-    # إذا كان مستثنى فلا يحظر.
     if is_whitelisted(
         actor_member,
         guild
@@ -1080,7 +1056,6 @@ async def on_member_ban(
 
         return
 
-    # إذا البوت نفسه نفذ الحظر
     if bot.user and actor.id == bot.user.id:
         return
 
@@ -1088,7 +1063,6 @@ async def on_member_ban(
         actor.id
     )
 
-    # Owner / whitelist / Bot role / excluded role
     if actor_member and is_whitelisted(
         actor_member,
         guild
@@ -1105,9 +1079,6 @@ async def on_member_ban(
         )
 
         return
-
-    # Administrator فقط لا يدخل هنا بسبب الصلاحية.
-    # يصل هنا فقط إذا نفذ عملية حظر غير مصرح بها.
 
     try:
 
@@ -1192,8 +1163,6 @@ async def on_member_unban(
 
 # =========================================================
 # MEMBER JOIN
-# مهم:
-# Administrator للبوت = لا حظر
 # =========================================================
 
 @bot.event
@@ -1382,18 +1351,10 @@ async def on_message(message):
         await bot.process_commands(message)
         return
 
-    # -----------------------------------------------------
-    # أوامر البريفكس لا تدخل في فلتر AI
-    # -----------------------------------------------------
-
     if message.content.startswith(BOT_PREFIX):
 
         await bot.process_commands(message)
         return
-
-    # -----------------------------------------------------
-    # @everyone / @here
-    # -----------------------------------------------------
 
     if message.mention_everyone:
 
@@ -1421,10 +1382,6 @@ async def on_message(message):
             )
 
             return
-
-    # -----------------------------------------------------
-    # الروابط
-    # -----------------------------------------------------
 
     if URL_PATTERN.search(
         message.content
@@ -1454,10 +1411,6 @@ async def on_message(message):
             )
 
             return
-
-    # -----------------------------------------------------
-    # AI CHANNEL
-    # -----------------------------------------------------
 
     settings = get_guild_settings(
         message.guild.id
@@ -2007,8 +1960,6 @@ async def set_log_command(
         ephemeral=True
     )
 
-    # مهم:
-    # تغيير إعداد Security لا يتم تسجيله داخل Security.
     await send_config_log(
         interaction.guild,
         f"📍 تغيير {title}",
@@ -2142,7 +2093,7 @@ async def set_role_log(
     description="تحديد روم سجل الرومات"
 )
 @app_commands.describe(
-    channel="روم الرومات"
+    channel="روم سجل الرومات"
 )
 async def set_channel_log(
     interaction: discord.Interaction,
@@ -2303,10 +2254,6 @@ class TicketCloseView(
 
         db.commit()
         db.close()
-
-        # -------------------------------------------------
-        # Ticket Log + Transcript
-        # -------------------------------------------------
 
         log_channel = get_log_channel(
             guild,
