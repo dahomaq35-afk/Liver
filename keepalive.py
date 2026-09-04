@@ -275,7 +275,24 @@ def discord_api_get(endpoint):
 
 
 # =========================================================
-# GET CHANNELS FROM DISCORD
+# CHECK BOT IN GUILD
+# =========================================================
+
+def bot_is_in_guild(guild_id):
+
+    data = discord_api_get(
+        f"/guilds/{guild_id}"
+    )
+
+    if data is None:
+
+        return False
+
+    return True
+
+
+# =========================================================
+# GET CHANNELS FROM SELECTED GUILD
 # =========================================================
 
 def get_discord_channels(guild_id):
@@ -286,15 +303,29 @@ def get_discord_channels(guild_id):
         f"/guilds/{guild_id}/channels"
     )
 
-    if not data:
+    if data is None:
 
         print(
-            "DASHBOARD: لم يتم العثور على الرومات."
+            "DASHBOARD CHANNELS: API FAILED"
         )
 
         return channels
 
     try:
+
+        # إنشاء قائمة التصنيفات
+        categories = {}
+
+        for channel in data:
+
+            if channel.get("type") == 4:
+
+                categories[
+                    str(channel.get("id"))
+                ] = channel.get(
+                    "name",
+                    "بدون تصنيف"
+                )
 
         for channel in data:
 
@@ -302,49 +333,57 @@ def get_discord_channels(guild_id):
                 "type"
             )
 
-            # Discord type 0 = Text Channel
-            if channel_type != 0:
+            # 0 = Text
+            # 5 = Announcement
+            # 15 = Forum
+            # نسمح بالقنوات النصية وما يشابهها
+            if channel_type not in (
+                0,
+                5,
+                15
+            ):
 
                 continue
 
-            category_name = (
-                "بدون تصنيف"
+            channel_id = str(
+                channel.get(
+                    "id",
+                    ""
+                )
+            )
+
+            channel_name = channel.get(
+                "name",
+                "بدون اسم"
             )
 
             parent_id = channel.get(
                 "parent_id"
             )
 
-            if parent_id:
-
-                for parent in data:
-
-                    if (
-                        parent.get("id")
-                        == parent_id
-                    ):
-
-                        category_name = (
-                            parent.get(
-                                "name",
-                                "بدون تصنيف"
-                            )
-                        )
-
-                        break
+            category_name = (
+                categories.get(
+                    str(parent_id),
+                    "بدون تصنيف"
+                )
+                if parent_id
+                else
+                "بدون تصنيف"
+            )
 
             channels.append({
 
-                "id": str(
-                    channel.get("id")
-                ),
+                "id":
+                    channel_id,
 
-                "name": channel.get(
-                    "name",
-                    "بدون اسم"
-                ),
+                "name":
+                    channel_name,
 
-                "category": category_name
+                "category":
+                    category_name,
+
+                "type":
+                    channel_type
 
             })
 
@@ -354,6 +393,8 @@ def get_discord_channels(guild_id):
             "CHANNEL PARSE ERROR:",
             repr(e)
         )
+
+        return []
 
     channels.sort(
         key=lambda x: (
@@ -367,11 +408,22 @@ def get_discord_channels(guild_id):
         len(channels)
     )
 
+    for channel in channels:
+
+        print(
+            "CHANNEL:",
+            channel["category"],
+            "/",
+            channel["name"],
+            "|",
+            channel["id"]
+        )
+
     return channels
 
 
 # =========================================================
-# GET ROLES FROM DISCORD
+# GET ROLES FROM SELECTED GUILD
 # =========================================================
 
 def get_discord_roles(guild_id):
@@ -382,10 +434,10 @@ def get_discord_roles(guild_id):
         f"/guilds/{guild_id}/roles"
     )
 
-    if not data:
+    if data is None:
 
         print(
-            "DASHBOARD: لم يتم العثور على الرتب."
+            "DASHBOARD ROLES: API FAILED"
         )
 
         return roles
@@ -394,28 +446,40 @@ def get_discord_roles(guild_id):
 
         for role in data:
 
+            role_id = str(
+                role.get(
+                    "id",
+                    ""
+                )
+            )
+
+            role_name = role.get(
+                "name",
+                "بدون اسم"
+            )
+
+            position = int(
+                role.get(
+                    "position",
+                    0
+                )
+            )
+
             # تجاهل @everyone
-            if role.get(
-                "id"
-            ) == str(guild_id):
+            if role_id == str(guild_id):
 
                 continue
 
             roles.append({
 
-                "id": str(
-                    role.get("id")
-                ),
+                "id":
+                    role_id,
 
-                "name": role.get(
-                    "name",
-                    "بدون اسم"
-                ),
+                "name":
+                    role_name,
 
-                "position": role.get(
-                    "position",
-                    0
-                )
+                "position":
+                    position
 
             })
 
@@ -426,6 +490,9 @@ def get_discord_roles(guild_id):
             repr(e)
         )
 
+        return []
+
+    # الأعلى أولاً
     roles.sort(
         key=lambda x: x["position"],
         reverse=True
@@ -435,6 +502,17 @@ def get_discord_roles(guild_id):
         "DASHBOARD ROLES:",
         len(roles)
     )
+
+    for role in roles:
+
+        print(
+            "ROLE:",
+            role["name"],
+            "|",
+            role["id"],
+            "| POSITION:",
+            role["position"]
+        )
 
     return roles
 
@@ -455,10 +533,57 @@ def index():
         []
     )
 
+    if not user:
+
+        return render_template(
+            "index.html",
+            user=None,
+            guilds=[]
+        )
+
+    # =====================================================
+    # ONLY GUILDS WHERE BOT EXISTS
+    # =====================================================
+
+    bot_guilds = []
+
+    for guild in guilds:
+
+        guild_id = str(
+            guild.get(
+                "id",
+                ""
+            )
+        )
+
+        if not guild_id:
+
+            continue
+
+        if bot_is_in_guild(
+            guild_id
+        ):
+
+            bot_guilds.append(
+                guild
+            )
+
+    print(
+        "DASHBOARD USER GUILDS:",
+        len(guilds)
+    )
+
+    print(
+        "DASHBOARD BOT GUILDS:",
+        len(bot_guilds)
+    )
+
+    session["guilds"] = bot_guilds
+
     return render_template(
         "index.html",
         user=user,
-        guilds=guilds
+        guilds=bot_guilds
     )
 
 
@@ -639,6 +764,10 @@ def callback():
             )
     }
 
+    # =====================================================
+    # SAVE USER GUILDS
+    # =====================================================
+
     session["guilds"] = [
 
         {
@@ -708,13 +837,19 @@ def server(guild_id):
             "/login"
         )
 
+    # =====================================================
+    # FIND SELECTED GUILD
+    # =====================================================
+
     selected_guild = None
 
     for guild in guilds:
 
         if (
             str(
-                guild.get("id")
+                guild.get(
+                    "id"
+                )
             )
             ==
             str(guild_id)
@@ -725,6 +860,22 @@ def server(guild_id):
             break
 
     if not selected_guild:
+
+        return redirect("/")
+
+
+    # =====================================================
+    # MAKE SURE BOT IS IN THIS GUILD
+    # =====================================================
+
+    if not bot_is_in_guild(
+        guild_id
+    ):
+
+        print(
+            "DASHBOARD: BOT NOT IN GUILD:",
+            guild_id
+        )
 
         return redirect("/")
 
@@ -798,7 +949,7 @@ def server(guild_id):
 
 
     # =====================================================
-    # DISCORD CHANNELS
+    # GET SELECTED GUILD CHANNELS
     # =====================================================
 
     channels = get_discord_channels(
@@ -807,7 +958,7 @@ def server(guild_id):
 
 
     # =====================================================
-    # DISCORD ROLES
+    # GET SELECTED GUILD ROLES
     # =====================================================
 
     roles = get_discord_roles(
@@ -835,7 +986,9 @@ def server(guild_id):
     )
     print(
         "Guild Name:",
-        selected_guild.get("name")
+        selected_guild.get(
+            "name"
+        )
     )
     print(
         "Channels:",
@@ -921,6 +1074,10 @@ def server_action(guild_id):
             "/login"
         )
 
+    # =====================================================
+    # CHECK USER ACCESS
+    # =====================================================
+
     allowed = any(
 
         str(
@@ -935,6 +1092,18 @@ def server_action(guild_id):
     if not allowed:
 
         return redirect("/")
+
+
+    # =====================================================
+    # CHECK BOT ACCESS
+    # =====================================================
+
+    if not bot_is_in_guild(
+        guild_id
+    ):
+
+        return redirect("/")
+
 
     action = request.form.get(
         "action"
@@ -1161,19 +1330,23 @@ def server_action(guild_id):
                     guild_id
                 )
 
-                valid = any(
+                valid_role = None
 
-                    str(
-                        role["id"]
-                    )
-                    ==
-                    str(value)
+                for role in roles:
 
-                    for role
-                    in roles
-                )
+                    if (
+                        str(
+                            role["id"]
+                        )
+                        ==
+                        str(value)
+                    ):
 
-                if valid:
+                        valid_role = role
+
+                        break
+
+                if valid_role:
 
                     existing = conn.execute(
 
