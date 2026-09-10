@@ -1,4899 +1,5099 @@
 import os
-import io
 import re
-import time
-import asyncio
-import datetime
-import logging
+import secrets
 import sqlite3
-import unicodedata
+from datetime import datetime, timedelta
+from functools import wraps
 
-from keepalive import keep_alive
-
-import discord
-from discord import app_commands
-from discord.ext import commands
-from openai import AsyncOpenAI
-
-# =========================================================
-# SETTINGS
-# =========================================================
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s"
+from flask import (
+    Flask,
+    render_template,
+    request,
+    redirect,
+    url_for,
+    session,
+    flash
 )
 
-BOT_PREFIX = "-"
-
-ROLE_JUSTICE = "𝗠𝗧 | Justice"
-ROLE_POLICE = "𝗠𝗧 | LSPD"
-ROLE_SWAT = "𝗠𝗧 | S.W.A.T"
-ROLE_HEALTH = "𝗠𝗧 | PHMC"
-ROLE_INTERIOR = "𝗠𝗧 | Interior"
-
-DB_FILE = "mt_bot.db"
-
-SUPPORT_CHANNEL_ID = 1541582061893062656
-
-WHITELIST_ROLES = [
-    "MT | CEO",
-    "MT | COowner",
-    "MT | Owner",
-    "Bot"
-]
+from werkzeug.security import (
+    generate_password_hash,
+    check_password_hash
+)
 
 # =========================================================
-# PERFORMANCE CACHE
+# إعداد التطبيق
 # =========================================================
 
-SETTINGS_CACHE = {}
-EXCLUDED_ROLES_CACHE = {}
+app = Flask(__name__)
 
-CACHE_TTL = 5.0
+app.secret_key = os.environ.get(
+    "FLASK_SECRET_KEY",
+    "mt-character-system-secret"
+)
 
-TICKET_LOCKS = {}
+app.permanent_session_lifetime = timedelta(days=30)
 
-def cache_valid(cache, guild_id):
-    item = cache.get(guild_id)
-
-    if not item:
-        return False
-
-    return (
-        time.monotonic() - item["time"]
-    ) < CACHE_TTL
-
-def invalidate_guild_cache(guild_id):
-    SETTINGS_CACHE.pop(guild_id, None)
-    EXCLUDED_ROLES_CACHE.pop(guild_id, None)
+DATABASE = "mt_characters.db"
 
 # =========================================================
-# DATABASE
+# الصلاحيات
 # =========================================================
 
-def db_connect():
-    db = sqlite3.connect(
-        DB_FILE,
-        timeout=5
-    )
+PERMISSIONS = {
 
-    db.execute("PRAGMA journal_mode=WAL")
-    db.execute("PRAGMA synchronous=NORMAL")
-    db.execute("PRAGMA busy_timeout=5000")
+    "characters_view_all": "عرض جميع الشخصيات",
+    "characters_view_details": "عرض تفاصيل الشخصيات",
+    "characters_search": "البحث في الشخصيات",
+    "characters_edit_all": "تعديل جميع الشخصيات",
+    "characters_delete_all": "حذف جميع الشخصيات",
+    "characters_hide": "إخفاء الشخصيات",
+    "characters_show": "إظهار الشخصيات",
+    "characters_transfer": "نقل ملكية الشخصيات",
+    "characters_reset": "إعادة ضبط الشخصيات",
 
-    return db
+    "police_manage": "إدارة الشرطة",
+    "police_view": "عرض الشرطة",
+    "police_add": "إضافة للشرطة",
+    "police_edit": "تعديل الشرطة",
+    "police_delete": "حذف من الشرطة",
+    "police_assign_rank": "تعيين رتبة شرطة",
+    "police_change_rank": "تغيير رتبة الشرطة",
+    "police_remove": "إزالة من الشرطة",
 
-def setup_database():
+    "justice_manage": "إدارة وزارة العدل",
+    "justice_view": "عرض وزارة العدل",
+    "justice_add": "إضافة لوزارة العدل",
+    "justice_edit": "تعديل وزارة العدل",
+    "justice_delete": "حذف من وزارة العدل",
+    "justice_assign_rank": "تعيين رتبة عدل",
+    "justice_change_rank": "تغيير رتبة العدل",
+    "justice_remove": "إزالة من وزارة العدل",
 
-    db = db_connect()
-    cursor = db.cursor()
+    "health_manage": "إدارة الصحة",
+    "health_view": "عرض الصحة",
+    "health_add": "إضافة للصحة",
+    "health_edit": "تعديل الصحة",
+    "health_delete": "حذف من الصحة",
+    "health_assign_rank": "تعيين رتبة صحة",
+    "health_change_rank": "تغيير رتبة الصحة",
+    "health_remove": "إزالة من الصحة",
 
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS settings (
-            guild_id INTEGER PRIMARY KEY,
-            ai_enabled INTEGER DEFAULT 0,
-            ai_channel_id INTEGER DEFAULT 0
-        )
-    """)
+    "gangs_manage": "إدارة العصابات",
+    "gangs_view": "عرض العصابات",
+    "gangs_add": "إضافة عصابات",
+    "gangs_edit": "تعديل العصابات",
+    "gangs_delete": "حذف العصابات",
+    "gangs_add_members": "إضافة أعضاء للعصابات",
+    "gangs_remove_members": "إزالة أعضاء العصابات",
+    "gangs_change_leader": "تغيير رتبة/قائد العصابة",
 
-    cursor.execute("PRAGMA table_info(settings)")
+    "users_view": "عرض المستخدمين",
+    "users_edit": "تعديل المستخدمين",
+    "users_ban": "حظر المستخدمين",
+    "users_unban": "فك حظر المستخدمين",
+    "users_delete": "حذف المستخدمين",
+    "users_disable": "تعطيل المستخدمين",
+    "users_enable": "تفعيل المستخدمين",
 
-    existing_columns = {
-        row[1]
-        for row in cursor.fetchall()
-    }
+    "permissions_view": "عرض الصلاحيات",
+    "permissions_give": "إعطاء الصلاحيات",
+    "permissions_remove": "إزالة الصلاحيات",
+    "permissions_edit": "تعديل الصلاحيات",
 
-    new_columns = {
-        "security_log_channel_id": "INTEGER DEFAULT 0",
-        "delete_log_channel_id": "INTEGER DEFAULT 0",
-        "edit_log_channel_id": "INTEGER DEFAULT 0",
-        "member_log_channel_id": "INTEGER DEFAULT 0",
-        "mod_log_channel_id": "INTEGER DEFAULT 0",
-        "role_log_channel_id": "INTEGER DEFAULT 0",
-        "channel_log_channel_id": "INTEGER DEFAULT 0"
-    }
+    "site_settings": "إعدادات الموقع",
+    "site_sections": "إدارة أقسام الموقع",
+    "site_home": "إدارة الصفحة الرئيسية",
+    "site_maintenance": "وضع الصيانة",
 
-    for column_name, column_type in new_columns.items():
+    "logs_view": "عرض السجلات",
+    "logs_search": "البحث في السجلات",
+    "logs_export": "تصدير السجلات",
 
-        if column_name not in existing_columns:
-
-            cursor.execute(
-                f"""
-                ALTER TABLE settings
-                ADD COLUMN {column_name} {column_type}
-                """
-            )
-
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS excluded_roles (
-            guild_id INTEGER NOT NULL,
-            role_id INTEGER NOT NULL,
-            PRIMARY KEY (guild_id, role_id)
-        )
-    """)
-
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS criminal_records (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            guild_id INTEGER NOT NULL,
-            citizen_id INTEGER NOT NULL,
-            officer_id INTEGER NOT NULL,
-            crime TEXT NOT NULL,
-            fine INTEGER DEFAULT 0,
-            jail_time TEXT,
-            created_at TEXT NOT NULL
-        )
-    """)
-
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS warnings (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            guild_id INTEGER NOT NULL,
-            user_id INTEGER NOT NULL,
-            moderator_id INTEGER NOT NULL,
-            reason TEXT NOT NULL,
-            created_at TEXT NOT NULL
-        )
-    """)
-
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS security_logs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            guild_id INTEGER NOT NULL,
-            event_type TEXT NOT NULL,
-            actor_id INTEGER,
-            target_id INTEGER,
-            details TEXT,
-            created_at TEXT NOT NULL
-        )
-    """)
-
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS tickets (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            guild_id INTEGER NOT NULL,
-            user_id INTEGER NOT NULL,
-            channel_id INTEGER NOT NULL,
-            sector TEXT NOT NULL,
-            claimed_by INTEGER DEFAULT 0,
-            created_at TEXT NOT NULL,
-            closed INTEGER DEFAULT 0
-        )
-    """)
-
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS ticket_roles (
-            guild_id INTEGER NOT NULL,
-            department TEXT NOT NULL,
-            option_key TEXT NOT NULL,
-            role_id INTEGER NOT NULL,
-            PRIMARY KEY (
-                guild_id,
-                department,
-                option_key
-            )
-        )
-    """)
-
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS deeds (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            guild_id INTEGER NOT NULL,
-            citizen_id INTEGER NOT NULL,
-            officer_id INTEGER NOT NULL,
-            property_name TEXT NOT NULL,
-            details TEXT,
-            created_at TEXT NOT NULL
-        )
-    """)
-
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS warrants (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            guild_id INTEGER NOT NULL,
-            citizen_id INTEGER NOT NULL,
-            officer_id INTEGER NOT NULL,
-            warrant_type TEXT NOT NULL,
-            reason TEXT NOT NULL,
-            created_at TEXT NOT NULL
-        )
-    """)
-
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS dispatches (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            guild_id INTEGER NOT NULL,
-            officer_id INTEGER NOT NULL,
-            location TEXT NOT NULL,
-            details TEXT NOT NULL,
-            created_at TEXT NOT NULL
-        )
-    """)
-
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS medical_reports (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            guild_id INTEGER NOT NULL,
-            citizen_id INTEGER NOT NULL,
-            medic_id INTEGER NOT NULL,
-            diagnosis TEXT NOT NULL,
-            treatment TEXT NOT NULL,
-            created_at TEXT NOT NULL
-        )
-    """)
-
-    cursor.execute("""
-        CREATE INDEX IF NOT EXISTS idx_tickets_open_user
-        ON tickets(guild_id, user_id, closed)
-    """)
-
-    cursor.execute("""
-        CREATE INDEX IF NOT EXISTS idx_tickets_channel
-        ON tickets(channel_id, closed)
-    """)
-
-    cursor.execute("""
-        CREATE INDEX IF NOT EXISTS idx_security_guild
-        ON security_logs(guild_id, created_at)
-    """)
-
-    cursor.execute("""
-        CREATE INDEX IF NOT EXISTS idx_records_citizen
-        ON criminal_records(guild_id, citizen_id)
-    """)
-
-    db.commit()
-    db.close()
-
-setup_database()
+    "admins_manage": "إدارة المدراء",
+    "admins_add": "إضافة رتبة إدارية",
+    "admins_remove": "إزالة رتبة إدارية",
+    "admins_all_permissions": "جميع الصلاحيات",
+    "admins_all_sections": "جميع الأقسام"
+}
 
 # =========================================================
-# DATABASE HELPERS
+# الرتب الأساسية
 # =========================================================
 
-def now_utc():
-    return datetime.datetime.now(
-        datetime.timezone.utc
-    ).isoformat()
+ROLES = {
 
-def get_guild_settings(guild_id):
+    "owner": {
+        "name": "Owner",
+        "permissions": set(PERMISSIONS.keys())
+    },
 
-    if cache_valid(
-        SETTINGS_CACHE,
-        guild_id
-    ):
-        return SETTINGS_CACHE[guild_id]["data"]
+    "co_owner": {
+        "name": "Co Owner",
+        "permissions": {
+            "characters_view_all",
+            "characters_view_details",
+            "characters_edit_all",
+            "characters_delete_all",
+            "characters_hide",
+            "characters_show",
 
-    db = db_connect()
-    cursor = db.cursor()
+            "police_manage",
+            "police_view",
+            "police_add",
+            "police_edit",
+            "police_delete",
+            "police_assign_rank",
+            "police_change_rank",
+            "police_remove",
 
-    cursor.execute(
-        """
-        SELECT
-            ai_enabled,
-            ai_channel_id,
-            security_log_channel_id,
-            delete_log_channel_id,
-            edit_log_channel_id,
-            member_log_channel_id,
-            mod_log_channel_id,
-            role_log_channel_id,
-            channel_log_channel_id
-        FROM settings
-        WHERE guild_id = ?
-        """,
-        (guild_id,)
-    )
+            "justice_manage",
+            "justice_view",
+            "justice_add",
+            "justice_edit",
+            "justice_delete",
+            "justice_assign_rank",
+            "justice_change_rank",
+            "justice_remove",
 
-    row = cursor.fetchone()
+            "health_manage",
+            "health_view",
+            "health_add",
+            "health_edit",
+            "health_delete",
+            "health_assign_rank",
+            "health_change_rank",
+            "health_remove",
 
-    if not row:
+            "gangs_manage",
+            "gangs_view",
+            "gangs_add",
+            "gangs_edit",
+            "gangs_delete",
+            "gangs_add_members",
+            "gangs_remove_members",
+            "gangs_change_leader",
 
-        cursor.execute(
-            """
-            INSERT INTO settings (
-                guild_id,
-                ai_enabled,
-                ai_channel_id,
-                security_log_channel_id,
-                delete_log_channel_id,
-                edit_log_channel_id,
-                member_log_channel_id,
-                mod_log_channel_id,
-                role_log_channel_id,
-                channel_log_channel_id
-            )
-            VALUES (?, 0, 0, 0, 0, 0, 0, 0, 0, 0)
-            """,
-            (guild_id,)
-        )
+            "users_view",
+            "users_edit",
+            "users_ban",
+            "users_unban",
+            "users_disable",
+            "users_enable",
 
-        db.commit()
+            "permissions_view",
+            "permissions_give",
+            "permissions_remove",
+            "permissions_edit",
 
-        data = {
-            "ai_enabled": False,
-            "ai_channel_id": 0,
-            "security_log_channel_id": 0,
-            "delete_log_channel_id": 0,
-            "edit_log_channel_id": 0,
-            "member_log_channel_id": 0,
-            "mod_log_channel_id": 0,
-            "role_log_channel_id": 0,
-            "channel_log_channel_id": 0
+            "logs_view",
+            "logs_search",
+
+            "admins_manage",
+            "admins_add",
+            "admins_remove",
+            "admins_all_permissions",
+            "admins_all_sections"
         }
+    },
 
-    else:
+    "founder": {
+        "name": "Founder",
+        "permissions": {
+            "characters_view_all",
+            "characters_view_details",
+            "characters_edit_all",
+            "characters_hide",
+            "characters_show",
 
-        data = {
-            "ai_enabled": bool(row[0]),
-            "ai_channel_id": row[1] or 0,
-            "security_log_channel_id": row[2] or 0,
-            "delete_log_channel_id": row[3] or 0,
-            "edit_log_channel_id": row[4] or 0,
-            "member_log_channel_id": row[5] or 0,
-            "mod_log_channel_id": row[6] or 0,
-            "role_log_channel_id": row[7] or 0,
-            "channel_log_channel_id": row[8] or 0
+            "police_manage",
+            "police_view",
+            "police_add",
+            "police_edit",
+            "police_assign_rank",
+            "police_change_rank",
+            "police_remove",
+
+            "justice_manage",
+            "justice_view",
+            "justice_add",
+            "justice_edit",
+            "justice_assign_rank",
+            "justice_change_rank",
+            "justice_remove",
+
+            "health_manage",
+            "health_view",
+            "health_add",
+            "health_edit",
+            "health_assign_rank",
+            "health_change_rank",
+            "health_remove",
+
+            "gangs_manage",
+            "gangs_view",
+            "gangs_add_members",
+            "gangs_remove_members",
+            "gangs_change_leader",
+
+            "users_view",
+            "users_edit",
+
+            "permissions_view",
+            "permissions_give",
+            "permissions_edit",
+
+            "logs_view",
+
+            "admins_manage",
+            "admins_add"
         }
-
-    db.close()
-
-    SETTINGS_CACHE[guild_id] = {
-        "time": time.monotonic(),
-        "data": data
-    }
-
-    return data
-
-def set_ai_settings(
-    guild_id,
-    enabled=None,
-    channel_id=None
-):
-
-    current = get_guild_settings(
-        guild_id
-    )
-
-    if enabled is None:
-        enabled = current["ai_enabled"]
-
-    if channel_id is None:
-        channel_id = current["ai_channel_id"]
-
-    db = db_connect()
-    cursor = db.cursor()
-
-    cursor.execute(
-        """
-        INSERT INTO settings
-        (
-            guild_id,
-            ai_enabled,
-            ai_channel_id
-        )
-        VALUES (?, ?, ?)
-
-        ON CONFLICT(guild_id)
-        DO UPDATE SET
-            ai_enabled = excluded.ai_enabled,
-            ai_channel_id = excluded.ai_channel_id
-        """,
-        (
-            guild_id,
-            int(enabled),
-            int(channel_id)
-        )
-    )
-
-    db.commit()
-    db.close()
-
-    invalidate_guild_cache(
-        guild_id
-    )
-
-def set_log_channel(
-    guild_id,
-    setting_name,
-    channel_id
-):
-
-    allowed = {
-        "security_log_channel_id",
-        "delete_log_channel_id",
-        "edit_log_channel_id",
-        "member_log_channel_id",
-        "mod_log_channel_id",
-        "role_log_channel_id",
-        "channel_log_channel_id"
-    }
-
-    if setting_name not in allowed:
-        raise ValueError(
-            "Invalid log setting"
-        )
-
-    get_guild_settings(
-        guild_id
-    )
-
-    db = db_connect()
-    cursor = db.cursor()
-
-    cursor.execute(
-        f"""
-        UPDATE settings
-        SET {setting_name} = ?
-        WHERE guild_id = ?
-        """,
-        (
-            channel_id,
-            guild_id
-        )
-    )
-
-    db.commit()
-    db.close()
-
-    invalidate_guild_cache(
-        guild_id
-    )
-
-def save_security_log(
-    guild_id,
-    event_type,
-    actor_id=None,
-    target_id=None,
-    details=""
-):
-
-    db = db_connect()
-    cursor = db.cursor()
-
-    cursor.execute(
-        """
-        INSERT INTO security_logs
-        (
-            guild_id,
-            event_type,
-            actor_id,
-            target_id,
-            details,
-            created_at
-        )
-        VALUES (?, ?, ?, ?, ?, ?)
-        """,
-        (
-            guild_id,
-            event_type,
-            actor_id,
-            target_id,
-            details,
-            now_utc()
-        )
-    )
-
-    db.commit()
-    db.close()
-
-# =========================================================
-# TICKET ROLE DATABASE
-# =========================================================
-
-def set_ticket_role(
-    guild_id,
-    department,
-    option_key,
-    role_id
-):
-
-    db = db_connect()
-    cursor = db.cursor()
-
-    cursor.execute(
-        """
-        INSERT INTO ticket_roles
-        (
-            guild_id,
-            department,
-            option_key,
-            role_id
-        )
-        VALUES (?, ?, ?, ?)
-
-        ON CONFLICT(
-            guild_id,
-            department,
-            option_key
-        )
-        DO UPDATE SET
-            role_id = excluded.role_id
-        """,
-        (
-            guild_id,
-            department,
-            option_key,
-            role_id
-        )
-    )
-
-    db.commit()
-    db.close()
-
-def get_ticket_role(
-    guild_id,
-    department,
-    option_key
-):
-
-    db = db_connect()
-    cursor = db.cursor()
-
-    cursor.execute(
-        """
-        SELECT role_id
-        FROM ticket_roles
-        WHERE guild_id = ?
-        AND department = ?
-        AND option_key = ?
-        LIMIT 1
-        """,
-        (
-            guild_id,
-            department,
-            option_key
-        )
-    )
-
-    row = cursor.fetchone()
-
-    db.close()
-
-    if not row:
-        return None
-
-    return row[0]
-
-# =========================================================
-# EXCLUDED ROLES
-# =========================================================
-
-def get_excluded_role_ids(guild_id):
-
-    if cache_valid(
-        EXCLUDED_ROLES_CACHE,
-        guild_id
-    ):
-        return EXCLUDED_ROLES_CACHE[guild_id]["data"]
-
-    db = db_connect()
-    cursor = db.cursor()
-
-    cursor.execute(
-        """
-        SELECT role_id
-        FROM excluded_roles
-        WHERE guild_id = ?
-        """,
-        (guild_id,)
-    )
-
-    rows = cursor.fetchall()
-
-    db.close()
-
-    data = {
-        row[0]
-        for row in rows
-    }
-
-    EXCLUDED_ROLES_CACHE[guild_id] = {
-        "time": time.monotonic(),
-        "data": data
-    }
-
-    return data
-
-def add_excluded_role(
-    guild_id,
-    role_id
-):
-
-    db = db_connect()
-    cursor = db.cursor()
-
-    cursor.execute(
-        """
-        INSERT OR IGNORE INTO excluded_roles
-        (
-            guild_id,
-            role_id
-        )
-        VALUES (?, ?)
-        """,
-        (
-            guild_id,
-            role_id
-        )
-    )
-
-    added = cursor.rowcount > 0
-
-    db.commit()
-    db.close()
-
-    EXCLUDED_ROLES_CACHE.pop(
-        guild_id,
-        None
-    )
-
-    return added
-
-def remove_excluded_role(
-    guild_id,
-    role_id
-):
-
-    db = db_connect()
-    cursor = db.cursor()
-
-    cursor.execute(
-        """
-        DELETE FROM excluded_roles
-        WHERE guild_id = ?
-        AND role_id = ?
-        """,
-        (
-            guild_id,
-            role_id
-        )
-    )
-
-    removed = cursor.rowcount > 0
-
-    db.commit()
-    db.close()
-
-    EXCLUDED_ROLES_CACHE.pop(
-        guild_id,
-        None
-    )
-
-    return removed
-
-def clear_excluded_roles(
-    guild_id
-):
-
-    db = db_connect()
-    cursor = db.cursor()
-
-    cursor.execute(
-        """
-        DELETE FROM excluded_roles
-        WHERE guild_id = ?
-        """,
-        (guild_id,)
-    )
-
-    count = cursor.rowcount
-
-    db.commit()
-    db.close()
-
-    EXCLUDED_ROLES_CACHE.pop(
-        guild_id,
-        None
-    )
-
-    return count
-
-# =========================================================
-# ROLE NORMALIZATION
-# =========================================================
-
-NORMALIZED_ROLE_CACHE = {}
-
-def normalize_text(text):
-
-    if not text:
-        return ""
-
-    original = str(text)
-
-    cached = NORMALIZED_ROLE_CACHE.get(
-        original
-    )
-
-    if cached is not None:
-        return cached
-
-    result = []
-
-    for char in original:
-
-        name = unicodedata.name(
-            char,
-            ""
-        )
-
-        if "MATHEMATICAL" in name:
-
-            last = name.split()[-1]
-
-            if len(last) == 1 and last.isalnum():
-                result.append(last)
-                continue
-
-        category = unicodedata.category(
-            char
-        )
-
-        if category.startswith("S"):
-            continue
-
-        if category.startswith("P"):
-            continue
-
-        result.append(char)
-
-    result = "".join(result)
-
-    result = unicodedata.normalize(
-        "NFKC",
-        result
-    )
-
-    result = "".join(
-        char
-        for char in result
-        if unicodedata.category(char) != "Mn"
-    )
-
-    result = re.sub(
-        r"\s+",
-        " ",
-        result
-    ).strip().casefold()
-
-    NORMALIZED_ROLE_CACHE[
-        original
-    ] = result
-
-    return result
-
-def role_matches(
-    role_name,
-    expected_name
-):
-
-    return (
-        normalize_text(role_name)
-        ==
-        normalize_text(expected_name)
-    )
-
-def check_role(
-    member,
-    role_name
-):
-
-    if not member:
-        return False
-
-    expected = normalize_text(
-        role_name
-    )
-
-    return any(
-        normalize_text(role.name) == expected
-        for role in member.roles
-    )
-
-# =========================================================
-# WHITELIST
-# =========================================================
-
-def is_whitelisted(
-    member,
-    guild=None
-):
-
-    if not member:
-        return False
-
-    if guild is None:
-        guild = member.guild
-
-    if member.id == guild.owner_id:
-        return True
-
-    normalized_whitelist = {
-        normalize_text(role)
-        for role in WHITELIST_ROLES
-    }
-
-    for role in member.roles:
-
-        if normalize_text(role.name) in normalized_whitelist:
-            return True
-
-    excluded_roles = get_excluded_role_ids(
-        guild.id
-    )
-
-    return any(
-        role.id in excluded_roles
-        for role in member.roles
-    )
-
-# =========================================================
-# BOT
-# =========================================================
-
-intents = discord.Intents.default()
-
-intents.message_content = True
-intents.members = True
-intents.guilds = True
-intents.bans = True
-intents.moderation = True
-
-bot = commands.Bot(
-    command_prefix=BOT_PREFIX,
-    intents=intents
-)
-
-# =========================================================
-# OPENAI
-# =========================================================
-
-OPENAI_API_KEY = os.getenv(
-    "OPENAI_API_KEY"
-)
-
-ai_client = None
-
-if OPENAI_API_KEY:
-
-    ai_client = AsyncOpenAI(
-        api_key=OPENAI_API_KEY
-    )
-
-AI_MODEL = os.getenv(
-    "OPENAI_MODEL",
-    "gpt-5.6-luna"
-)
-
-# =========================================================
-# AI
-# =========================================================
-
-SERVER_KEYWORDS = [
-    "mtrp",
-    "ام تي",
-    "امتي",
-    "ام تى",
-    "السيرفر",
-    "سيرفر",
-    "سيرفرك",
-    "سيرفركم",
-    "سيرفر mt",
-    "سيرفر ام تي",
-    "الاداره",
-    "الإدارة",
-    "اداره",
-    "إدارة",
-    "الاداريين",
-    "الإداريين",
-    "الاداري",
-    "الإداري",
-    "الادمن",
-    "الأدمن",
-    "ادمن",
-    "أدمن",
-    "المشرفين",
-    "المشرف",
-    "الادارة",
-    "القانون",
-    "القوانين",
-    "قانون السيرفر",
-    "قوانين السيرفر",
-    "قوانين",
-    "نظام السيرفر",
-    "قواعد السيرفر",
-    "قواعد",
-    "التقديم",
-    "تقديم",
-    "التوظيف",
-    "وظائف السيرفر",
-    "القبول",
-    "قبول",
-    "شروط التقديم",
-    "متى التقديم",
-    "متى يفتح التقديم",
-    "متى يفتح",
-    "التقديم متى",
-    "القطاعات",
-    "قطاع",
-    "الشرطة",
-    "lspd",
-    "justice",
-    "swat",
-    "s.w.a.t",
-    "phmc",
-    "العدل",
-    "الصحة",
-    "الرتب",
-    "رتبة",
-    "رتب",
-    "الرتبة",
-    "رتب السيرفر",
-    "الفعالية",
-    "الفعاليات",
-    "فعالية",
-    "فعاليات",
-    "التحديث",
-    "التحديثات",
-    "تحديث",
-    "تحديثات",
-    "المؤسس",
-    "المؤسسين",
-    "المؤسس مين",
-    "من المؤسس",
-    "المالك",
-    "مالك السيرفر",
-    "الاونر",
-    "الأونر",
-    "owner",
-    "coowner",
-    "ceo",
-    "البوت",
-    "بوت mt",
-    "لوحة التحكم",
-    "لوحة السيرفر",
-    "اعدادات البوت",
-    "إعدادات البوت",
-    "اعدادات السيرفر",
-    "إعدادات السيرفر",
-    "التذاكر",
-    "تذكرة",
-    "التذكرة",
-    "الدعم الفني",
-    "الدعم",
-    "support",
-    "معلومات السيرفر",
-    "معلومات خاصة",
-    "معلومات داخليه",
-    "معلومات داخلية",
-    "قرار الادارة",
-    "قرار الإدارة",
-    "قرارات الادارة",
-    "قرارات الإدارة",
-    "اعلان السيرفر",
-    "إعلان السيرفر"
-]
-
-def normalize_ai_text(text):
-
-    if not text:
-        return ""
-
-    text = str(text)
-
-    text = text.replace("أ", "ا")
-    text = text.replace("إ", "ا")
-    text = text.replace("آ", "ا")
-    text = text.replace("ة", "ه")
-    text = text.replace("ى", "ي")
-
-    text = text.replace("؟", "?")
-    text = text.replace("،", " ")
-
-    text = unicodedata.normalize(
-        "NFKD",
-        text
-    )
-
-    text = "".join(
-        char
-        for char in text
-        if not unicodedata.combining(char)
-    )
-
-    text = re.sub(
-        r"\s+",
-        " ",
-        text
-    )
-
-    return text.strip().casefold()
-
-def is_name_question(question):
-
-    normalized = normalize_ai_text(
-        question
-    ).rstrip("?").strip()
-
-    questions = {
-        "وش اسمك",
-        "ما اسمك",
-        "ايش اسمك",
-        "إيش اسمك",
-        "ماهو اسمك",
-        "ما هو اسمك",
-        "وش اسم البوت",
-        "ايش اسم البوت",
-        "إيش اسم البوت",
-        "ما اسم البوت",
-        "ماهو اسم البوت",
-        "ما هو اسم البوت",
-        "من انت",
-        "من أنت",
-        "مين انت",
-        "مين أنت",
-        "من تكون",
-        "مين تكون",
-        "وش انت",
-        "وش أنت",
-        "ايش انت",
-        "إيش أنت",
-        "اسمك",
-        "اسم البوت",
-        "وش تسمى",
-        "ماذا تسمى",
-        "ما هويتك",
-        "what is your name",
-        "what's your name",
-        "whats your name",
-        "your name",
-        "who are you",
-        "what are you"
-    }
-
-    return normalized in {
-        normalize_ai_text(x).rstrip("?").strip()
-        for x in questions
-    }
-
-def is_server_question(question):
-
-    normalized = normalize_ai_text(
-        question
-    )
-
-    if re.search(
-        r"\bmtrp\b",
-        normalized
-    ):
-        return True
-
-    if re.search(
-        r"\bmt\b",
-        normalized
-    ):
-        return True
-
-    for keyword in SERVER_KEYWORDS:
-
-        if normalize_ai_text(keyword) in normalized:
-            return True
-
-    return False
-
-def get_support_message():
-
-    return (
-        "الرجاء التوجه للدعم الفني للحصول على المعلومة الرسمية.\n"
-        f"<#{SUPPORT_CHANNEL_ID}>"
-    )
-
-def remove_ai_identity_leaks(answer):
-
-    if not answer:
-        return ""
-
-    normalized = normalize_ai_text(
-        answer
-    )
-
-    forbidden = [
-        "chatgpt",
-        "chat gpt",
-        "شات جي بي تي",
-        "شات جيبيتي",
-        "شات جيبتي",
-        "شات جي بيتي",
-        "openai"
-    ]
-
-    for name in forbidden:
-
-        if normalize_ai_text(name) in normalized:
-            return "MTRP"
-
-    return answer
-
-async def ask_ai(
-    question,
-    guild_name
-):
-
-    if is_name_question(question):
-        return "MTRP"
-
-    if is_server_question(question):
-        return get_support_message()
-
-    if not ai_client:
-        return "⚠️ نظام الذكاء الاصطناعي غير مهيأ حاليًا."
-
-    system_prompt = f"""
-أنت MTRP.
-
-أنت مساعد ذكاء اصطناعي عام داخل Discord.
-
-اسمك الرسمي الوحيد هو:
-MTRP
-
-ممنوع أن تقول إن اسمك ChatGPT أو OpenAI
-أو أي اسم آخر.
-
-إذا سألك المستخدم عن اسمك أو هويتك
-فالرد الوحيد:
-MTRP
-
-السيرفر الحالي:
-{guild_name}
-
-أي سؤال يتعلق بالسيرفر أو الإدارة أو المعلومات
-الرسمية أو الداخلية يجب تحويله للدعم الفني.
-
-لا تخمن ولا تخترع قوانين أو مواعيد أو قرارات.
-
-الأسئلة العامة غير المتعلقة بالسيرفر:
-أجب عنها بشكل طبيعي ومفيد.
-
-لا تدعي أنك مالك أو مؤسس أو مدير أو إداري للسيرفر.
-"""
-
-    try:
-
-        response = await ai_client.responses.create(
-            model=AI_MODEL,
-            instructions=system_prompt,
-            input=question
-        )
-
-        answer = response.output_text
-
-        if not answer:
-            return "⚠️ ما قدرت أجهز رد حاليًا."
-
-        answer = remove_ai_identity_leaks(
-            answer
-        )
-
-        if is_name_question(question):
-            return "MTRP"
-
-        return answer[:4000]
-
-    except Exception as error:
-
-        logging.error(
-            f"AI Error: {error}"
-        )
-
-        return "⚠️ حدث خطأ مؤقت في نظام الذكاء الاصطناعي."
-
-# =========================================================
-# LOGGING
-# =========================================================
-
-def get_log_channel(
-    guild,
-    setting_name
-):
-
-    settings = get_guild_settings(
-        guild.id
-    )
-
-    channel_id = settings.get(
-        setting_name,
-        0
-    )
-
-    if not channel_id:
-        return None
-
-    return (
-        guild.get_channel(channel_id)
-        or bot.get_channel(channel_id)
-    )
-
-async def send_log(
-    guild,
-    setting_name,
-    title,
-    description,
-    color=discord.Color.blurple(),
-    actor=None,
-    target=None,
-    extra_fields=None
-):
-
-    channel = get_log_channel(
-        guild,
-        setting_name
-    )
-
-    if not channel:
-        return False
-
-    embed = discord.Embed(
-        title=title,
-        description=description,
-        color=color,
-        timestamp=datetime.datetime.now(
-            datetime.timezone.utc
-        )
-    )
-
-    if actor:
-
-        embed.add_field(
-            name="👤 المنفذ",
-            value=(
-                actor.mention
-                if hasattr(actor, "mention")
-                else str(actor)
-            ),
-            inline=True
-        )
-
-    if target:
-
-        embed.add_field(
-            name="🎯 المستهدف",
-            value=(
-                target.mention
-                if hasattr(target, "mention")
-                else str(target)
-            ),
-            inline=True
-        )
-
-    if extra_fields:
-
-        for name, value in extra_fields:
-
-            embed.add_field(
-                name=name,
-                value=str(value)[:1024],
-                inline=False
-            )
-
-    try:
-
-        await channel.send(
-            embed=embed
-        )
-
-        return True
-
-    except Exception as error:
-
-        logging.error(
-            f"Log send error: {error}"
-        )
-
-        return False
-
-async def send_config_log(
-    guild,
-    title,
-    description,
-    actor
-):
-
-    sent = await send_log(
-        guild,
-        "mod_log_channel_id",
-        title,
-        description,
-        discord.Color.blue(),
-        actor=actor
-    )
-
-    if not sent:
-
-        await send_log(
-            guild,
-            "channel_log_channel_id",
-            title,
-            description,
-            discord.Color.blue(),
-            actor=actor
-        )
-
-async def security_report(
-    guild,
-    title,
-    description,
-    color=discord.Color.red(),
-    actor=None,
-    target=None,
-    extra_fields=None,
-    security_event=False
-):
-
-    if not security_event:
-        return False
-
-    save_security_log(
-        guild.id,
-        title,
-        actor.id if actor else None,
-        target.id if target else None,
-        description
-    )
-
-    return await send_log(
-        guild,
-        "security_log_channel_id",
-        title,
-        description,
-        color,
-        actor,
-        target,
-        extra_fields
-    )
-
-# =========================================================
-# FAST AUDIT LOG
-# =========================================================
-
-async def get_audit_actor(
-    guild,
-    action,
-    target_id=None
-):
-
-    try:
-
-        async for entry in guild.audit_logs(
-            limit=10,
-            action=action
-        ):
-
-            if target_id is not None:
-
-                if getattr(
-                    entry.target,
-                    "id",
-                    None
-                ) != target_id:
-                    continue
-
-            age = (
-                datetime.datetime.now(
-                    datetime.timezone.utc
-                )
-                -
-                entry.created_at
-            ).total_seconds()
-
-            if age > 20:
-                continue
-
-            return entry.user
-
-    except Exception as error:
-
-        logging.error(
-            f"Audit log error: {error}"
-        )
-
-    return None
-
-async def get_audit_actor_fast(
-    guild,
-    action,
-    target_id=None
-):
-
-    actor = await get_audit_actor(
-        guild,
-        action,
-        target_id
-    )
-
-    if actor:
-        return actor
-
-    await asyncio.sleep(0.20)
-
-    actor = await get_audit_actor(
-        guild,
-        action,
-        target_id
-    )
-
-    if actor:
-        return actor
-
-    await asyncio.sleep(0.25)
-
-    return await get_audit_actor(
-        guild,
-        action,
-        target_id
-    )
-
-async def get_audit_actor_multiple(
-    guild,
-    actions,
-    target_id=None
-):
-
-    for action in actions:
-
-        actor = await get_audit_actor_fast(
-            guild,
-            action,
-            target_id
-        )
-
-        if actor:
-            return actor
-
-    return None
-
-# =========================================================
-# AUTO BAN
-# =========================================================
-
-async def ban_unauthorized_actor(
-    guild,
-    actor,
-    reason
-):
-
-    if not actor:
-        return "لم يتم تحديد المنفذ."
-
-    if actor.id == guild.owner_id:
-        return "تعذر الحظر: المنفذ هو Owner."
-
-    if bot.user and actor.id == bot.user.id:
-        return "المنفذ هو البوت نفسه."
-
-    actor_member = guild.get_member(
-        actor.id
-    )
-
-    if not actor_member:
-        return "المنفذ غير موجود داخل السيرفر."
-
-    if is_whitelisted(
-        actor_member,
-        guild
-    ):
-        return "المنفذ مستثنى."
-
-    me = guild.me
-
-    if not me:
-        return "تعذر معرفة رتبة البوت."
-
-    if actor_member.top_role >= me.top_role:
-        return "تعذر الحظر بسبب Role Hierarchy."
-
-    try:
-
-        await guild.ban(
-            actor_member,
-            reason=reason
-        )
-
-        return "تم حظر المنفذ تلقائيًا."
-
-    except Exception as error:
-
-        logging.error(
-            f"Auto ban error: {error}"
-        )
-
-        return "فشل الحظر التلقائي."
-
-# =========================================================
-# BAN PROTECTION
-# =========================================================
-
-@bot.event
-async def on_member_ban(
-    guild,
-    user
-):
-
-    actor = await get_audit_actor_fast(
-        guild,
-        discord.AuditLogAction.ban,
-        user.id
-    )
-
-    if not actor:
-
-        await security_report(
-            guild,
-            "⚠️ حظر بدون تحديد المنفذ",
-            f"تم حظر {user.mention} ولم يتم تحديد المنفذ.",
-            discord.Color.orange(),
-            target=user,
-            security_event=True
-        )
-
-        return
-
-    if bot.user and actor.id == bot.user.id:
-        return
-
-    actor_member = guild.get_member(
-        actor.id
-    )
-
-    if actor_member and is_whitelisted(
-        actor_member,
-        guild
-    ):
-
-        await send_log(
-            guild,
-            "mod_log_channel_id",
-            "✅ حظر مصرح",
-            f"تم تنفيذ حظر مصرح به على {user.mention}.",
-            discord.Color.green(),
-            actor=actor_member,
-            target=user
-        )
-
-        return
-
-    try:
-
-        await guild.unban(
-            user,
-            reason="MTRP Security: Unauthorized ban"
-        )
-
-        unban_result = "تم فك حظر المستهدف."
-
-    except Exception as error:
-
-        logging.error(
-            f"Unban error: {error}"
-        )
-
-        unban_result = "تعذر فك حظر المستهدف."
-
-    actor_result = await ban_unauthorized_actor(
-        guild,
-        actor,
-        "MTRP Security: Unauthorized ban"
-    )
-
-    await security_report(
-        guild,
-        "🚨 حظر غير مصرح به",
-        "تم اكتشاف عملية حظر غير مصرح بها.",
-        discord.Color.red(),
-        actor=actor_member or actor,
-        target=user,
-        extra_fields=[
-            ("🔓 حالة المستهدف", unban_result),
-            ("🔨 حالة المنفذ", actor_result)
-        ],
-        security_event=True
-    )
-
-    await send_log(
-        guild,
-        "mod_log_channel_id",
-        "🚨 حظر غير مصرح به",
-        "تم اكتشاف عملية حظر غير مصرح بها.",
-        discord.Color.red(),
-        actor=actor_member or actor,
-        target=user,
-        extra_fields=[
-            ("🔓 حالة المستهدف", unban_result),
-            ("🔨 حالة المنفذ", actor_result)
-        ]
-    )
-
-# =========================================================
-# UNBAN
-# =========================================================
-
-@bot.event
-async def on_member_unban(
-    guild,
-    user
-):
-
-    actor = await get_audit_actor_fast(
-        guild,
-        discord.AuditLogAction.unban,
-        user.id
-    )
-
-    await send_log(
-        guild,
-        "mod_log_channel_id",
-        "🔓 فك حظر",
-        f"تم فك حظر {user.mention}.",
-        discord.Color.green(),
-        actor=actor,
-        target=user
-    )
-
-# =========================================================
-# MEMBER SECURITY CHECK
-# =========================================================
-
-def member_security_flags(member):
-
-    flags = []
-
-    if member.bot:
-        flags.append("🤖 الحساب Bot")
-
-    account_age = (
-        datetime.datetime.now(
-            datetime.timezone.utc
-        )
-        - member.created_at
-    ).total_seconds()
-
-    if account_age < 86400:
-
-        flags.append(
-            "🆕 الحساب أقل من يوم"
-        )
-
-    elif account_age < 604800:
-
-        flags.append(
-            "⚠️ الحساب أقل من 7 أيام"
-        )
-
-    if member.guild_permissions.administrator:
-
-        flags.append(
-            "🔐 Administrator"
-        )
-
-    return flags
-
-@bot.event
-async def on_member_join(
-    member
-):
-
-    flags = member_security_flags(
-        member
-    )
-
-    extra = [
-        ("🤖 Bot", str(member.bot)),
-        ("🆔 ID", member.id),
-        (
-            "🔐 Administrator",
-            str(member.guild_permissions.administrator)
-        )
-    ]
-
-    if flags:
-
-        extra.append(
-            (
-                "🛡️ مؤشرات الحماية",
-                "\n".join(flags)
-            )
-        )
-
-    await send_log(
-        member.guild,
-        "member_log_channel_id",
-        "👋 دخول عضو",
-        f"دخل العضو {member.mention} إلى السيرفر.",
-        discord.Color.green(),
-        target=member,
-        extra_fields=extra
-    )
-
-# =========================================================
-# MEMBER LEAVE / KICK
-# =========================================================
-
-@bot.event
-async def on_member_remove(
-    member
-):
-
-    actor = await get_audit_actor_fast(
-        member.guild,
-        discord.AuditLogAction.kick,
-        member.id
-    )
-
-    if not actor:
-
-        await send_log(
-            member.guild,
-            "member_log_channel_id",
-            "👋 خروج عضو",
-            f"غادر العضو {member.mention} السيرفر.",
-            discord.Color.orange(),
-            target=member
-        )
-
-        return
-
-    actor_member = member.guild.get_member(
-        actor.id
-    )
-
-    if actor_member and is_whitelisted(
-        actor_member,
-        member.guild
-    ):
-
-        await send_log(
-            member.guild,
-            "member_log_channel_id",
-            "👢 طرد عضو مصرح",
-            f"تم طرد {member.mention}.",
-            discord.Color.orange(),
-            actor=actor_member,
-            target=member
-        )
-
-        return
-
-    result = await ban_unauthorized_actor(
-        member.guild,
-        actor,
-        "MTRP Security: Unauthorized kick"
-    )
-
-    await security_report(
-        member.guild,
-        "🚨 طرد غير مصرح",
-        f"تم اكتشاف طرد غير مصرح للعضو {member.mention}.",
-        discord.Color.red(),
-        actor=actor_member or actor,
-        target=member,
-        extra_fields=[
-            ("🔨 الإجراء", result)
-        ],
-        security_event=True
-    )
-
-# =========================================================
-# MESSAGE DELETE
-# =========================================================
-
-@bot.event
-async def on_message_delete(
-    message
-):
-
-    if not message.guild:
-        return
-
-    content = (
-        message.content
-        or "[المحتوى غير متوفر أو كان Embed/Attachment]"
-    )
-
-    await send_log(
-        message.guild,
-        "delete_log_channel_id",
-        "🗑️ رسالة محذوفة",
-        f"تم حذف رسالة في {message.channel.mention}.",
-        discord.Color.red(),
-        actor=message.author if message.author else None,
-        extra_fields=[
-            ("📍 الروم", message.channel.mention),
-            ("💬 المحتوى", content[:1000])
-        ]
-    )
-
-# =========================================================
-# MESSAGE EDIT
-# =========================================================
-
-@bot.event
-async def on_message_edit(
-    before,
-    after
-):
-
-    if not after.guild:
-        return
-
-    if before.content == after.content:
-        return
-
-    await send_log(
-        after.guild,
-        "edit_log_channel_id",
-        "✏️ رسالة معدلة",
-        f"تم تعديل رسالة في {after.channel.mention}.",
-        discord.Color.orange(),
-        actor=after.author if after.author else None,
-        extra_fields=[
-            ("📍 الروم", after.channel.mention),
-            ("قبل التعديل", (before.content or "[فارغ]")[:1000]),
-            ("بعد التعديل", (after.content or "[فارغ]")[:1000])
-        ]
-    )
-
-# =========================================================
-# MESSAGE SECURITY + AI
-# =========================================================
-
-URL_PATTERN = re.compile(
-    r"(https?://\S+|www\.\S+|discord\.gg/\S+|discord\.com/invite/\S+)",
-    re.IGNORECASE
-)
-
-@bot.event
-async def on_message(
-    message
-):
-
-    if message.author.bot:
-        return
-
-    if not message.guild:
-
-        await bot.process_commands(
-            message
-        )
-
-        return
-
-    if message.content.startswith(
-        BOT_PREFIX
-    ):
-
-        await bot.process_commands(
-            message
-        )
-
-        return
-
-    whitelisted = is_whitelisted(
-        message.author,
-        message.guild
-    )
-
-    if message.mention_everyone and not whitelisted:
-
-        try:
-            await message.delete()
-        except Exception:
-            pass
-
-        await security_report(
-            message.guild,
-            "🚨 منشن جماعي غير مصرح",
-            "تم حذف رسالة تحتوي على @everyone أو @here.",
-            discord.Color.red(),
-            actor=message.author,
-            extra_fields=[
-                ("📍 الروم", message.channel.mention),
-                ("💬 المحتوى", message.content[:1000])
-            ],
-            security_event=True
-        )
-
-        return
-
-    if URL_PATTERN.search(
-        message.content
-    ) and not whitelisted:
-
-        try:
-            await message.delete()
-        except Exception:
-            pass
-
-        await security_report(
-            message.guild,
-            "🚨 رابط غير مصرح",
-            "تم حذف رسالة تحتوي على رابط من عضو غير مستثنى.",
-            discord.Color.red(),
-            actor=message.author,
-            extra_fields=[
-                ("📍 الروم", message.channel.mention),
-                ("💬 المحتوى", message.content[:1000])
-            ],
-            security_event=True
-        )
-
-        return
-
-    settings = get_guild_settings(
-        message.guild.id
-    )
-
-    if (
-        settings["ai_enabled"]
-        and
-        settings["ai_channel_id"]
-        ==
-        message.channel.id
-    ):
-
-        answer = await ask_ai(
-            message.content,
-            message.guild.name
-        )
-
-        try:
-
-            await message.channel.send(
-                answer
-            )
-
-        except Exception as error:
-
-            logging.error(
-                f"AI send error: {error}"
-            )
-
-        return
-
-    await bot.process_commands(
-        message
-    )
-
-# =========================================================
-# ROLES
-# =========================================================
-
-@bot.tree.command(
-    name="الرتب",
-    description="عرض رتب السيرفر"
-)
-async def roles_command(
-    interaction: discord.Interaction
-):
-
-    guild = interaction.guild
-
-    if not guild:
-
-        await interaction.response.send_message(
-            "❌ هذا الأمر داخل السيرفر فقط.",
-            ephemeral=True
-        )
-
-        return
-
-    roles = [
-        role
-        for role in guild.roles
-        if role != guild.default_role
-    ]
-
-    roles.reverse()
-
-    if not roles:
-
-        await interaction.response.send_message(
-            "📋 لا توجد رتب في السيرفر.",
-            ephemeral=True
-        )
-
-        return
-
-    embeds = []
-
-    for start in range(
-        0,
-        len(roles),
-        20
-    ):
-
-        chunk = roles[
-            start:start + 20
-        ]
-
-        lines = []
-
-        for index, role in enumerate(
-            chunk,
-            start + 1
-        ):
-
-            lines.append(
-                f"**{index}.** {role.mention} `{role.id}`\n"
-                f"👥 الأعضاء: `{len(role.members)}`"
-            )
-
-        embed = discord.Embed(
-            title="🎭 رتب السيرفر",
-            description="\n".join(lines)[:4000],
-            color=discord.Color.blurple()
-        )
-
-        embed.set_footer(
-            text=f"MT • صفحة {len(embeds) + 1}"
-        )
-
-        embeds.append(embed)
-
-    await interaction.response.send_message(
-        embeds=embeds[:10],
-        ephemeral=True
-    )
-
-# =========================================================
-# CHANNELS
-# =========================================================
-
-@bot.tree.command(
-    name="الرومات",
-    description="عرض رومات السيرفر"
-)
-async def channels_command(
-    interaction: discord.Interaction
-):
-
-    guild = interaction.guild
-
-    if not guild:
-
-        await interaction.response.send_message(
-            "❌ هذا الأمر داخل السيرفر فقط.",
-            ephemeral=True
-        )
-
-        return
-
-    text_channels = guild.text_channels
-    voice_channels = guild.voice_channels
-    categories = guild.categories
-
-    embed = discord.Embed(
-        title="📚 رومات السيرفر",
-        description=(
-            f"📊 **إجمالي الرومات:** "
-            f"`{len(text_channels) + len(voice_channels)}`\n"
-            f"💬 **Text:** `{len(text_channels)}`\n"
-            f"🔊 **Voice:** `{len(voice_channels)}`\n"
-            f"📂 **التصنيفات:** `{len(categories)}`"
-        ),
-        color=discord.Color.blurple()
-    )
-
-    for category in categories:
-
-        children = category.channels
-
-        if not children:
-            continue
-
-        lines = []
-
-        for channel in children[:15]:
-
-            if isinstance(
-                channel,
-                discord.TextChannel
-            ):
-
-                icon = "💬"
-
-            elif isinstance(
-                channel,
-                discord.VoiceChannel
-            ):
-
-                icon = "🔊"
-
-            else:
-
-                icon = "📌"
-
-            lines.append(
-                f"{icon} {channel.mention}"
-            )
-
-        value = "\n".join(lines)
-
-        if len(children) > 15:
-
-            value += (
-                f"\n... و `{len(children) - 15}` روم إضافي"
-            )
-
-        embed.add_field(
-            name=f"📂 {category.name}",
-            value=value[:1024],
-            inline=False
-        )
-
-        if len(embed.fields) >= 10:
-            break
-
-    await interaction.response.send_message(
-        embed=embed,
-        ephemeral=True
-    )
-
-# =========================================================
-# SECURITY PERMISSIONS
-# =========================================================
-
-def can_manage_security(
-    interaction
-):
-
-    if not interaction.guild:
-        return False
-
-    if (
-        interaction.user.id
-        ==
-        interaction.guild.owner_id
-    ):
-        return True
-
-    allowed = {
-        normalize_text("MT | Owner"),
-        normalize_text("MT | COowner")
-    }
-
-    return any(
-        normalize_text(role.name) in allowed
-        for role in interaction.user.roles
-    )
-
-def has_administrator(
-    interaction
-):
-
-    return bool(
-        interaction.guild
-        and
-        interaction.user.guild_permissions.administrator
-    )
-
-# =========================================================
-# EXCLUDED ROLE COMMANDS
-# =========================================================
-
-@bot.tree.command(
-    name="set-excluded-role",
-    description="إضافة رتبة إلى الرتب المستثناة"
-)
-@app_commands.describe(
-    role="الرتبة التي تريد استثنائها"
-)
-async def set_excluded_role(
-    interaction,
-    role: discord.Role
-):
-
-    if not can_manage_security(
-        interaction
-    ):
-
-        await interaction.response.send_message(
-            "❌ هذا الأمر للـ Owner و COowner فقط.",
-            ephemeral=True
-        )
-
-        return
-
-    if add_excluded_role(
-        interaction.guild.id,
-        role.id
-    ):
-
-        await interaction.response.send_message(
-            f"✅ تمت إضافة {role.mention} إلى الرتب المستثناة.",
-            ephemeral=True
-        )
-
-        await send_log(
-            interaction.guild,
-            "role_log_channel_id",
-            "🛡️ إضافة رتبة مستثناة",
-            f"تمت إضافة الرتبة `{role.name}` إلى الاستثناءات.",
-            discord.Color.green(),
-            actor=interaction.user,
-            extra_fields=[
-                ("🎭 الرتبة", role.mention),
-                ("🆔 ID", role.id)
-            ]
-        )
-
-    else:
-
-        await interaction.response.send_message(
-            f"⚠️ الرتبة {role.mention} مستثناة بالفعل.",
-            ephemeral=True
-        )
-
-@bot.tree.command(
-    name="remove-excluded-role",
-    description="إزالة رتبة من الرتب المستثناة"
-)
-@app_commands.describe(
-    role="الرتبة التي تريد إزالتها"
-)
-async def remove_excluded_role_command(
-    interaction,
-    role: discord.Role
-):
-
-    if not can_manage_security(
-        interaction
-    ):
-
-        await interaction.response.send_message(
-            "❌ هذا الأمر للـ Owner و COowner فقط.",
-            ephemeral=True
-        )
-
-        return
-
-    removed = remove_excluded_role(
-        interaction.guild.id,
-        role.id
-    )
-
-    if not removed:
-
-        await interaction.response.send_message(
-            f"⚠️ الرتبة {role.mention} ليست مستثناة.",
-            ephemeral=True
-        )
-
-        return
-
-    await interaction.response.send_message(
-        f"✅ تمت إزالة {role.mention} من الرتب المستثناة.",
-        ephemeral=True
-    )
-
-@bot.tree.command(
-    name="clear-excluded-roles",
-    description="حذف جميع الرتب المستثناة"
-)
-async def clear_excluded_roles_command(
-    interaction
-):
-
-    if not can_manage_security(
-        interaction
-    ):
-
-        await interaction.response.send_message(
-            "❌ هذا الأمر للـ Owner و COowner فقط.",
-            ephemeral=True
-        )
-
-        return
-
-    count = clear_excluded_roles(
-        interaction.guild.id
-    )
-
-    await interaction.response.send_message(
-        f"🗑️ تم حذف **{count}** رتبة من الاستثناءات.",
-        ephemeral=True
-    )
-
-@bot.tree.command(
-    name="list-excluded-roles",
-    description="عرض جميع الرتب المستثناة"
-)
-async def list_excluded_roles_command(
-    interaction
-):
-
-    if not can_manage_security(
-        interaction
-    ):
-
-        await interaction.response.send_message(
-            "❌ هذا الأمر للـ Owner و COowner فقط.",
-            ephemeral=True
-        )
-
-        return
-
-    role_ids = get_excluded_role_ids(
-        interaction.guild.id
-    )
-
-    if not role_ids:
-
-        await interaction.response.send_message(
-            "📋 لا توجد رتب مستثناة.",
-            ephemeral=True
-        )
-
-        return
-
-    lines = []
-
-    for index, role_id in enumerate(
-        sorted(role_ids),
-        1
-    ):
-
-        role = interaction.guild.get_role(
-            role_id
-        )
-
-        if role:
-
-            lines.append(
-                f"**{index}.** {role.mention} — `{role.name}`"
-            )
-
-        else:
-
-            lines.append(
-                f"**{index}.** رتبة محذوفة — `{role_id}`"
-            )
-
-    embed = discord.Embed(
-        title="🛡️ الرتب المستثناة",
-        description="\n".join(lines)[:4000],
-        color=discord.Color.blurple()
-    )
-
-    embed.add_field(
-        name="📊 العدد",
-        value=str(len(role_ids))
-    )
-
-    await interaction.response.send_message(
-        embed=embed,
-        ephemeral=True
-    )
-
-# =========================================================
-# LOG COMMANDS
-# =========================================================
-
-async def set_log_command(
-    interaction,
-    setting_name,
-    title,
-    channel
-):
-
-    if not has_administrator(
-        interaction
-    ):
-
-        await interaction.response.send_message(
-            "❌ هذا الأمر يحتاج Administrator.",
-            ephemeral=True
-        )
-
-        return
-
-    set_log_channel(
-        interaction.guild.id,
-        setting_name,
-        channel.id
-    )
-
-    await interaction.response.send_message(
-        f"✅ تم تعيين {title} إلى {channel.mention}.",
-        ephemeral=True
-    )
-
-    await send_config_log(
-        interaction.guild,
-        f"⚙️ تغيير إعداد: {title}",
-        f"تم تعيين {title} إلى {channel.mention}.",
-        interaction.user
-    )
-
-@bot.tree.command(
-    name="set-security-log",
-    description="تحديد روم سجل الحماية"
-)
-async def set_security_log(
-    interaction,
-    channel: discord.TextChannel
-):
-
-    await set_log_command(
-        interaction,
-        "security_log_channel_id",
-        "سجل الحماية",
-        channel
-    )
-
-@bot.tree.command(
-    name="set-delete-log",
-    description="تحديد روم سجل الرسائل المحذوفة"
-)
-async def set_delete_log(
-    interaction,
-    channel: discord.TextChannel
-):
-
-    await set_log_command(
-        interaction,
-        "delete_log_channel_id",
-        "سجل الحذف",
-        channel
-    )
-
-@bot.tree.command(
-    name="set-edit-log",
-    description="تحديد روم سجل الرسائل المعدلة"
-)
-async def set_edit_log(
-    interaction,
-    channel: discord.TextChannel
-):
-
-    await set_log_command(
-        interaction,
-        "edit_log_channel_id",
-        "سجل التعديل",
-        channel
-    )
-
-@bot.tree.command(
-    name="set-member-log",
-    description="تحديد روم سجل الأعضاء"
-)
-async def set_member_log(
-    interaction,
-    channel: discord.TextChannel
-):
-
-    await set_log_command(
-        interaction,
-        "member_log_channel_id",
-        "سجل الأعضاء",
-        channel
-    )
-
-@bot.tree.command(
-    name="set-mod-log",
-    description="تحديد روم سجل الإدارة"
-)
-async def set_mod_log(
-    interaction,
-    channel: discord.TextChannel
-):
-
-    await set_log_command(
-        interaction,
-        "mod_log_channel_id",
-        "سجل الإدارة",
-        channel
-    )
-
-@bot.tree.command(
-    name="set-role-log",
-    description="تحديد روم سجل الرتب"
-)
-async def set_role_log(
-    interaction,
-    channel: discord.TextChannel
-):
-
-    await set_log_command(
-        interaction,
-        "role_log_channel_id",
-        "سجل الرتب",
-        channel
-    )
-
-@bot.tree.command(
-    name="set-channel-log",
-    description="تحديد روم سجل الرومات"
-)
-async def set_channel_log(
-    interaction,
-    channel: discord.TextChannel
-):
-
-    await set_log_command(
-        interaction,
-        "channel_log_channel_id",
-        "سجل الرومات",
-        channel
-    )
-
-# =========================================================
-# TICKET SYSTEM
-# =========================================================
-
-GENERAL_TICKET_OPTIONS = [
-    (
-        "📝 استفسار",
-        "general_question",
-        "للاستفسارات العامة"
-    ),
-    (
-        "🏅 طلب رتبة",
-        "general_rank",
-        "لطلبات الرتب"
-    ),
-    (
-        "⚠️ شكوى على إداري",
-        "general_admin_complaint",
-        "للشكاوى الإدارية"
-    ),
-    (
-        "🏪 طلب متجر",
-        "general_store",
-        "لطلبات المتاجر"
-    ),
-    (
-        "🎬 طلب سيناريو",
-        "general_scenario",
-        "لطلبات السيناريو"
-    ),
-    (
-        "🛡️ الإشراف",
-        "general_supervision",
-        "للتواصل مع الإشراف"
-    ),
-    (
-        "🛠️ الدعم الفني",
-        "general_support",
-        "للتواصل مع الدعم الفني"
-    )
-]
-
-SWAT_TICKET_OPTIONS = [
-    (
-        "📝 استفسار SWAT",
-        "swat_question",
-        "للاستفسارات الخاصة بـ SWAT"
-    ),
-    (
-        "📋 طلب SWAT",
-        "swat_request",
-        "لتقديم طلبات خاصة بـ SWAT"
-    ),
-    (
-        "⚠️ شكوى SWAT",
-        "swat_complaint",
-        "للشكاوى المتعلقة بـ SWAT"
-    )
-]
-
-JUSTICE_TICKET_OPTIONS = [
-    (
-        "📝 استفسار قضائي",
-        "justice_question",
-        "للاستفسارات عن القضاء"
-    ),
-    (
-        "⚖️ قضية",
-        "justice_case",
-        "لرفع قضية أو متابعة قضية"
-    ),
-    (
-        "📋 طلب قضائي",
-        "justice_request",
-        "للطلبات المتعلقة بالعدل"
-    ),
-    (
-        "⚠️ شكوى",
-        "justice_complaint",
-        "للشكاوى المتعلقة بوزارة العدل"
-    )
-]
-
-INTERIOR_TICKET_OPTIONS = [
-    (
-        "📝 استفسار الداخلية",
-        "interior_question",
-        "للاستفسارات الخاصة بالداخلية"
-    ),
-    (
-        "📋 طلب",
-        "interior_request",
-        "للطلبات المتعلقة بالوزارة"
-    ),
-    (
-        "⚠️ شكوى",
-        "interior_complaint",
-        "للشكاوى على قطاعات الداخلية"
-    ),
-    (
-        "🎖️ طلب رتبة",
-        "interior_rank",
-        "لطلبات الرتب والترقيات"
-    )
-]
-
-HEALTH_TICKET_OPTIONS = [
-    (
-        "📝 استفسار صحي",
-        "health_question",
-        "للاستفسارات الصحية"
-    ),
-    (
-        "📋 طلب صحي",
-        "health_request",
-        "للطلبات المتعلقة بالصحة"
-    ),
-    (
-        "⚠️ شكوى",
-        "health_complaint",
-        "للشكاوى المتعلقة بالصحة"
-    )
-]
-
-TICKET_CONFIGS = {
-
-    "general": {
-        "title": "🎫 التذاكر العامة",
-        "description": "التكتات العامة والاستفسارات والطلبات",
-        "category": "📂 التذاكر العامة",
-        "roles": [],
-        "options": GENERAL_TICKET_OPTIONS
     },
 
-    "swat": {
-        "title": "🛡️ تذاكر S.W.A.T",
-        "description": "التذاكر الخاصة بقطاع S.W.A.T",
-        "category": "📂 تذاكر - S.W.A.T",
-        "roles": [ROLE_SWAT],
-        "options": SWAT_TICKET_OPTIONS
+    "super_admin": {
+        "name": "Super Admin",
+        "permissions": {
+            "characters_view_all",
+            "characters_view_details",
+            "characters_edit_all",
+            "characters_hide",
+            "characters_show",
+
+            "police_manage",
+            "police_view",
+            "police_add",
+            "police_edit",
+            "police_assign_rank",
+            "police_change_rank",
+            "police_remove",
+
+            "justice_manage",
+            "justice_view",
+            "justice_add",
+            "justice_edit",
+            "justice_assign_rank",
+            "justice_change_rank",
+            "justice_remove",
+
+            "health_manage",
+            "health_view",
+            "health_add",
+            "health_edit",
+            "health_assign_rank",
+            "health_change_rank",
+            "health_remove",
+
+            "gangs_manage",
+            "gangs_view",
+            "gangs_add_members",
+            "gangs_remove_members",
+            "gangs_change_leader",
+
+            "users_view",
+            "users_edit",
+            "users_ban",
+            "users_unban",
+            "users_disable",
+            "users_enable",
+
+            "permissions_view",
+            "permissions_give",
+            "permissions_remove",
+            "permissions_edit",
+
+            "logs_view",
+            "logs_search",
+
+            "admins_manage",
+            "admins_add",
+            "admins_remove"
+        }
     },
 
-    "justice": {
-        "title": "⚖️ تذاكر وزارة العدل",
-        "description": "التذاكر الخاصة بوزارة العدل",
-        "category": "📂 تذاكر - Justice",
-        "roles": [ROLE_JUSTICE],
-        "options": JUSTICE_TICKET_OPTIONS
+    "admin": {
+        "name": "Admin",
+        "permissions": {
+            "characters_view_all",
+            "characters_view_details",
+
+            "police_view",
+            "police_manage",
+            "police_assign_rank",
+            "police_change_rank",
+
+            "justice_view",
+            "justice_manage",
+            "justice_assign_rank",
+            "justice_change_rank",
+
+            "health_view",
+            "health_manage",
+            "health_assign_rank",
+            "health_change_rank",
+
+            "gangs_view",
+            "gangs_manage",
+            "gangs_add_members",
+            "gangs_remove_members",
+            "gangs_change_leader",
+
+            "users_view",
+
+            "permissions_view",
+            "permissions_give",
+
+            "logs_view",
+
+            "admins_manage"
+        }
     },
 
-    "interior": {
-        "title": "🏛️ تذاكر وزارة الداخلية",
-        "description": "التذاكر الخاصة بالوزارة",
-        "category": "📂 تذاكر - Interior",
-        "roles": [
-            ROLE_INTERIOR,
-            ROLE_POLICE
-        ],
-        "options": INTERIOR_TICKET_OPTIONS
+    "moderator": {
+        "name": "Moderator",
+        "permissions": {
+            "characters_view_all",
+            "characters_view_details",
+            "characters_hide",
+            "characters_show",
+
+            "police_view",
+            "justice_view",
+            "health_view",
+            "gangs_view",
+
+            "logs_view"
+        }
     },
 
-    "health": {
-        "title": "🏥 تذاكر الصحة",
-        "description": "التذاكر الخاصة بقطاع PHMC",
-        "category": "📂 تذاكر - PHMC",
-        "roles": [ROLE_HEALTH],
-        "options": HEALTH_TICKET_OPTIONS
+    "supervisor": {
+        "name": "Supervisor",
+        "permissions": {
+            "characters_view_all",
+            "characters_view_details",
+            "characters_hide",
+            "characters_show",
+
+            "police_view",
+            "police_assign_rank",
+            "police_change_rank",
+
+            "justice_view",
+            "justice_assign_rank",
+            "justice_change_rank",
+
+            "health_view",
+            "health_assign_rank",
+            "health_change_rank",
+
+            "gangs_view",
+            "gangs_change_leader"
+        }
+    },
+
+    "manager": {
+        "name": "Manager",
+        "permissions": {
+            "characters_view_all",
+            "characters_view_details",
+
+            "police_view",
+            "justice_view",
+            "health_view",
+            "gangs_view",
+
+            "users_view"
+        }
+    },
+
+    "department_manager": {
+        "name": "Department Manager",
+        "permissions": {
+            "characters_view_all",
+            "characters_view_details",
+
+            "police_manage",
+            "police_view",
+            "police_add",
+            "police_edit",
+            "police_assign_rank",
+            "police_change_rank",
+            "police_remove",
+
+            "justice_manage",
+            "justice_view",
+            "justice_add",
+            "justice_edit",
+            "justice_assign_rank",
+            "justice_change_rank",
+            "justice_remove",
+
+            "health_manage",
+            "health_view",
+            "health_add",
+            "health_edit",
+            "health_assign_rank",
+            "health_change_rank",
+            "health_remove"
+        }
+    },
+
+    "police_director": {
+        "name": "Police Director",
+        "permissions": {
+            "characters_view_all",
+            "characters_view_details",
+            "police_manage",
+            "police_view",
+            "police_add",
+            "police_edit",
+            "police_assign_rank",
+            "police_change_rank",
+            "police_remove"
+        }
+    },
+
+    "justice_director": {
+        "name": "Justice Director",
+        "permissions": {
+            "characters_view_all",
+            "characters_view_details",
+            "justice_manage",
+            "justice_view",
+            "justice_add",
+            "justice_edit",
+            "justice_assign_rank",
+            "justice_change_rank",
+            "justice_remove"
+        }
+    },
+
+    "health_director": {
+        "name": "Health Director",
+        "permissions": {
+            "characters_view_all",
+            "characters_view_details",
+            "health_manage",
+            "health_view",
+            "health_add",
+            "health_edit",
+            "health_assign_rank",
+            "health_change_rank",
+            "health_remove"
+        }
+    },
+
+    "gang_manager": {
+        "name": "Gang Manager",
+        "permissions": {
+            "characters_view_all",
+            "characters_view_details",
+            "gangs_manage",
+            "gangs_view",
+            "gangs_add_members",
+            "gangs_remove_members",
+            "gangs_change_leader"
+        }
+    },
+
+    "police_supervisor": {
+        "name": "Police Supervisor",
+        "permissions": {
+            "characters_view_all",
+            "characters_view_details",
+            "police_view",
+            "police_assign_rank",
+            "police_change_rank"
+        }
+    },
+
+    "justice_supervisor": {
+        "name": "Justice Supervisor",
+        "permissions": {
+            "characters_view_all",
+            "characters_view_details",
+            "justice_view",
+            "justice_assign_rank",
+            "justice_change_rank"
+        }
+    },
+
+    "health_supervisor": {
+        "name": "Health Supervisor",
+        "permissions": {
+            "characters_view_all",
+            "characters_view_details",
+            "health_view",
+            "health_assign_rank",
+            "health_change_rank"
+        }
+    },
+
+    "gang_supervisor": {
+        "name": "Gang Supervisor",
+        "permissions": {
+            "characters_view_all",
+            "characters_view_details",
+            "gangs_view",
+            "gangs_change_leader"
+        }
+    },
+
+    "senior_staff": {
+        "name": "Senior Staff",
+        "permissions": {
+            "characters_view_all",
+            "characters_view_details",
+            "police_view",
+            "justice_view",
+            "health_view",
+            "gangs_view",
+            "users_view",
+            "logs_view"
+        }
+    },
+
+    "staff": {
+        "name": "Staff",
+        "permissions": {
+            "characters_view_all",
+            "characters_view_details",
+            "police_view",
+            "justice_view",
+            "health_view",
+            "gangs_view"
+        }
+    },
+
+    "helper": {
+        "name": "Helper",
+        "permissions": {
+            "characters_view_details"
+        }
     }
 }
 
 # =========================================================
-# ALL TICKET OPTIONS
+# الأقسام
 # =========================================================
 
-ALL_TICKET_ROLE_OPTIONS = []
+DEPARTMENTS = {
+    "police": "الشرطة",
+    "justice": "وزارة العدل",
+    "health": "الصحة",
+    "gangs": "العصابات"
+}
 
-for _department, _config in TICKET_CONFIGS.items():
-
-    for _label, _key, _description in _config["options"]:
-
-        ALL_TICKET_ROLE_OPTIONS.append(
-            (
-                _label,
-                _key,
-                _department
-            )
-        )
+SECTION_KEYS = {
+    "characters": "الشخصيات",
+    "police": "الشرطة",
+    "justice": "وزارة العدل",
+    "health": "الصحة",
+    "gangs": "العصابات",
+    "users": "المستخدمون",
+    "permissions": "الصلاحيات",
+    "logs": "السجلات",
+    "admin": "الإدارة",
+    "settings": "الإعدادات"
+}
 
 # =========================================================
-# SET TICKET RESPONSIBLE ROLE
+# رتب الأقسام
 # =========================================================
 
-@bot.tree.command(
-    name="set-ticket-role",
-    description="تحديد الرتبة المسؤولة عن نوع تكت معين"
-)
-@app_commands.describe(
-    ticket_type="نوع التكت",
-    role="الرتبة المسؤولة عن هذا النوع"
-)
-@app_commands.choices(
-    ticket_type=[
-        app_commands.Choice(
-            name=(
-                f"{TICKET_CONFIGS[department]['title']} • {label}"
-            )[:100],
-            value=f"{department}|{option_key}"
-        )
-        for label, option_key, department
-        in ALL_TICKET_ROLE_OPTIONS
+DEPARTMENT_RANKS = {
+
+    "police": [
+        "جندي مستجد",
+        "جندي",
+        "جندي أول",
+        "عريف",
+        "وكيل رقيب",
+        "رقيب",
+        "رقيب أول",
+        "رئيس رقباء",
+        "ملازم",
+        "ملازم أول",
+        "نقيب",
+        "رائد",
+        "مقدم",
+        "عقيد",
+        "عميد",
+        "لواء",
+        "فريق",
+        "فريق أول",
+        "جنرال"
+    ],
+
+    "justice": [
+        "معالي وزير العدل",
+        "نائب وزير العدل",
+        "رئيس المحكمة",
+        "قاضي أول",
+        "قاضي",
+        "وكيل نيابة",
+        "محامي عام",
+        "محامي",
+        "مستشار قانوني",
+        "باحث قضائي"
+    ],
+
+    "health": [
+        "متدرب",
+        "ممرض",
+        "ممرض أول",
+        "طبيب عام",
+        "طبيب مقيم",
+        "طبيب أخصائي",
+        "طبيب استشاري",
+        "مدير طبي",
+        "نائب وزير الصحة",
+        "وزير الصحة"
+    ],
+
+    "gangs": [
+        "Scrap Boss",
+        "Scrap Co-Boss",
+        "Scrap Member",
+        "Death Line Boss",
+        "Death Line Co-Boss",
+        "Death Line Member",
+        "Trickster Boss",
+        "Trickster Co-Boss",
+        "Trickster Member"
     ]
-)
-async def set_ticket_role_command(
-    interaction,
-    ticket_type: app_commands.Choice[str],
-    role: discord.Role
-):
+}
 
-    if not can_manage_security(
-        interaction
-    ):
+# =========================================================
+# العصابات
+# =========================================================
 
-        await interaction.response.send_message(
-            "❌ هذا الأمر للـ Owner و COowner فقط.",
-            ephemeral=True
+GANGS = {
+
+    "scrap": {
+        "name": "Scrap",
+        "ranks": [
+            "Scrap Boss",
+            "Scrap Co-Boss",
+            "Scrap Member"
+        ]
+    },
+
+    "death_line": {
+        "name": "Death Line",
+        "ranks": [
+            "Death Line Boss",
+            "Death Line Co-Boss",
+            "Death Line Member"
+        ]
+    },
+
+    "trickster": {
+        "name": "Trickster",
+        "ranks": [
+            "Trickster Boss",
+            "Trickster Co-Boss",
+            "Trickster Member"
+        ]
+    }
+}
+
+# =========================================================
+# قاعدة البيانات
+# =========================================================
+
+def get_db():
+
+    db = sqlite3.connect(DATABASE)
+    db.row_factory = sqlite3.Row
+    db.execute("PRAGMA foreign_keys = ON")
+
+    return db
+
+
+def init_db():
+
+    db = get_db()
+
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            is_banned INTEGER DEFAULT 0,
+            is_disabled INTEGER DEFAULT 0,
+            is_owner INTEGER DEFAULT 0,
+            role TEXT DEFAULT 'helper',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
+    """)
 
-        return
+    user_columns = [
+        row["name"]
+        for row in db.execute(
+            "PRAGMA table_info(users)"
+        ).fetchall()
+    ]
 
-    try:
+    if "role" not in user_columns:
 
-        department, option_key = ticket_type.value.split(
-            "|",
-            1
+        db.execute("""
+            ALTER TABLE users
+            ADD COLUMN role TEXT DEFAULT 'helper'
+        """)
+
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS characters (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            first_name TEXT NOT NULL,
+            second_name TEXT NOT NULL,
+            full_name TEXT NOT NULL,
+            full_name_key TEXT UNIQUE NOT NULL,
+            country TEXT NOT NULL,
+            nationality TEXT NOT NULL,
+            birth_date TEXT NOT NULL,
+            owner_token TEXT,
+            hidden INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(user_id)
+                REFERENCES users(id)
+                ON DELETE SET NULL
         )
+    """)
 
-    except ValueError:
+    character_columns = [
+        row["name"]
+        for row in db.execute(
+            "PRAGMA table_info(characters)"
+        ).fetchall()
+    ]
 
-        await interaction.response.send_message(
-            "❌ نوع التكت غير معروف.",
-            ephemeral=True
+    if "owner_token" not in character_columns:
+
+        db.execute("""
+            ALTER TABLE characters
+            ADD COLUMN owner_token TEXT
+        """)
+
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS user_permissions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            permission TEXT NOT NULL,
+            UNIQUE(user_id, permission),
+            FOREIGN KEY(user_id)
+                REFERENCES users(id)
+                ON DELETE CASCADE
         )
+    """)
 
-        return
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS character_departments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            character_id INTEGER NOT NULL,
+            department TEXT NOT NULL,
+            UNIQUE(character_id, department),
+            FOREIGN KEY(character_id)
+                REFERENCES characters(id)
+                ON DELETE CASCADE
+        )
+    """)
 
-    selected = next(
-        (
-            item
-            for item in ALL_TICKET_ROLE_OPTIONS
-            if item[1] == option_key
-            and item[2] == department
-        ),
-        None
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS character_ranks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            character_id INTEGER NOT NULL,
+            department TEXT NOT NULL,
+            rank_name TEXT NOT NULL,
+            UNIQUE(character_id, department),
+            FOREIGN KEY(character_id)
+                REFERENCES characters(id)
+                ON DELETE CASCADE
+        )
+    """)
+
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS activity_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            action TEXT NOT NULL,
+            details TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(user_id)
+                REFERENCES users(id)
+                ON DELETE SET NULL
+        )
+    """)
+
+    log_columns = [
+        row["name"]
+        for row in db.execute(
+            "PRAGMA table_info(activity_logs)"
+        ).fetchall()
+    ]
+
+    if "details" not in log_columns:
+
+        db.execute("""
+            ALTER TABLE activity_logs
+            ADD COLUMN details TEXT
+        """)
+
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS character_admin_roles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            character_id INTEGER UNIQUE NOT NULL,
+            user_id INTEGER,
+            role TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(character_id)
+                REFERENCES characters(id)
+                ON DELETE CASCADE,
+            FOREIGN KEY(user_id)
+                REFERENCES users(id)
+                ON DELETE SET NULL
+        )
+    """)
+
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS character_gangs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            character_id INTEGER NOT NULL,
+            gang_key TEXT NOT NULL,
+            rank_name TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(character_id, gang_key),
+            FOREIGN KEY(character_id)
+                REFERENCES characters(id)
+                ON DELETE CASCADE
+        )
+    """)
+
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS custom_admin_roles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            role_key TEXT UNIQUE NOT NULL,
+            role_name TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS custom_role_permissions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            role_id INTEGER NOT NULL,
+            permission TEXT NOT NULL,
+            UNIQUE(role_id, permission),
+            FOREIGN KEY(role_id)
+                REFERENCES custom_admin_roles(id)
+                ON DELETE CASCADE
+        )
+    """)
+
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS custom_role_sections (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            role_id INTEGER NOT NULL,
+            section TEXT NOT NULL,
+            UNIQUE(role_id, section),
+            FOREIGN KEY(role_id)
+                REFERENCES custom_admin_roles(id)
+                ON DELETE CASCADE
+        )
+    """)
+
+    db.commit()
+    db.close()
+
+
+# =========================================================
+# إنشاء Owner
+# =========================================================
+
+def create_owner():
+
+    username = os.environ.get(
+        "MT_ADMIN_USERNAME",
+        "admin"
     )
 
-    if not selected:
+    password = os.environ.get(
+        "MT_ADMIN_PASSWORD",
+        "CHANGE_THIS_PASSWORD"
+    )
 
-        await interaction.response.send_message(
-            "❌ نوع التكت غير معروف.",
-            ephemeral=True
-        )
+    db = get_db()
 
-        return
+    owner = db.execute("""
+        SELECT *
+        FROM users
+        WHERE is_owner = 1
+        LIMIT 1
+    """).fetchone()
 
-    label, option_key, department = selected
+    if not owner:
 
-    if role.is_default():
+        db.execute("""
+            INSERT INTO users
+            (
+                username,
+                password_hash,
+                is_owner,
+                role
+            )
+            VALUES (?, ?, 1, 'owner')
+        """, (
+            username,
+            generate_password_hash(password)
+        ))
 
-        await interaction.response.send_message(
-            "❌ لا يمكن تعيين رتبة @everyone كرتبة مسؤولة.",
-            ephemeral=True
-        )
+    else:
 
-        return
+        db.execute("""
+            UPDATE users
+            SET
+                is_owner = 1,
+                role = 'owner'
+            WHERE id = ?
+        """, (
+            owner["id"],
+        ))
 
-    if interaction.guild.me:
+    db.commit()
+    db.close()
 
-        if role >= interaction.guild.me.top_role:
 
-            await interaction.response.send_message(
-                "❌ رتبة البوت يجب أن تكون أعلى من الرتبة المسؤولة حتى يتمكن من ضبط صلاحيات التكت.",
-                ephemeral=True
+# =========================================================
+# ملكية الشخصيات للزائر
+# =========================================================
+
+def get_guest_owner_token():
+
+    token = session.get("guest_owner_token")
+
+    if not token:
+
+        token = secrets.token_urlsafe(32)
+
+        session["guest_owner_token"] = token
+
+    return token
+
+
+# =========================================================
+# المستخدم الحالي
+# =========================================================
+
+def current_user():
+
+    user_id = session.get("user_id")
+
+    if not user_id:
+        return None
+
+    db = get_db()
+
+    user = db.execute("""
+        SELECT *
+        FROM users
+        WHERE id = ?
+    """, (
+        user_id,
+    )).fetchone()
+
+    db.close()
+
+    return user
+
+
+# =========================================================
+# الرتب المخصصة
+# =========================================================
+
+def get_custom_role(role_key):
+
+    if not role_key:
+        return None
+
+    db = get_db()
+
+    role = db.execute("""
+        SELECT *
+        FROM custom_admin_roles
+        WHERE role_key = ?
+        LIMIT 1
+    """, (
+        role_key,
+    )).fetchone()
+
+    db.close()
+
+    return role
+
+
+def role_display_name(role_key):
+
+    if role_key == "owner":
+        return "Owner"
+
+    if role_key in ROLES:
+        return ROLES[role_key]["name"]
+
+    role = get_custom_role(role_key)
+
+    if role:
+        return role["role_name"]
+
+    return "بدون رتبة"
+
+
+# =========================================================
+# صلاحيات الرتبة
+# =========================================================
+
+def get_role_permissions(user):
+
+    if not user:
+        return set()
+
+    if user["is_owner"]:
+        return set(PERMISSIONS.keys())
+
+    role_key = user["role"] or "helper"
+
+    if role_key in ROLES:
+
+        return {
+            permission
+            for permission in ROLES[role_key]["permissions"]
+            if permission in PERMISSIONS
+        }
+
+    role = get_custom_role(role_key)
+
+    if not role:
+        return set()
+
+    db = get_db()
+
+    rows = db.execute("""
+        SELECT permission
+        FROM custom_role_permissions
+        WHERE role_id = ?
+    """, (
+        role["id"],
+    )).fetchall()
+
+    db.close()
+
+    return {
+        row["permission"]
+        for row in rows
+        if row["permission"] in PERMISSIONS
+    }
+
+
+# =========================================================
+# أقسام الرتبة
+# =========================================================
+
+def get_role_sections(user):
+
+    if not user:
+        return set()
+
+    if user["is_owner"]:
+        return set(SECTION_KEYS.keys())
+
+    role_key = user["role"] or "helper"
+
+    if role_key in ROLES:
+
+        permissions = get_role_permissions(user)
+
+        sections = set()
+
+        prefix_map = {
+            "characters": "characters_",
+            "police": "police_",
+            "justice": "justice_",
+            "health": "health_",
+            "gangs": "gangs_",
+            "users": "users_",
+            "permissions": "permissions_",
+            "logs": "logs_",
+            "admin": "admins_",
+            "settings": "site_"
+        }
+
+        for section, prefix in prefix_map.items():
+
+            if any(
+                permission.startswith(prefix)
+                for permission in permissions
+            ):
+                sections.add(section)
+
+        if (
+            "admins_manage" in permissions
+            or "admins_all_sections" in permissions
+        ):
+            sections.add("admin")
+
+        return {
+            section
+            for section in sections
+            if section in SECTION_KEYS
+        }
+
+    role = get_custom_role(role_key)
+
+    if not role:
+        return set()
+
+    db = get_db()
+
+    rows = db.execute("""
+        SELECT section
+        FROM custom_role_sections
+        WHERE role_id = ?
+    """, (
+        role["id"],
+    )).fetchall()
+
+    db.close()
+
+    return {
+        row["section"]
+        for row in rows
+        if row["section"] in SECTION_KEYS
+    }
+
+
+# =========================================================
+# فحص الصلاحيات
+# =========================================================
+
+def has_permission(permission):
+
+    user = current_user()
+
+    if not user:
+        return False
+
+    if user["is_owner"]:
+        return True
+
+    if permission in get_role_permissions(user):
+        return True
+
+    db = get_db()
+
+    row = db.execute("""
+        SELECT id
+        FROM user_permissions
+        WHERE user_id = ?
+        AND permission = ?
+        LIMIT 1
+    """, (
+        user["id"],
+        permission
+    )).fetchone()
+
+    db.close()
+
+    return row is not None
+
+
+def has_section_access(section):
+
+    user = current_user()
+
+    if not user:
+        return False
+
+    if user["is_owner"]:
+        return True
+
+    return section in get_role_sections(user)
+
+
+# =========================================================
+# Decorators
+# =========================================================
+
+def permission_required(permission):
+
+    def decorator(function):
+
+        @wraps(function)
+        def wrapper(*args, **kwargs):
+
+            if not current_user():
+
+                return redirect(
+                    url_for("login")
+                )
+
+            if not has_permission(permission):
+
+                flash(
+                    "لا تملك الصلاحية المطلوبة."
+                )
+
+                return redirect(
+                    url_for("home")
+                )
+
+            return function(
+                *args,
+                **kwargs
             )
 
-            return
+        return wrapper
 
-    set_ticket_role(
-        interaction.guild.id,
-        department,
-        option_key,
-        role.id
-    )
+    return decorator
 
-    await interaction.response.send_message(
+
+def section_required(section):
+
+    def decorator(function):
+
+        @wraps(function)
+        def wrapper(*args, **kwargs):
+
+            if not current_user():
+
+                return redirect(
+                    url_for("login")
+                )
+
+            if not has_section_access(section):
+
+                flash(
+                    "لا تملك صلاحية دخول هذا القسم."
+                )
+
+                return redirect(
+                    url_for("home")
+                )
+
+            return function(
+                *args,
+                **kwargs
+            )
+
+        return wrapper
+
+    return decorator
+
+
+# =========================================================
+# السجلات
+# =========================================================
+
+def log_action(action, details=None):
+
+    user = current_user()
+
+    if not user:
+        return
+
+    db = get_db()
+
+    db.execute("""
+        INSERT INTO activity_logs
         (
-            f"✅ تم تحديد {role.mention} كرتبة مسؤولة عن "
-            f"**{label}**.\n"
-            f"📂 القسم: `{TICKET_CONFIGS[department]['title']}`\n\n"
-            "📌 عند فتح هذا النوع من التكت سيتم منشن الرتبة، "
-            "وستتمكن الرتبة والرتب الأعلى منها من مشاهدة التكت والرد فيه."
-        ),
-        ephemeral=True
-    )
+            user_id,
+            action,
+            details
+        )
+        VALUES (?, ?, ?)
+    """, (
+        user["id"],
+        action,
+        details
+    ))
 
-    await send_log(
-        interaction.guild,
-        "role_log_channel_id",
-        "🎫 تغيير مسؤول تكت",
-        f"تم تحديد {role.mention} مسؤولًا عن {label}.",
-        discord.Color.green(),
-        actor=interaction.user,
-        extra_fields=[
-            ("📂 القسم", TICKET_CONFIGS[department]["title"]),
-            ("📌 النوع", label),
-            ("🎭 الرتبة", role.mention),
-            ("🆔 Role ID", role.id)
-        ]
-    )
+    db.commit()
+    db.close()
+
 
 # =========================================================
-# TICKET CLOSE
+# تطبيع الأسماء
 # =========================================================
 
-class TicketCloseView(
-    discord.ui.View
-):
+def normalize_name(name):
 
-    def __init__(self):
+    name = name or ""
+    name = name.strip()
 
-        super().__init__(
-            timeout=None
-        )
-
-    @discord.ui.button(
-        label="إغلاق التذكرة",
-        emoji="🔒",
-        style=discord.ButtonStyle.danger,
-        custom_id="mt_ticket_close"
+    name = name.replace("أ", "ا").replace(
+        "إ", "ا"
+    ).replace(
+        "آ", "ا"
+    ).replace(
+        "ة", "ه"
+    ).replace(
+        "ى", "ي"
     )
-    async def close_ticket(
-        self,
-        interaction,
-        button
-    ):
 
-        channel = interaction.channel
-        guild = interaction.guild
+    name = name.replace("ـ", "")
 
-        db = db_connect()
-        cursor = db.cursor()
+    name = re.sub(
+        r"\s+",
+        " ",
+        name
+    )
 
-        cursor.execute(
-            """
-            SELECT user_id, sector
-            FROM tickets
-            WHERE channel_id = ?
-            AND closed = 0
-            """,
-            (channel.id,)
+    return name.casefold()
+
+
+# =========================================================
+# إنشاء مفتاح رتبة مخصصة
+# =========================================================
+
+def make_custom_role_key(role_name):
+
+    slug = re.sub(
+        r"[^a-zA-Z0-9]+",
+        "_",
+        role_name
+    ).strip("_").lower()
+
+    if not slug:
+        slug = "role"
+
+    token = secrets.token_hex(4)
+
+    return f"custom_{slug}_{token}"
+
+
+# =========================================================
+# الصفحة الرئيسية
+# =========================================================
+
+@app.route("/")
+def home():
+
+    user = current_user()
+
+    return render_template(
+        "index.html",
+        current_user=user,
+        user=user,
+        has_permission=has_permission,
+        has_section_access=has_section_access,
+        SECTION_KEYS=SECTION_KEYS
+    )
+
+
+# =========================================================
+# تسجيل الدخول
+# =========================================================
+
+@app.route(
+    "/login",
+    methods=["GET", "POST"]
+)
+def login():
+
+    user = current_user()
+
+    if user:
+
+        return redirect(
+            url_for("home")
         )
 
-        row = cursor.fetchone()
+    if request.method == "POST":
+
+        username = request.form.get(
+            "username",
+            ""
+        ).strip()
+
+        password = request.form.get(
+            "password",
+            ""
+        )
+
+        db = get_db()
+
+        user = db.execute("""
+            SELECT *
+            FROM users
+            WHERE username = ?
+        """, (
+            username,
+        )).fetchone()
 
         db.close()
 
-        if not row:
+        if not user:
 
-            await interaction.response.send_message(
-                "❌ هذه التذكرة غير مسجلة.",
-                ephemeral=True
+            flash(
+                "اسم المستخدم أو كلمة المرور غير صحيحة."
             )
 
-            return
-
-        if not (
-            is_whitelisted(
-                interaction.user,
-                guild
+            return render_template(
+                "login.html"
             )
-            or
-            interaction.user.id == row[0]
+
+        if user["is_banned"]:
+
+            flash(
+                "هذا الحساب محظور."
+            )
+
+            return render_template(
+                "login.html"
+            )
+
+        if user["is_disabled"]:
+
+            flash(
+                "هذا الحساب معطل."
+            )
+
+            return render_template(
+                "login.html"
+            )
+
+        if not check_password_hash(
+            user["password_hash"],
+            password
         ):
 
-            await interaction.response.send_message(
-                "❌ ما عندك صلاحية إغلاق هذه التذكرة.",
-                ephemeral=True
+            flash(
+                "اسم المستخدم أو كلمة المرور غير صحيحة."
             )
 
-            return
-
-        await interaction.response.send_message(
-            "🔒 جاري إغلاق التذكرة وحفظ التقرير...",
-            ephemeral=True
-        )
-
-        lines = []
-
-        try:
-
-            async for msg in channel.history(
-                limit=500,
-                oldest_first=True
-            ):
-
-                content = (
-                    msg.content
-                    or "[Embed / Attachment]"
-                )
-
-                lines.append(
-                    f"[{msg.created_at.strftime('%Y-%m-%d %H:%M:%S')}] "
-                    f"{msg.author} ({msg.author.id}): {content}"
-                )
-
-        except Exception as error:
-
-            lines.append(
-                f"Transcript error: {error}"
+            return render_template(
+                "login.html"
             )
 
-        transcript = "\n".join(
-            lines
+        guest_token = session.get(
+            "guest_owner_token"
         )
 
-        db = db_connect()
-        cursor = db.cursor()
+        session.clear()
 
-        cursor.execute(
-            """
-            UPDATE tickets
-            SET closed = 1
-            WHERE channel_id = ?
-            """,
-            (channel.id,)
+        session.permanent = True
+
+        if guest_token:
+
+            session["guest_owner_token"] = guest_token
+
+        session["user_id"] = user["id"]
+
+        log_action(
+            "تسجيل الدخول"
         )
+
+        return redirect(
+            url_for("home")
+        )
+
+    return render_template(
+        "login.html"
+    )
+
+
+# =========================================================
+# إنشاء حساب
+# =========================================================
+
+@app.route(
+    "/register",
+    methods=["GET", "POST"]
+)
+def register():
+
+    if request.method == "POST":
+
+        username = request.form.get(
+            "username",
+            ""
+        ).strip()
+
+        password = request.form.get(
+            "password",
+            ""
+        )
+
+        confirm_password = request.form.get(
+            "confirm_password",
+            ""
+        )
+
+        if len(username) < 3:
+
+            flash(
+                "اسم المستخدم يجب أن يكون 3 أحرف على الأقل."
+            )
+
+            return render_template(
+                "register.html"
+            )
+
+        if len(password) < 6:
+
+            flash(
+                "كلمة المرور يجب أن تكون 6 أحرف على الأقل."
+            )
+
+            return render_template(
+                "register.html"
+            )
+
+        if password != confirm_password:
+
+            flash(
+                "كلمتا المرور غير متطابقتين."
+            )
+
+            return render_template(
+                "register.html"
+            )
+
+        db = get_db()
+
+        exists = db.execute("""
+            SELECT id
+            FROM users
+            WHERE username = ?
+        """, (
+            username,
+        )).fetchone()
+
+        if exists:
+
+            db.close()
+
+            flash(
+                "اسم المستخدم موجود مسبقًا."
+            )
+
+            return render_template(
+                "register.html"
+            )
+
+        cursor = db.execute("""
+            INSERT INTO users
+            (
+                username,
+                password_hash,
+                role,
+                is_owner
+            )
+            VALUES (?, ?, 'helper', 0)
+        """, (
+            username,
+            generate_password_hash(password)
+        ))
+
+        user_id = cursor.lastrowid
 
         db.commit()
         db.close()
 
-        log_channel = get_log_channel(
-            guild,
-            "channel_log_channel_id"
+        guest_token = session.get(
+            "guest_owner_token"
         )
 
-        if log_channel:
+        session.clear()
 
-            embed = discord.Embed(
-                title="🔒 إغلاق تذكرة",
-                description="تم إغلاق التذكرة وحفظ التقرير.",
-                color=discord.Color.red(),
-                timestamp=datetime.datetime.now(
-                    datetime.timezone.utc
-                )
-            )
+        session.permanent = True
 
-            embed.add_field(
-                name="👤 صاحب التذكرة",
-                value=f"<@{row[0]}>",
-                inline=True
-            )
+        if guest_token:
 
-            embed.add_field(
-                name="📂 القطاع",
-                value=row[1],
-                inline=True
-            )
+            session["guest_owner_token"] = guest_token
 
-            embed.add_field(
-                name="📍 القناة",
-                value=channel.name,
-                inline=True
-            )
+        session["user_id"] = user_id
 
-            embed.add_field(
-                name="🔒 أغلقها",
-                value=interaction.user.mention,
-                inline=True
-            )
+        log_action(
+            "إنشاء حساب جديد"
+        )
 
-            try:
+        flash(
+            "تم إنشاء الحساب بنجاح."
+        )
 
-                transcript_bytes = transcript.encode(
-                    "utf-8"
-                )
+        return redirect(
+            url_for("register_character")
+        )
 
-                if len(transcript_bytes) > 5_000_000:
+    return render_template(
+        "register.html"
+    )
 
-                    transcript_bytes = (
-                        transcript_bytes[:5_000_000]
-                    )
-
-                file = discord.File(
-                    io.BytesIO(
-                        transcript_bytes
-                    ),
-                    filename=f"ticket-{channel.id}.txt"
-                )
-
-                await log_channel.send(
-                    embed=embed,
-                    file=file
-                )
-
-            except Exception as error:
-
-                logging.error(
-                    f"Ticket transcript error: {error}"
-                )
-
-                await log_channel.send(
-                    embed=embed
-                )
-
-        try:
-
-            await channel.delete(
-                reason="MTRP Ticket Closed"
-            )
-
-        except Exception as error:
-
-            logging.error(
-                f"Ticket delete error: {error}"
-            )
 
 # =========================================================
-# FIND ROLE
+# تسجيل الخروج
 # =========================================================
 
-def find_role(
-    guild,
-    role_name
-):
+@app.route("/logout")
+def logout():
 
-    expected = normalize_text(
+    guest_token = session.get(
+        "guest_owner_token"
+    )
+
+    session.clear()
+
+    if guest_token:
+
+        session["guest_owner_token"] = guest_token
+
+    return redirect(
+        url_for("home")
+    )
+
+
+# =========================================================
+# تسجيل شخصية
+# =========================================================
+
+@app.route(
+    "/characters/register",
+    methods=["GET", "POST"]
+)
+def register_character():
+
+    if request.method == "POST":
+
+        first_name = request.form.get(
+            "first_name",
+            ""
+        ).strip()
+
+        second_name = request.form.get(
+            "second_name",
+            ""
+        ).strip()
+
+        country = request.form.get(
+            "country",
+            ""
+        ).strip()
+
+        nationality = request.form.get(
+            "nationality",
+            ""
+        ).strip()
+
+        birth_date = request.form.get(
+            "birth_date",
+            ""
+        ).strip()
+
+        if not all([
+            first_name,
+            second_name,
+            country,
+            nationality,
+            birth_date
+        ]):
+
+            flash(
+                "يرجى تعبئة جميع البيانات."
+            )
+
+            return render_template(
+                "register_character.html"
+            )
+
+        full_name = f"{first_name} {second_name}"
+
+        full_name_key = normalize_name(
+            full_name
+        )
+
+        owner_token = get_guest_owner_token()
+
+        user = current_user()
+
+        db = get_db()
+
+        exists = db.execute("""
+            SELECT id
+            FROM characters
+            WHERE full_name_key = ?
+        """, (
+            full_name_key,
+        )).fetchone()
+
+        if exists:
+
+            db.close()
+
+            flash(
+                "هذه الشخصية موجودة مسبقًا."
+            )
+
+            return render_template(
+                "register_character.html"
+            )
+
+        cursor = db.execute("""
+            INSERT INTO characters
+            (
+                user_id,
+                first_name,
+                second_name,
+                full_name,
+                full_name_key,
+                country,
+                nationality,
+                birth_date,
+                owner_token,
+                hidden
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+        """, (
+            user["id"] if user else None,
+            first_name,
+            second_name,
+            full_name,
+            full_name_key,
+            country,
+            nationality,
+            birth_date,
+            owner_token
+        ))
+
+        character_id = cursor.lastrowid
+
+        db.execute("""
+            INSERT OR IGNORE INTO
+            character_ranks
+            (
+                character_id,
+                department,
+                rank_name
+            )
+            VALUES (?, 'general', 'يوجد شخصية')
+        """, (
+            character_id,
+        ))
+
+        db.commit()
+        db.close()
+
+        log_action(
+            f"إنشاء شخصية: {full_name}"
+        )
+
+        flash(
+            f"تم تسجيل الشخصية {full_name} بنجاح."
+        )
+
+        return redirect(
+            url_for(
+                "character_details",
+                character_id=character_id
+            )
+        )
+
+    return render_template(
+        "register_character.html"
+    )
+
+
+# =========================================================
+# الشخصيات
+# =========================================================
+
+@app.route("/characters")
+def characters():
+
+    user = current_user()
+
+    guest_token = get_guest_owner_token()
+
+    db = get_db()
+
+    admin_view = bool(
+        user
+        and has_permission(
+            "characters_view_all"
+        )
+    )
+
+    if admin_view:
+
+        rows = db.execute("""
+            SELECT *
+            FROM characters
+            ORDER BY id DESC
+        """).fetchall()
+
+    elif user:
+
+        rows = db.execute("""
+            SELECT *
+            FROM characters
+            WHERE
+                (
+                    user_id = ?
+                    OR owner_token = ?
+                )
+                AND hidden = 0
+            ORDER BY id DESC
+        """, (
+            user["id"],
+            guest_token
+        )).fetchall()
+
+    else:
+
+        rows = db.execute("""
+            SELECT *
+            FROM characters
+            WHERE owner_token = ?
+            AND hidden = 0
+            ORDER BY id DESC
+        """, (
+            guest_token,
+        )).fetchall()
+
+    character_data = []
+
+    for character in rows:
+
+        rank_row = db.execute("""
+            SELECT rank_name
+            FROM character_ranks
+            WHERE character_id = ?
+            AND department = 'general'
+            LIMIT 1
+        """, (
+            character["id"],
+        )).fetchone()
+
+        departments = db.execute("""
+            SELECT department
+            FROM character_departments
+            WHERE character_id = ?
+        """, (
+            character["id"],
+        )).fetchall()
+
+        ranks = db.execute("""
+            SELECT department, rank_name
+            FROM character_ranks
+            WHERE character_id = ?
+        """, (
+            character["id"],
+        )).fetchall()
+
+        gangs = db.execute("""
+            SELECT gang_key, rank_name
+            FROM character_gangs
+            WHERE character_id = ?
+        """, (
+            character["id"],
+        )).fetchall()
+
+        character_data.append({
+            "character": character,
+            "general_rank": (
+                rank_row["rank_name"]
+                if rank_row
+                else "يوجد شخصية"
+            ),
+            "departments": departments,
+            "ranks": ranks,
+            "gangs": gangs
+        })
+
+    db.close()
+
+    return render_template(
+        "characters.html",
+        characters=character_data,
+        admin_view=admin_view,
+        can_edit_all=has_permission(
+            "characters_edit_all"
+        ),
+        can_delete_all=has_permission(
+            "characters_delete_all"
+        ),
+        can_manage_sections=has_permission(
+            "admins_all_sections"
+        ),
+        user=user,
+        DEPARTMENTS=DEPARTMENTS,
+        DEPARTMENT_RANKS=DEPARTMENT_RANKS,
+        GANGS=GANGS
+    )
+
+
+# =========================================================
+# تفاصيل الشخصية
+# =========================================================
+
+@app.route(
+    "/characters/<int:character_id>"
+)
+def character_details(character_id):
+
+    user = current_user()
+
+    guest_token = get_guest_owner_token()
+
+    db = get_db()
+
+    character = db.execute("""
+        SELECT *
+        FROM characters
+        WHERE id = ?
+    """, (
+        character_id,
+    )).fetchone()
+
+    if not character:
+
+        db.close()
+
+        flash(
+            "الشخصية غير موجودة."
+        )
+
+        return redirect(
+            url_for("characters")
+        )
+
+    is_owner = bool(
+        user
+        and character["user_id"] == user["id"]
+    ) or (
+        character["owner_token"]
+        and character["owner_token"] == guest_token
+    )
+
+    can_view_all = bool(
+        user
+        and has_permission(
+            "characters_view_all"
+        )
+    )
+
+    if not is_owner and not can_view_all:
+
+        db.close()
+
+        flash(
+            "لا تملك صلاحية مشاهدة هذه الشخصية."
+        )
+
+        return redirect(
+            url_for("characters")
+        )
+
+    if character["hidden"] and not can_view_all:
+
+        db.close()
+
+        flash(
+            "هذه الشخصية مخفية."
+        )
+
+        return redirect(
+            url_for("characters")
+        )
+
+    departments = db.execute("""
+        SELECT
+            character_departments.department,
+            character_ranks.rank_name
+
+        FROM character_departments
+
+        LEFT JOIN character_ranks
+        ON character_ranks.character_id =
+           character_departments.character_id
+
+        AND character_ranks.department =
+            character_departments.department
+
+        WHERE character_departments.character_id = ?
+    """, (
+        character_id,
+    )).fetchall()
+
+    gangs = db.execute("""
+        SELECT
+            gang_key,
+            rank_name
+        FROM character_gangs
+        WHERE character_id = ?
+    """, (
+        character_id,
+    )).fetchall()
+
+    general_rank = db.execute("""
+        SELECT rank_name
+        FROM character_ranks
+        WHERE character_id = ?
+        AND department = 'general'
+        LIMIT 1
+    """, (
+        character_id,
+    )).fetchone()
+
+    db.close()
+
+    return render_template(
+        "character_details.html",
+        character=character,
+        departments=departments,
+        gangs=gangs,
+        general_rank=(
+            general_rank["rank_name"]
+            if general_rank
+            else "يوجد شخصية"
+        ),
+        user=user,
+        GANGS=GANGS
+    )
+
+
+# =========================================================
+# حذف شخصية
+# =========================================================
+
+@app.route(
+    "/characters/<int:character_id>/delete",
+    methods=["POST"]
+)
+@permission_required(
+    "characters_delete_all"
+)
+def delete_character(character_id):
+
+    db = get_db()
+
+    character = db.execute("""
+        SELECT *
+        FROM characters
+        WHERE id = ?
+    """, (
+        character_id,
+    )).fetchone()
+
+    if not character:
+
+        db.close()
+
+        flash(
+            "الشخصية غير موجودة."
+        )
+
+        return redirect(
+            url_for("characters")
+        )
+
+    db.execute("""
+        DELETE FROM characters
+        WHERE id = ?
+    """, (
+        character_id,
+    ))
+
+    db.commit()
+    db.close()
+
+    log_action(
+        f"حذف الشخصية {character['full_name']}"
+    )
+
+    flash(
+        "تم حذف الشخصية."
+    )
+
+    return redirect(
+        url_for("characters")
+    )
+
+
+# =========================================================
+# تعديل شخصية
+# =========================================================
+
+@app.route(
+    "/admin/characters/<int:character_id>/edit",
+    methods=["POST"]
+)
+@permission_required(
+    "characters_edit_all"
+)
+def edit_character(character_id):
+
+    first_name = request.form.get(
+        "first_name",
+        ""
+    ).strip()
+
+    second_name = request.form.get(
+        "second_name",
+        ""
+    ).strip()
+
+    country = request.form.get(
+        "country",
+        ""
+    ).strip()
+
+    nationality = request.form.get(
+        "nationality",
+        ""
+    ).strip()
+
+    birth_date = request.form.get(
+        "birth_date",
+        ""
+    ).strip()
+
+    if not all([
+        first_name,
+        second_name,
+        country,
+        nationality,
+        birth_date
+    ]):
+
+        flash(
+            "جميع بيانات الشخصية مطلوبة."
+        )
+
+        return redirect(
+            url_for("characters")
+        )
+
+    full_name = f"{first_name} {second_name}"
+
+    full_name_key = normalize_name(
+        full_name
+    )
+
+    db = get_db()
+
+    exists = db.execute("""
+        SELECT id
+        FROM characters
+        WHERE full_name_key = ?
+        AND id != ?
+    """, (
+        full_name_key,
+        character_id
+    )).fetchone()
+
+    if exists:
+
+        db.close()
+
+        flash(
+            "اسم الشخصية مستخدم مسبقًا."
+        )
+
+        return redirect(
+            url_for("characters")
+        )
+
+    db.execute("""
+        UPDATE characters
+        SET
+            first_name = ?,
+            second_name = ?,
+            full_name = ?,
+            full_name_key = ?,
+            country = ?,
+            nationality = ?,
+            birth_date = ?
+        WHERE id = ?
+    """, (
+        first_name,
+        second_name,
+        full_name,
+        full_name_key,
+        country,
+        nationality,
+        birth_date,
+        character_id
+    ))
+
+    db.commit()
+    db.close()
+
+    log_action(
+        f"تعديل الشخصية: {full_name}"
+    )
+
+    flash(
+        "تم تعديل الشخصية."
+    )
+
+    return redirect(
+        url_for("characters")
+    )
+
+
+# =========================================================
+# إخفاء شخصية
+# =========================================================
+
+@app.route(
+    "/admin/characters/<int:character_id>/hide",
+    methods=["POST"]
+)
+@permission_required(
+    "characters_hide"
+)
+def hide_character(character_id):
+
+    db = get_db()
+
+    db.execute("""
+        UPDATE characters
+        SET hidden = 1
+        WHERE id = ?
+    """, (
+        character_id,
+    ))
+
+    db.commit()
+    db.close()
+
+    log_action(
+        f"إخفاء الشخصية رقم {character_id}"
+    )
+
+    flash(
+        "تم إخفاء الشخصية."
+    )
+
+    return redirect(
+        url_for("characters")
+    )
+
+
+# =========================================================
+# إظهار شخصية
+# =========================================================
+
+@app.route(
+    "/admin/characters/<int:character_id>/show",
+    methods=["POST"]
+)
+@permission_required(
+    "characters_show"
+)
+def show_character(character_id):
+
+    db = get_db()
+
+    db.execute("""
+        UPDATE characters
+        SET hidden = 0
+        WHERE id = ?
+    """, (
+        character_id,
+    ))
+
+    db.commit()
+    db.close()
+
+    log_action(
+        f"إظهار الشخصية رقم {character_id}"
+    )
+
+    flash(
+        "تم إظهار الشخصية."
+    )
+
+    return redirect(
+        url_for("characters")
+    )
+
+
+# =========================================================
+# تعيين شخصية إلى قسم
+# =========================================================
+
+@app.route(
+    "/admin/characters/<int:character_id>/department",
+    methods=["POST"]
+)
+def assign_department(character_id):
+
+    department = request.form.get(
+        "department",
+        ""
+    ).strip()
+
+    if department not in DEPARTMENTS:
+
+        flash(
+            "القسم غير صحيح."
+        )
+
+        return redirect(
+            url_for("characters")
+        )
+
+    if not (
+        has_permission(
+            f"{department}_manage"
+        )
+        or has_permission(
+            f"{department}_add"
+        )
+        or has_permission(
+            "admins_all_sections"
+        )
+    ):
+
+        flash(
+            "لا تملك صلاحية إدارة هذا القسم."
+        )
+
+        return redirect(
+            url_for("characters")
+        )
+
+    db = get_db()
+
+    character = db.execute("""
+        SELECT *
+        FROM characters
+        WHERE id = ?
+    """, (
+        character_id,
+    )).fetchone()
+
+    if not character:
+
+        db.close()
+
+        flash(
+            "الشخصية غير موجودة."
+        )
+
+        return redirect(
+            url_for("characters")
+        )
+
+    db.execute("""
+        INSERT OR IGNORE INTO
+        character_departments
+        (
+            character_id,
+            department
+        )
+        VALUES (?, ?)
+    """, (
+        character_id,
+        department
+    ))
+
+    default_rank = DEPARTMENT_RANKS[department][0]
+
+    db.execute("""
+        INSERT OR IGNORE INTO
+        character_ranks
+        (
+            character_id,
+            department,
+            rank_name
+        )
+        VALUES (?, ?, ?)
+    """, (
+        character_id,
+        department,
+        default_rank
+    ))
+
+    db.commit()
+    db.close()
+
+    log_action(
+        f"تعيين {character['full_name']} إلى "
+        f"{DEPARTMENTS[department]} "
+        f"برتبته الابتدائية: {default_rank}"
+    )
+
+    flash(
+        f"تم تعيين الشخصية إلى "
+        f"{DEPARTMENTS[department]} "
+        f"برتبته {default_rank}."
+    )
+
+    return redirect(
+        url_for("characters")
+    )
+
+
+# =========================================================
+# إزالة الشخصية من القسم
+# =========================================================
+
+@app.route(
+    "/admin/characters/<int:character_id>/department/remove",
+    methods=["POST"]
+)
+def remove_department(character_id):
+
+    department = request.form.get(
+        "department",
+        ""
+    ).strip()
+
+    if department not in DEPARTMENTS:
+
+        flash(
+            "القسم غير صحيح."
+        )
+
+        return redirect(
+            url_for("characters")
+        )
+
+    if not (
+        has_permission(
+            f"{department}_remove"
+        )
+        or has_permission(
+            f"{department}_manage"
+        )
+        or has_permission(
+            "admins_all_sections"
+        )
+    ):
+
+        flash(
+            "لا تملك صلاحية إزالة الشخصية من القسم."
+        )
+
+        return redirect(
+            url_for("characters")
+        )
+
+    db = get_db()
+
+    db.execute("""
+        DELETE FROM character_departments
+        WHERE character_id = ?
+        AND department = ?
+    """, (
+        character_id,
+        department
+    ))
+
+    db.execute("""
+        DELETE FROM character_ranks
+        WHERE character_id = ?
+        AND department = ?
+    """, (
+        character_id,
+        department
+    ))
+
+    remaining = db.execute("""
+        SELECT COUNT(*)
+        FROM character_departments
+        WHERE character_id = ?
+    """, (
+        character_id,
+    )).fetchone()[0]
+
+    if remaining == 0:
+
+        db.execute("""
+            INSERT OR REPLACE INTO
+            character_ranks
+            (
+                character_id,
+                department,
+                rank_name
+            )
+            VALUES (?, ?, ?)
+        """, (
+            character_id,
+            "general",
+            "يوجد شخصية"
+        ))
+
+    db.commit()
+    db.close()
+
+    flash(
+        "تمت إزالة الشخصية من القسم."
+    )
+
+    return redirect(
+        url_for("characters")
+    )
+
+
+# =========================================================
+# تغيير رتبة شخصية
+# =========================================================
+
+@app.route(
+    "/admin/characters/<int:character_id>/rank",
+    methods=["POST"]
+)
+def assign_rank(character_id):
+
+    department = request.form.get(
+        "department",
+        ""
+    ).strip()
+
+    rank = request.form.get(
+        "rank",
+        ""
+    ).strip()
+
+    if not department or not rank:
+
+        flash(
+            "بيانات الرتبة ناقصة."
+        )
+
+        return redirect(
+            url_for("characters")
+        )
+
+    if department not in DEPARTMENTS:
+
+        flash(
+            "القسم غير صحيح."
+        )
+
+        return redirect(
+            url_for("characters")
+        )
+
+    if rank not in DEPARTMENT_RANKS[department]:
+
+        flash(
+            "الرتبة غير صحيحة."
+        )
+
+        return redirect(
+            url_for("characters")
+        )
+
+    if not (
+        has_permission(
+            f"{department}_change_rank"
+        )
+        or has_permission(
+            f"{department}_assign_rank"
+        )
+        or has_permission(
+            f"{department}_manage"
+        )
+        or has_permission(
+            "admins_all_sections"
+        )
+    ):
+
+        flash(
+            "لا تملك صلاحية تغيير الرتبة."
+        )
+
+        return redirect(
+            url_for("characters")
+        )
+
+    db = get_db()
+
+    character = db.execute("""
+        SELECT *
+        FROM characters
+        WHERE id = ?
+    """, (
+        character_id,
+    )).fetchone()
+
+    if not character:
+
+        db.close()
+
+        flash(
+            "الشخصية غير موجودة."
+        )
+
+        return redirect(
+            url_for("characters")
+        )
+
+    exists = db.execute("""
+        SELECT id
+        FROM character_departments
+        WHERE character_id = ?
+        AND department = ?
+    """, (
+        character_id,
+        department
+    )).fetchone()
+
+    if not exists:
+
+        db.close()
+
+        flash(
+            "الشخصية ليست في هذا القسم."
+        )
+
+        return redirect(
+            url_for("characters")
+        )
+
+    db.execute("""
+        INSERT OR REPLACE INTO
+        character_ranks
+        (
+            character_id,
+            department,
+            rank_name
+        )
+        VALUES (?, ?, ?)
+    """, (
+        character_id,
+        department,
+        rank
+    ))
+
+    db.commit()
+    db.close()
+
+    log_action(
+        f"تغيير رتبة الشخصية "
+        f"{character['full_name']} "
+        f"في {DEPARTMENTS[department]} "
+        f"إلى {rank}"
+    )
+
+    flash(
+        f"تم تغيير الرتبة إلى {rank}."
+    )
+
+    return redirect(
+        url_for("characters")
+    )
+
+
+# =========================================================
+# شخصيات قسم
+# =========================================================
+
+def get_department_characters(department):
+
+    db = get_db()
+
+    characters = db.execute("""
+        SELECT
+            characters.*,
+            character_ranks.rank_name
+
+        FROM characters
+
+        JOIN character_departments
+
+        ON character_departments.character_id =
+           characters.id
+
+        LEFT JOIN character_ranks
+
+        ON character_ranks.character_id =
+           characters.id
+
+        AND character_ranks.department = ?
+
+        WHERE character_departments.department = ?
+
+        AND characters.hidden = 0
+
+        ORDER BY characters.id DESC
+    """, (
+        department,
+        department
+    )).fetchall()
+
+    db.close()
+
+    return characters
+
+
+# =========================================================
+# الشرطة
+# =========================================================
+
+@app.route("/police")
+def police():
+
+    user = current_user()
+
+    characters = []
+
+    if user and (
+        has_permission("police_view")
+        or has_permission("police_manage")
+        or has_section_access("police")
+    ):
+
+        characters = get_department_characters(
+            "police"
+        )
+
+    return render_template(
+        "police.html",
+        characters=characters,
+        user=user,
+        ranks=DEPARTMENT_RANKS["police"],
+        DEPARTMENT_RANKS=DEPARTMENT_RANKS
+    )
+
+
+# =========================================================
+# العدل
+# =========================================================
+
+@app.route("/justice")
+def justice():
+
+    user = current_user()
+
+    characters = []
+
+    if user and (
+        has_permission("justice_view")
+        or has_permission("justice_manage")
+        or has_section_access("justice")
+    ):
+
+        characters = get_department_characters(
+            "justice"
+        )
+
+    return render_template(
+        "justice.html",
+        characters=characters,
+        user=user,
+        ranks=DEPARTMENT_RANKS["justice"],
+        DEPARTMENT_RANKS=DEPARTMENT_RANKS
+    )
+
+
+# =========================================================
+# الصحة
+# =========================================================
+
+@app.route("/health")
+def health():
+
+    user = current_user()
+
+    characters = []
+
+    if user and (
+        has_permission("health_view")
+        or has_permission("health_manage")
+        or has_section_access("health")
+    ):
+
+        characters = get_department_characters(
+            "health"
+        )
+
+    return render_template(
+        "health.html",
+        characters=characters,
+        user=user,
+        ranks=DEPARTMENT_RANKS["health"],
+        DEPARTMENT_RANKS=DEPARTMENT_RANKS
+    )
+
+
+# =========================================================
+# العصابات
+# =========================================================
+
+@app.route("/gangs")
+def gangs():
+
+    user = current_user()
+
+    gang_data = {}
+
+    for gang_key, gang_info in GANGS.items():
+
+        gang_data[gang_key] = {
+            "name": gang_info["name"],
+            "ranks": gang_info["ranks"],
+            "members": []
+        }
+
+    if user and (
+        has_permission("gangs_view")
+        or has_permission("gangs_manage")
+        or has_section_access("gangs")
+    ):
+
+        db = get_db()
+
+        rows = db.execute("""
+            SELECT
+                character_gangs.id,
+                character_gangs.character_id,
+                character_gangs.gang_key,
+                character_gangs.rank_name,
+                characters.full_name,
+                characters.user_id
+
+            FROM character_gangs
+
+            JOIN characters
+            ON characters.id =
+               character_gangs.character_id
+
+            WHERE characters.hidden = 0
+
+            ORDER BY
+                character_gangs.gang_key,
+                character_gangs.id DESC
+        """).fetchall()
+
+        db.close()
+
+        for row in rows:
+
+            if row["gang_key"] not in gang_data:
+                continue
+
+            gang_data[
+                row["gang_key"]
+            ]["members"].append(row)
+
+    return render_template(
+        "gangs.html",
+        characters=gang_data,
+        gangs=gang_data,
+        GANGS=GANGS,
+        DEPARTMENT_RANKS=DEPARTMENT_RANKS,
+        user=user
+    )
+
+
+# =========================================================
+# إعطاء شخصية لعصابة
+# =========================================================
+
+@app.route(
+    "/admin/characters/<int:character_id>/gang",
+    methods=["POST"]
+)
+def assign_gang(character_id):
+
+    gang_key = request.form.get(
+        "gang",
+        ""
+    ).strip()
+
+    rank = request.form.get(
+        "rank",
+        ""
+    ).strip()
+
+    if gang_key not in GANGS:
+
+        flash(
+            "العصابة غير صحيحة."
+        )
+
+        return redirect(
+            url_for("characters")
+        )
+
+    allowed_ranks = GANGS[gang_key]["ranks"]
+
+    if not rank:
+        rank = allowed_ranks[-1]
+
+    if rank not in allowed_ranks:
+
+        flash(
+            "رتبة العصابة غير صحيحة."
+        )
+
+        return redirect(
+            url_for("characters")
+        )
+
+    if not (
+        has_permission("gangs_add_members")
+        or has_permission("gangs_add")
+        or has_permission("gangs_manage")
+        or has_permission("admins_all_sections")
+    ):
+
+        flash(
+            "لا تملك صلاحية إضافة أعضاء للعصابات."
+        )
+
+        return redirect(
+            url_for("characters")
+        )
+
+    db = get_db()
+
+    character = db.execute("""
+        SELECT *
+        FROM characters
+        WHERE id = ?
+    """, (
+        character_id,
+    )).fetchone()
+
+    if not character:
+
+        db.close()
+
+        flash(
+            "الشخصية غير موجودة."
+        )
+
+        return redirect(
+            url_for("characters")
+        )
+
+    db.execute("""
+        INSERT INTO character_gangs
+        (
+            character_id,
+            gang_key,
+            rank_name
+        )
+        VALUES (?, ?, ?)
+
+        ON CONFLICT(character_id, gang_key)
+        DO UPDATE SET
+            rank_name = excluded.rank_name
+    """, (
+        character_id,
+        gang_key,
+        rank
+    ))
+
+    db.execute("""
+        INSERT OR IGNORE INTO
+        character_departments
+        (
+            character_id,
+            department
+        )
+        VALUES (?, 'gangs')
+    """, (
+        character_id,
+    ))
+
+    db.execute("""
+        INSERT OR IGNORE INTO
+        character_ranks
+        (
+            character_id,
+            department,
+            rank_name
+        )
+        VALUES (?, 'gangs', ?)
+    """, (
+        character_id,
+        rank
+    ))
+
+    db.commit()
+    db.close()
+
+    log_action(
+        f"إضافة {character['full_name']} "
+        f"إلى عصابة {GANGS[gang_key]['name']} "
+        f"برتبة {rank}"
+    )
+
+    flash(
+        f"تمت إضافة {character['full_name']} "
+        f"إلى {GANGS[gang_key]['name']} "
+        f"برتبة {rank}."
+    )
+
+    return redirect(
+        url_for("characters")
+    )
+
+
+# =========================================================
+# تغيير رتبة العصابة
+# =========================================================
+
+@app.route(
+    "/admin/characters/<int:character_id>/gang/rank",
+    methods=["POST"]
+)
+def change_gang_rank(character_id):
+
+    gang_key = request.form.get(
+        "gang",
+        ""
+    ).strip()
+
+    rank = request.form.get(
+        "rank",
+        ""
+    ).strip()
+
+    if gang_key not in GANGS:
+
+        flash(
+            "العصابة غير صحيحة."
+        )
+
+        return redirect(
+            url_for("characters")
+        )
+
+    if rank not in GANGS[gang_key]["ranks"]:
+
+        flash(
+            "رتبة العصابة غير صحيحة."
+        )
+
+        return redirect(
+            url_for("characters")
+        )
+
+    if not (
+        has_permission("gangs_change_leader")
+        or has_permission("gangs_edit")
+        or has_permission("gangs_manage")
+        or has_permission("admins_all_sections")
+    ):
+
+        flash(
+            "لا تملك صلاحية تغيير رتبة العصابة."
+        )
+
+        return redirect(
+            url_for("characters")
+        )
+
+    db = get_db()
+
+    character = db.execute("""
+        SELECT *
+        FROM characters
+        WHERE id = ?
+    """, (
+        character_id,
+    )).fetchone()
+
+    if not character:
+
+        db.close()
+
+        flash(
+            "الشخصية غير موجودة."
+        )
+
+        return redirect(
+            url_for("characters")
+        )
+
+    membership = db.execute("""
+        SELECT id
+        FROM character_gangs
+        WHERE character_id = ?
+        AND gang_key = ?
+        LIMIT 1
+    """, (
+        character_id,
+        gang_key
+    )).fetchone()
+
+    if not membership:
+
+        db.close()
+
+        flash(
+            "الشخصية ليست في هذه العصابة."
+        )
+
+        return redirect(
+            url_for("characters")
+        )
+
+    db.execute("""
+        UPDATE character_gangs
+        SET rank_name = ?
+        WHERE character_id = ?
+        AND gang_key = ?
+    """, (
+        rank,
+        character_id,
+        gang_key
+    ))
+
+    db.execute("""
+        UPDATE character_ranks
+        SET rank_name = ?
+        WHERE character_id = ?
+        AND department = 'gangs'
+    """, (
+        rank,
+        character_id
+    ))
+
+    db.commit()
+    db.close()
+
+    log_action(
+        f"تغيير رتبة {character['full_name']} "
+        f"في عصابة {GANGS[gang_key]['name']} "
+        f"إلى {rank}"
+    )
+
+    flash(
+        f"تم تغيير رتبة العصابة إلى {rank}."
+    )
+
+    return redirect(
+        url_for("characters")
+    )
+
+
+# =========================================================
+# إزالة شخصية من عصابة
+# =========================================================
+
+@app.route(
+    "/admin/characters/<int:character_id>/gang/remove",
+    methods=["POST"]
+)
+def remove_gang(character_id):
+
+    gang_key = request.form.get(
+        "gang",
+        ""
+    ).strip()
+
+    if gang_key not in GANGS:
+
+        flash(
+            "العصابة غير صحيحة."
+        )
+
+        return redirect(
+            url_for("characters")
+        )
+
+    if not (
+        has_permission("gangs_remove_members")
+        or has_permission("gangs_manage")
+        or has_permission("admins_all_sections")
+    ):
+
+        flash(
+            "لا تملك صلاحية إزالة العضو."
+        )
+
+        return redirect(
+            url_for("characters")
+        )
+
+    db = get_db()
+
+    character = db.execute("""
+        SELECT *
+        FROM characters
+        WHERE id = ?
+    """, (
+        character_id,
+    )).fetchone()
+
+    if not character:
+
+        db.close()
+
+        flash(
+            "الشخصية غير موجودة."
+        )
+
+        return redirect(
+            url_for("characters")
+        )
+
+    db.execute("""
+        DELETE FROM character_gangs
+        WHERE character_id = ?
+        AND gang_key = ?
+    """, (
+        character_id,
+        gang_key
+    ))
+
+    remaining_gangs = db.execute("""
+        SELECT COUNT(*)
+        FROM character_gangs
+        WHERE character_id = ?
+    """, (
+        character_id,
+    )).fetchone()[0]
+
+    if remaining_gangs == 0:
+
+        db.execute("""
+            DELETE FROM character_departments
+            WHERE character_id = ?
+            AND department = 'gangs'
+        """, (
+            character_id,
+        ))
+
+        db.execute("""
+            DELETE FROM character_ranks
+            WHERE character_id = ?
+            AND department = 'gangs'
+        """, (
+            character_id,
+        ))
+
+    db.commit()
+    db.close()
+
+    log_action(
+        f"إزالة {character['full_name']} "
+        f"من عصابة {GANGS[gang_key]['name']}"
+    )
+
+    flash(
+        f"تمت إزالة الشخصية من "
+        f"{GANGS[gang_key]['name']}."
+    )
+
+    return redirect(
+        url_for("characters")
+    )
+
+
+# =========================================================
+# الإدارة
+# =========================================================
+
+@app.route("/admin")
+def admin_panel():
+
+    user = current_user()
+
+    if not user:
+
+        return redirect(
+            url_for("login")
+        )
+
+    role_permissions = get_role_permissions(
+        user
+    )
+
+    role_sections = get_role_sections(
+        user
+    )
+
+    is_admin = bool(
+        user["is_owner"]
+        or "admin" in role_sections
+        or "admins_manage" in role_permissions
+        or "admins_add" in role_permissions
+        or "permissions_view" in role_permissions
+    )
+
+    if not is_admin:
+
+        flash(
+            "لا تملك صلاحية دخول الإدارة."
+        )
+
+        return redirect(
+            url_for("home")
+        )
+
+    db = get_db()
+
+    characters = db.execute("""
+        SELECT
+            characters.id,
+            characters.full_name,
+            characters.user_id,
+            users.username,
+            users.role,
+            users.is_owner
+
+        FROM characters
+
+        LEFT JOIN users
+        ON users.id = characters.user_id
+
+        ORDER BY characters.full_name
+    """).fetchall()
+
+    users_list = db.execute("""
+        SELECT
+            id,
+            username,
+            role,
+            is_owner,
+            is_banned,
+            is_disabled
+        FROM users
+        ORDER BY username
+    """).fetchall()
+
+    custom_roles = db.execute("""
+        SELECT *
+        FROM custom_admin_roles
+        ORDER BY id DESC
+    """).fetchall()
+
+    db.close()
+
+    return render_template(
+        "permissions.html",
+        characters=characters,
+        users=users_list,
+        ROLES=ROLES,
+        PERMISSIONS=PERMISSIONS,
+        custom_roles=custom_roles,
+        SECTION_KEYS=SECTION_KEYS,
+        current_user=user,
+        admin_permissions_page=True,
+        role_display_name=role_display_name
+    )
+
+
+# =========================================================
+# إعطاء رتبة إدارية لشخصية
+# =========================================================
+
+@app.route(
+    "/admin/character-role",
+    methods=["POST"]
+)
+def assign_character_admin_role():
+
+    if not (
+        has_permission("admins_add")
+        or has_permission("permissions_give")
+        or has_permission("admins_manage")
+    ):
+
+        flash(
+            "لا تملك صلاحية إعطاء الرتبة."
+        )
+
+        return redirect(
+            url_for("admin_panel")
+        )
+
+    character_id = request.form.get(
+        "character_id",
+        ""
+    ).strip()
+
+    role_key = request.form.get(
+        "role",
+        ""
+    ).strip()
+
+    if not character_id:
+
+        flash(
+            "يجب اختيار الشخصية."
+        )
+
+        return redirect(
+            url_for("admin_panel")
+        )
+
+    role_name = role_display_name(
+        role_key
+    )
+
+    if role_name == "بدون رتبة":
+
+        flash(
+            "الرتبة الإدارية غير صحيحة."
+        )
+
+        return redirect(
+            url_for("admin_panel")
+        )
+
+    db = get_db()
+
+    character = db.execute("""
+        SELECT
+            characters.*,
+            users.username,
+            users.is_owner
+
+        FROM characters
+
+        LEFT JOIN users
+        ON users.id = characters.user_id
+
+        WHERE characters.id = ?
+    """, (
+        character_id,
+    )).fetchone()
+
+    if not character:
+
+        db.close()
+
+        flash(
+            "الشخصية غير موجودة."
+        )
+
+        return redirect(
+            url_for("admin_panel")
+        )
+
+    if not character["user_id"]:
+
+        db.close()
+
+        flash(
+            "لا يمكن إعطاء رتبة حسابية لشخصية غير مرتبطة بحساب."
+        )
+
+        return redirect(
+            url_for("admin_panel")
+        )
+
+    current = current_user()
+
+    if (
+        character["is_owner"]
+        and not current["is_owner"]
+    ):
+
+        db.close()
+
+        flash(
+            "لا يمكنك تعديل رتبة Owner."
+        )
+
+        return redirect(
+            url_for("admin_panel")
+        )
+
+    if (
+        role_key == "owner"
+        and not current["is_owner"]
+    ):
+
+        db.close()
+
+        flash(
+            "فقط Owner يستطيع تعيين Owner."
+        )
+
+        return redirect(
+            url_for("admin_panel")
+        )
+
+    is_owner = (
+        1
+        if role_key == "owner"
+        else 0
+    )
+
+    db.execute("""
+        UPDATE users
+        SET
+            role = ?,
+            is_owner = ?
+        WHERE id = ?
+    """, (
+        role_key,
+        is_owner,
+        character["user_id"]
+    ))
+
+    db.execute("""
+        INSERT INTO character_admin_roles
+        (
+            character_id,
+            user_id,
+            role
+        )
+        VALUES (?, ?, ?)
+
+        ON CONFLICT(character_id)
+        DO UPDATE SET
+            user_id = excluded.user_id,
+            role = excluded.role
+    """, (
+        character_id,
+        character["user_id"],
+        role_key
+    ))
+
+    db.commit()
+    db.close()
+
+    log_action(
+        f"تعيين الرتبة "
+        f"{role_name} "
+        f"للشخصية {character['full_name']}"
+    )
+
+    flash(
+        f"تم إعطاء الشخصية "
+        f"{character['full_name']} "
+        f"رتبة {role_name}."
+    )
+
+    return redirect(
+        url_for("admin_panel")
+    )
+
+
+# =========================================================
+# إزالة الرتبة الإدارية
+# =========================================================
+
+@app.route(
+    "/admin/character-role/remove",
+    methods=["POST"]
+)
+def remove_character_admin_role():
+
+    if not (
+        has_permission("admins_remove")
+        or has_permission("permissions_remove")
+        or has_permission("admins_manage")
+    ):
+
+        flash(
+            "لا تملك صلاحية إزالة الرتبة."
+        )
+
+        return redirect(
+            url_for("admin_panel")
+        )
+
+    character_id = request.form.get(
+        "character_id",
+        ""
+    ).strip()
+
+    if not character_id:
+
+        flash(
+            "الشخصية غير محددة."
+        )
+
+        return redirect(
+            url_for("admin_panel")
+        )
+
+    db = get_db()
+
+    character = db.execute("""
+        SELECT
+            characters.*,
+            users.is_owner
+
+        FROM characters
+
+        LEFT JOIN users
+        ON users.id = characters.user_id
+
+        WHERE characters.id = ?
+    """, (
+        character_id,
+    )).fetchone()
+
+    if not character:
+
+        db.close()
+
+        flash(
+            "الشخصية غير موجودة."
+        )
+
+        return redirect(
+            url_for("admin_panel")
+        )
+
+    if character["is_owner"]:
+
+        db.close()
+
+        flash(
+            "لا يمكن إزالة رتبة Owner."
+        )
+
+        return redirect(
+            url_for("admin_panel")
+        )
+
+    if not character["user_id"]:
+
+        db.close()
+
+        flash(
+            "الشخصية غير مرتبطة بحساب."
+        )
+
+        return redirect(
+            url_for("admin_panel")
+        )
+
+    db.execute("""
+        UPDATE users
+        SET
+            role = 'helper',
+            is_owner = 0
+        WHERE id = ?
+    """, (
+        character["user_id"],
+    ))
+
+    db.execute("""
+        DELETE FROM character_admin_roles
+        WHERE character_id = ?
+    """, (
+        character_id,
+    ))
+
+    db.execute("""
+        DELETE FROM user_permissions
+        WHERE user_id = ?
+    """, (
+        character["user_id"],
+    ))
+
+    db.commit()
+    db.close()
+
+    log_action(
+        f"إزالة الرتبة الإدارية من "
+        f"{character['full_name']}"
+    )
+
+    flash(
+        "تمت إزالة الرتبة الإدارية."
+    )
+
+    return redirect(
+        url_for("admin_panel")
+    )
+
+
+# =========================================================
+# صفحة الصلاحيات
+# =========================================================
+
+@app.route("/admin/permissions")
+def permissions():
+
+    user = current_user()
+
+    if not user:
+
+        return redirect(
+            url_for("login")
+        )
+
+    if not (
+        has_section_access("permissions")
+        or has_permission("permissions_view")
+        or has_permission("admins_manage")
+    ):
+
+        flash(
+            "لا تملك صلاحية فتح الصلاحيات."
+        )
+
+        return redirect(
+            url_for("home")
+        )
+
+    db = get_db()
+
+    users = db.execute("""
+        SELECT
+            id,
+            username,
+            is_owner,
+            role
+        FROM users
+        ORDER BY username
+    """).fetchall()
+
+    characters = db.execute("""
+        SELECT
+            characters.id,
+            characters.full_name,
+            characters.user_id,
+            users.username,
+            users.role,
+            users.is_owner
+
+        FROM characters
+
+        LEFT JOIN users
+        ON users.id = characters.user_id
+
+        ORDER BY characters.full_name
+    """).fetchall()
+
+    custom_roles = db.execute("""
+        SELECT *
+        FROM custom_admin_roles
+        ORDER BY id DESC
+    """).fetchall()
+
+    user_permissions = {}
+    user_roles = {}
+
+    for account in users:
+
+        user_roles[
+            account["id"]
+        ] = (
+            "owner"
+            if account["is_owner"]
+            else (
+                account["role"]
+                or "helper"
+            )
+        )
+
+        rows = db.execute("""
+            SELECT permission
+            FROM user_permissions
+            WHERE user_id = ?
+        """, (
+            account["id"],
+        )).fetchall()
+
+        user_permissions[
+            account["id"]
+        ] = {
+            row["permission"]
+            for row in rows
+        }
+
+    db.close()
+
+    return render_template(
+        "permissions.html",
+        users=users,
+        permissions=PERMISSIONS,
+        user_permissions=user_permissions,
+        user_roles=user_roles,
+        ROLES=ROLES,
+        custom_roles=custom_roles,
+        SECTION_KEYS=SECTION_KEYS,
+        current_user=user,
+        selected_user=None,
+        selected_permissions=set(),
+        characters=characters,
+        admin_permissions_page=True,
+        role_display_name=role_display_name
+    )
+
+
+# =========================================================
+# تحديث صلاحيات مستخدم
+# =========================================================
+
+@app.route(
+    "/admin/permissions/<int:user_id>",
+    methods=["POST"]
+)
+def update_permissions(user_id):
+
+    if not (
+        has_permission("permissions_give")
+        or has_permission("permissions_edit")
+        or has_permission("admins_all_permissions")
+    ):
+
+        flash(
+            "لا تملك صلاحية تعديل الصلاحيات."
+        )
+
+        return redirect(
+            url_for("permissions")
+        )
+
+    db = get_db()
+
+    current = db.execute("""
+        SELECT *
+        FROM users
+        WHERE id = ?
+    """, (
+        session.get("user_id"),
+    )).fetchone()
+
+    target = db.execute("""
+        SELECT *
+        FROM users
+        WHERE id = ?
+    """, (
+        user_id,
+    )).fetchone()
+
+    if not current:
+
+        db.close()
+
+        return redirect(
+            url_for("login")
+        )
+
+    if not target:
+
+        db.close()
+
+        flash(
+            "المستخدم غير موجود."
+        )
+
+        return redirect(
+            url_for("permissions")
+        )
+
+    if (
+        target["is_owner"]
+        and not current["is_owner"]
+    ):
+
+        db.close()
+
+        flash(
+            "لا يمكنك تعديل مالك الموقع."
+        )
+
+        return redirect(
+            url_for("permissions")
+        )
+
+    role_key = request.form.get(
+        "role",
+        "helper"
+    ).strip()
+
+    valid_builtin = (
+        role_key in ROLES
+    )
+
+    custom_role = db.execute("""
+        SELECT id
+        FROM custom_admin_roles
+        WHERE role_key = ?
+        LIMIT 1
+    """, (
+        role_key,
+    )).fetchone()
+
+    valid_custom = (
+        custom_role is not None
+    )
+
+    if not valid_builtin and not valid_custom:
+
+        role_key = "helper"
+
+    selected = request.form.getlist(
+        "permissions"
+    )
+
+    if role_key == "owner":
+
+        if not current["is_owner"]:
+
+            db.close()
+
+            flash(
+                "فقط Owner يستطيع تعيين Owner."
+            )
+
+            return redirect(
+                url_for("permissions")
+            )
+
+        db.execute("""
+            UPDATE users
+            SET
+                role = 'owner',
+                is_owner = 1
+            WHERE id = ?
+        """, (
+            user_id,
+        ))
+
+        db.execute("""
+            DELETE FROM user_permissions
+            WHERE user_id = ?
+        """, (
+            user_id,
+        ))
+
+        db.commit()
+        db.close()
+
+        log_action(
+            f"تعيين Owner للمستخدم "
+            f"{target['username']}"
+        )
+
+        flash(
+            f"تم تعيين {target['username']} كـ Owner."
+        )
+
+        return redirect(
+            url_for("permissions")
+        )
+
+    if target["is_owner"]:
+
+        if not current["is_owner"]:
+
+            db.close()
+
+            flash(
+                "لا يمكنك تغيير رتبة Owner."
+            )
+
+            return redirect(
+                url_for("permissions")
+            )
+
+        db.execute("""
+            UPDATE users
+            SET
+                is_owner = 0,
+                role = ?
+            WHERE id = ?
+        """, (
+            role_key,
+            user_id
+        ))
+
+    else:
+
+        db.execute("""
+            UPDATE users
+            SET
+                role = ?,
+                is_owner = 0
+            WHERE id = ?
+        """, (
+            role_key,
+            user_id
+        ))
+
+    db.execute("""
+        DELETE FROM user_permissions
+        WHERE user_id = ?
+    """, (
+        user_id,
+    ))
+
+    for permission in selected:
+
+        if permission not in PERMISSIONS:
+            continue
+
+        db.execute("""
+            INSERT OR IGNORE INTO
+            user_permissions
+            (
+                user_id,
+                permission
+            )
+            VALUES (?, ?)
+        """, (
+            user_id,
+            permission
+        ))
+
+    db.commit()
+    db.close()
+
+    log_action(
+        f"تحديث رتبة وصلاحيات المستخدم "
+        f"{target['username']}"
+    )
+
+    flash(
+        "تم تحديث الرتبة والصلاحيات."
+    )
+
+    return redirect(
+        url_for("permissions")
+    )
+
+
+# =========================================================
+# إنشاء رتبة مخصصة
+# =========================================================
+
+@app.route(
+    "/admin/roles/create",
+    methods=["POST"]
+)
+def create_custom_role():
+
+    if not (
+        has_permission("admins_add")
+        or has_permission("permissions_give")
+        or has_permission("admins_manage")
+    ):
+
+        flash(
+            "لا تملك صلاحية إنشاء رتبة."
+        )
+
+        return redirect(
+            url_for("admin_panel")
+        )
+
+    role_name = request.form.get(
+        "role_name",
+        ""
+    ).strip()
+
+    if not role_name:
+
+        flash(
+            "اسم الرتبة مطلوب."
+        )
+
+        return redirect(
+            url_for("admin_panel")
+        )
+
+    permissions = request.form.getlist(
+        "permissions"
+    )
+
+    sections = request.form.getlist(
+        "sections"
+    )
+
+    permissions = [
+        p for p in permissions
+        if p in PERMISSIONS
+    ]
+
+    sections = [
+        s for s in sections
+        if s in SECTION_KEYS
+    ]
+
+    db = get_db()
+
+    role_key = make_custom_role_key(
         role_name
     )
 
-    for role in guild.roles:
-
-        if normalize_text(
-            role.name
-        ) == expected:
-
-            return role
-
-    return None
-
-# =========================================================
-# GET HIGHER / EQUAL ROLES
-# =========================================================
-
-def get_higher_or_equal_roles(
-    guild,
-    responsible_role
-):
-
-    roles = []
-
-    for role in guild.roles:
-
-        if role.is_default():
-            continue
-
-        if role.managed:
-            continue
-
-        if role.position >= responsible_role.position:
-            roles.append(role)
-
-    return roles
-
-# =========================================================
-# CREATE TICKET
-# =========================================================
-
-async def create_ticket(
-    interaction,
-    department,
-    option_key
-):
-
-    guild = interaction.guild
-    member = interaction.user
-
-    if not guild:
-
-        await interaction.response.send_message(
-            "❌ هذا النظام داخل السيرفر فقط.",
-            ephemeral=True
-        )
-
-        return
-
-    config = TICKET_CONFIGS.get(
-        department
-    )
-
-    if not config:
-
-        await interaction.response.send_message(
-            "❌ حدث خطأ في إعداد التذكرة.",
-            ephemeral=True
-        )
-
-        return
-
-    option_data = next(
+    cursor = db.execute("""
+        INSERT INTO custom_admin_roles
         (
-            option
-            for option in config["options"]
-            if option[1] == option_key
-        ),
-        None
+            role_key,
+            role_name
+        )
+        VALUES (?, ?)
+    """, (
+        role_key,
+        role_name
+    ))
+
+    role_id = cursor.lastrowid
+
+    for permission in set(permissions):
+
+        db.execute("""
+            INSERT OR IGNORE INTO
+            custom_role_permissions
+            (
+                role_id,
+                permission
+            )
+            VALUES (?, ?)
+        """, (
+            role_id,
+            permission
+        ))
+
+    for section in set(sections):
+
+        db.execute("""
+            INSERT OR IGNORE INTO
+            custom_role_sections
+            (
+                role_id,
+                section
+            )
+            VALUES (?, ?,)
+        """.replace("VALUES (?, ?,)", "VALUES (?, ?)"), (
+            role_id,
+            section
+        ))
+
+    db.commit()
+    db.close()
+
+    log_action(
+        f"إنشاء رتبة مخصصة: {role_name}"
     )
 
-    if not option_data:
-
-        await interaction.response.send_message(
-            "❌ نوع التذكرة غير معروف.",
-            ephemeral=True
-        )
-
-        return
-
-    lock_key = (
-        guild.id,
-        member.id
+    flash(
+        f"تم إنشاء الرتبة المخصصة {role_name}."
     )
 
-    lock = TICKET_LOCKS.setdefault(
-        lock_key,
-        asyncio.Lock()
+    return redirect(
+        url_for("admin_panel")
     )
 
-    try:
-
-        async with lock:
-
-            option_label = option_data[0]
-
-            responsible_role = None
-
-            responsible_role_id = get_ticket_role(
-                guild.id,
-                department,
-                option_key
-            )
-
-            if responsible_role_id:
-
-                responsible_role = guild.get_role(
-                    responsible_role_id
-                )
-
-                if responsible_role and responsible_role.managed:
-                    responsible_role = None
-
-            db = db_connect()
-            cursor = db.cursor()
-
-            cursor.execute(
-                """
-                SELECT channel_id
-                FROM tickets
-                WHERE guild_id = ?
-                AND user_id = ?
-                AND closed = 0
-                LIMIT 1
-                """,
-                (
-                    guild.id,
-                    member.id
-                )
-            )
-
-            existing = cursor.fetchone()
-
-            db.close()
-
-            if existing:
-
-                existing_channel = guild.get_channel(
-                    existing[0]
-                )
-
-                if existing_channel:
-
-                    await interaction.response.send_message(
-                        f"❌ عندك تذكرة مفتوحة بالفعل: {existing_channel.mention}",
-                        ephemeral=True
-                    )
-
-                    return
-
-            department_roles = []
-
-            for role_name in config["roles"]:
-
-                role = find_role(
-                    guild,
-                    role_name
-                )
-
-                if role:
-                    department_roles.append(
-                        role
-                    )
-
-            category = discord.utils.get(
-                guild.categories,
-                name=config["category"]
-            )
-
-            if not category:
-
-                try:
-
-                    category = await guild.create_category(
-                        config["category"],
-                        reason="MTRP Ticket System"
-                    )
-
-                except Exception as error:
-
-                    logging.error(
-                        f"Ticket category error: {error}"
-                    )
-
-                    await interaction.response.send_message(
-                        "❌ ما قدرت أنشئ تصنيف التذاكر.",
-                        ephemeral=True
-                    )
-
-                    return
-
-            overwrites = {
-
-                guild.default_role:
-                    discord.PermissionOverwrite(
-                        view_channel=False
-                    ),
-
-                member:
-                    discord.PermissionOverwrite(
-                        view_channel=True,
-                        send_messages=True,
-                        read_message_history=True
-                    )
-            }
-
-            if guild.me:
-
-                overwrites[guild.me] = (
-                    discord.PermissionOverwrite(
-                        view_channel=True,
-                        send_messages=True,
-                        manage_channels=True,
-                        read_message_history=True,
-                        manage_messages=True
-                    )
-                )
-
-            if responsible_role:
-
-                higher_roles = get_higher_or_equal_roles(
-                    guild,
-                    responsible_role
-                )
-
-                for role in higher_roles:
-
-                    if (
-                        guild.me
-                        and role.position >= guild.me.top_role.position
-                    ):
-                        continue
-
-                    overwrites[role] = (
-                        discord.PermissionOverwrite(
-                            view_channel=True,
-                            send_messages=True,
-                            read_message_history=True
-                        )
-                    )
-
-            else:
-
-                for role in department_roles:
-
-                    if (
-                        guild.me
-                        and role.position >= guild.me.top_role.position
-                    ):
-                        continue
-
-                    overwrites[role] = (
-                        discord.PermissionOverwrite(
-                            view_channel=True,
-                            send_messages=True,
-                            read_message_history=True
-                        )
-                    )
-
-            safe_name = re.sub(
-                r"[^a-zA-Z0-9\u0600-\u06FF_-]",
-                "-",
-                member.name
-            )[:60]
-
-            channel_name = (
-                f"ticket-{safe_name}"
-            )
-
-            try:
-
-                channel = await guild.create_text_channel(
-                    name=channel_name,
-                    category=category,
-                    overwrites=overwrites,
-                    reason="MTRP Ticket System"
-                )
-
-            except Exception as error:
-
-                logging.error(
-                    f"Ticket channel error: {error}"
-                )
-
-                await interaction.response.send_message(
-                    "❌ ما قدرت أنشئ قناة التذكرة. تأكد من صلاحيات البوت.",
-                    ephemeral=True
-                )
-
-                return
-
-            sector_name = (
-                f"{config['title']} | {option_label}"
-            )
-
-            db = db_connect()
-            cursor = db.cursor()
-
-            cursor.execute(
-                """
-                INSERT INTO tickets
-                (
-                    guild_id,
-                    user_id,
-                    channel_id,
-                    sector,
-                    created_at
-                )
-                VALUES (?, ?, ?, ?, ?)
-                """,
-                (
-                    guild.id,
-                    member.id,
-                    channel.id,
-                    sector_name,
-                    now_utc()
-                )
-            )
-
-            db.commit()
-            db.close()
-
-            embed = discord.Embed(
-                title="🎫 تذكرة MTRP",
-                description=(
-                    f"مرحبًا {member.mention}\n\n"
-                    f"**القسم:** {config['title']}\n"
-                    f"**نوع الطلب:** {option_label}\n\n"
-                    "اكتب طلبك أو استفسارك بالتفصيل، "
-                    "وسيتم خدمتك من المختصين.\n\n"
-                    "🔒 عند الانتهاء استخدم زر إغلاق التذكرة."
-                ),
-                color=discord.Color.blurple()
-            )
-
-            embed.add_field(
-                name="📌 نوع التذكرة",
-                value=option_label,
-                inline=True
-            )
-
-            embed.add_field(
-                name="👤 صاحب التذكرة",
-                value=member.mention,
-                inline=True
-            )
-
-            if responsible_role:
-
-                embed.add_field(
-                    name="🎭 المسؤول",
-                    value=responsible_role.mention,
-                    inline=True
-                )
-
-            else:
-
-                embed.add_field(
-                    name="🎭 المسؤول",
-                    value="⚠️ لم يتم تحديد رتبة مسؤولة لهذا النوع",
-                    inline=True
-                )
-
-            embed.set_footer(
-                text="MTRP • Ticket System"
-            )
-
-            if responsible_role:
-
-                content = (
-                    f"{member.mention} "
-                    f"{responsible_role.mention}"
-                )
-
-                allowed_mentions = discord.AllowedMentions(
-                    users=[member],
-                    roles=[responsible_role]
-                )
-
-            else:
-
-                content = member.mention
-
-                allowed_mentions = discord.AllowedMentions(
-                    users=[member],
-                    roles=False
-                )
-
-            try:
-
-                await channel.send(
-                    content=content,
-                    embed=embed,
-                    view=TicketCloseView(),
-                    allowed_mentions=allowed_mentions
-                )
-
-            except Exception as error:
-
-                logging.error(
-                    f"Ticket first message error: {error}"
-                )
-
-            await interaction.response.send_message(
-                f"✅ تم إنشاء تذكرتك: {channel.mention}",
-                ephemeral=True
-            )
-
-            extra_fields = [
-                ("📂 القسم", config["title"]),
-                ("📌 النوع", option_label),
-                ("📍 القناة", channel.mention)
-            ]
-
-            if responsible_role:
-
-                extra_fields.append(
-                    (
-                        "🎭 الرتبة المسؤولة",
-                        responsible_role.mention
-                    )
-                )
-
-            else:
-
-                extra_fields.append(
-                    (
-                        "🎭 الرتبة المسؤولة",
-                        "غير محددة"
-                    )
-                )
-
-            await send_log(
-                guild,
-                "channel_log_channel_id",
-                "🎫 فتح تذكرة",
-                "تم فتح تذكرة جديدة.",
-                discord.Color.blue(),
-                actor=member,
-                extra_fields=extra_fields
-            )
-
-    finally:
-
-        TICKET_LOCKS.pop(
-            lock_key,
-            None
-        )
 
 # =========================================================
-# TICKET SELECT
+# تعديل رتبة مخصصة
 # =========================================================
 
-class TicketTypeSelect(
-    discord.ui.Select
-):
+@app.route(
+    "/admin/roles/<int:role_id>/update",
+    methods=["POST"]
+)
+def update_custom_role(role_id):
 
-    def __init__(
-        self,
-        department
+    if not (
+        has_permission("permissions_edit")
+        or has_permission("admins_manage")
     ):
 
-        self.department = department
-
-        config = TICKET_CONFIGS[
-            department
-        ]
-
-        options = []
-
-        for label, value, description in config["options"]:
-
-            options.append(
-                discord.SelectOption(
-                    label=label,
-                    value=value,
-                    description=description
-                )
-            )
-
-        super().__init__(
-            placeholder="اختر نوع التذكرة",
-            min_values=1,
-            max_values=1,
-            options=options,
-            custom_id=f"mt_ticket_{department}"
+        flash(
+            "لا تملك صلاحية تعديل الرتبة."
         )
 
-    async def callback(
-        self,
-        interaction
-    ):
-
-        await create_ticket(
-            interaction,
-            self.department,
-            self.values[0]
+        return redirect(
+            url_for("admin_panel")
         )
 
-class TicketTypeView(
-    discord.ui.View
-):
+    role_name = request.form.get(
+        "role_name",
+        ""
+    ).strip()
 
-    def __init__(
-        self,
-        department
-    ):
+    if not role_name:
 
-        super().__init__(
-            timeout=None
+        flash(
+            "اسم الرتبة مطلوب."
         )
 
-        self.add_item(
-            TicketTypeSelect(
-                department
-            )
+        return redirect(
+            url_for("admin_panel")
         )
 
-# =========================================================
-# TICKET PANEL
-# =========================================================
+    permissions = request.form.getlist(
+        "permissions"
+    )
 
-async def send_ticket_panel(
-    interaction,
-    department
-):
+    sections = request.form.getlist(
+        "sections"
+    )
 
-    if not is_whitelisted(
-        interaction.user,
-        interaction.guild
-    ):
-
-        await interaction.response.send_message(
-            "❌ ما عندك صلاحية إرسال لوحة التذاكر.",
-            ephemeral=True
-        )
-
-        return
-
-    config = TICKET_CONFIGS[
-        department
+    permissions = [
+        p for p in permissions
+        if p in PERMISSIONS
     ]
 
-    embed = discord.Embed(
-        title="🎫 تذاكر MTRP",
-        description=(
-            "اختر القسم الذي يناسبك لفتح تذكرة والتواصل مع الجهة المختصة بالقسم.\n\n"
-            "**تنبيه ⚠️**\n"
-            "الرجاء اختيار نوع التذكرة الصحيح والتأكد من اختيار الخيار المناسب لطلبك.\n\n"
-            "📌 **ملاحظة:**\n"
-            "يرجى عدم فتح أكثر من تذكرة لنفس الطلب."
-        ),
-        color=discord.Color.blurple()
-    )
-
-    for label, value, description in config["options"]:
-
-        embed.add_field(
-            name=label,
-            value=description,
-            inline=False
-        )
-
-    embed.set_footer(
-        text="MTRP • Ticket System"
-    )
-
-    await interaction.response.send_message(
-        embed=embed,
-        view=TicketTypeView(
-            department
-        )
-    )
-
-# =========================================================
-# TICKET COMMANDS
-# =========================================================
-
-@bot.tree.command(
-    name="general",
-    description="إرسال لوحة التكتات العامة والاستفسارات والطلبات"
-)
-async def general_tickets(
-    interaction
-):
-
-    await send_ticket_panel(
-        interaction,
-        "general"
-    )
-
-@bot.tree.command(
-    name="swat",
-    description="إرسال لوحة تذاكر S.W.A.T"
-)
-async def swat_tickets(
-    interaction
-):
-
-    await send_ticket_panel(
-        interaction,
-        "swat"
-    )
-
-@bot.tree.command(
-    name="justice",
-    description="إرسال لوحة تذاكر وزارة العدل"
-)
-async def justice_tickets(
-    interaction
-):
-
-    await send_ticket_panel(
-        interaction,
-        "justice"
-    )
-
-@bot.tree.command(
-    name="interior",
-    description="إرسال لوحة تذاكر وزارة الداخلية"
-)
-async def interior_tickets(
-    interaction
-):
-
-    await send_ticket_panel(
-        interaction,
-        "interior"
-    )
-
-@bot.tree.command(
-    name="health",
-    description="إرسال لوحة تذاكر الصحة"
-)
-async def health_tickets(
-    interaction
-):
-
-    await send_ticket_panel(
-        interaction,
-        "health"
-    )
-
-# =========================================================
-# PING
-# =========================================================
-
-@bot.tree.command(
-    name="ping",
-    description="عرض سرعة استجابة البوت"
-)
-async def ping_command(
-    interaction
-):
-
-    start = time.perf_counter()
-
-    await interaction.response.defer(
-        ephemeral=True
-    )
-
-    response_ms = round(
-        (time.perf_counter() - start) * 1000
-    )
-
-    latency_ms = round(
-        bot.latency * 1000
-    )
-
-    embed = discord.Embed(
-        title="🏓 Pong!",
-        description="تم قياس سرعة استجابة البوت.",
-        color=discord.Color.green()
-    )
-
-    embed.add_field(
-        name="⚡ WebSocket",
-        value=f"`{latency_ms}ms`",
-        inline=True
-    )
-
-    embed.add_field(
-        name="📡 Processing",
-        value=f"`{response_ms}ms`",
-        inline=True
-    )
-
-    await interaction.followup.send(
-        embed=embed,
-        ephemeral=True
-    )
-
-# =========================================================
-# DEED
-# =========================================================
-
-@bot.tree.command(
-    name="create-deed",
-    description="إنشاء سند ملكية"
-)
-@app_commands.describe(
-    citizen="صاحب الملكية",
-    property_name="اسم العقار",
-    details="تفاصيل العقار"
-)
-async def create_deed(
-    interaction,
-    citizen: discord.Member,
-    property_name: str,
-    details: str = "لا توجد تفاصيل"
-):
-
-    if not check_role(
-        interaction.user,
-        ROLE_JUSTICE
-    ):
-
-        await interaction.response.send_message(
-            "❌ الأمر مخصص لقطاع Justice.",
-            ephemeral=True
-        )
-
-        return
-
-    db = db_connect()
-    cursor = db.cursor()
-
-    cursor.execute(
-        """
-        INSERT INTO deeds
-        (
-            guild_id,
-            citizen_id,
-            officer_id,
-            property_name,
-            details,
-            created_at
-        )
-        VALUES (?, ?, ?, ?, ?, ?)
-        """,
-        (
-            interaction.guild.id,
-            citizen.id,
-            interaction.user.id,
-            property_name,
-            details,
-            now_utc()
-        )
-    )
-
-    deed_id = cursor.lastrowid
-
-    db.commit()
-    db.close()
-
-    embed = discord.Embed(
-        title="📜 سند ملكية",
-        color=discord.Color.green()
-    )
-
-    embed.add_field(
-        name="🔢 رقم السند",
-        value=f"`DEED-{deed_id:05d}`"
-    )
-
-    embed.add_field(
-        name="👤 المالك",
-        value=citizen.mention
-    )
-
-    embed.add_field(
-        name="🏠 العقار",
-        value=property_name
-    )
-
-    embed.add_field(
-        name="📝 التفاصيل",
-        value=details[:1024],
-        inline=False
-    )
-
-    await interaction.response.send_message(
-        embed=embed
-    )
-
-    await send_log(
-        interaction.guild,
-        "mod_log_channel_id",
-        "📜 إنشاء سند ملكية",
-        f"تم إنشاء سند ملكية رقم `DEED-{deed_id:05d}`.",
-        discord.Color.green(),
-        actor=interaction.user,
-        target=citizen
-    )
-
-# =========================================================
-# WARRANT
-# =========================================================
-
-@bot.tree.command(
-    name="issue-warrant",
-    description="إصدار مذكرة"
-)
-@app_commands.describe(
-    citizen="الشخص المطلوب",
-    warrant_type="نوع المذكرة",
-    reason="سبب المذكرة"
-)
-@app_commands.choices(
-    warrant_type=[
-        app_commands.Choice(
-            name="مذكرة قبض",
-            value="قبض"
-        ),
-        app_commands.Choice(
-            name="مذكرة تفتيش",
-            value="تفتيش"
-        )
+    sections = [
+        s for s in sections
+        if s in SECTION_KEYS
     ]
-)
-async def issue_warrant(
-    interaction,
-    citizen: discord.Member,
-    warrant_type,
-    reason: str
-):
 
-    if not check_role(
-        interaction.user,
-        ROLE_JUSTICE
-    ):
+    db = get_db()
 
-        await interaction.response.send_message(
-            "❌ الأمر مخصص لقطاع Justice.",
-            ephemeral=True
+    role = db.execute("""
+        SELECT *
+        FROM custom_admin_roles
+        WHERE id = ?
+    """, (
+        role_id,
+    )).fetchone()
+
+    if not role:
+
+        db.close()
+
+        flash(
+            "الرتبة المخصصة غير موجودة."
         )
 
-        return
-
-    db = db_connect()
-    cursor = db.cursor()
-
-    cursor.execute(
-        """
-        INSERT INTO warrants
-        (
-            guild_id,
-            citizen_id,
-            officer_id,
-            warrant_type,
-            reason,
-            created_at
+        return redirect(
+            url_for("admin_panel")
         )
-        VALUES (?, ?, ?, ?, ?, ?)
-        """,
-        (
-            interaction.guild.id,
-            citizen.id,
-            interaction.user.id,
-            warrant_type.value,
-            reason,
-            now_utc()
-        )
-    )
 
-    warrant_id = cursor.lastrowid
+    db.execute("""
+        UPDATE custom_admin_roles
+        SET role_name = ?
+        WHERE id = ?
+    """, (
+        role_name,
+        role_id
+    ))
+
+    db.execute("""
+        DELETE FROM custom_role_permissions
+        WHERE role_id = ?
+    """, (
+        role_id,
+    ))
+
+    db.execute("""
+        DELETE FROM custom_role_sections
+        WHERE role_id = ?
+    """, (
+        role_id,
+    ))
+
+    for permission in set(permissions):
+
+        db.execute("""
+            INSERT OR IGNORE INTO
+            custom_role_permissions
+            (
+                role_id,
+                permission
+            )
+            VALUES (?, ?)
+        """, (
+            role_id,
+            permission
+        ))
+
+    for section in set(sections):
+
+        db.execute("""
+            INSERT OR IGNORE INTO
+            custom_role_sections
+            (
+                role_id,
+                section
+            )
+            VALUES (?, ?)
+        """, (
+            role_id,
+            section
+        ))
 
     db.commit()
     db.close()
 
-    embed = discord.Embed(
-        title="⚖️ مذكرة رسمية",
-        description="تم إصدار مذكرة رسمية.",
-        color=discord.Color.red()
+    log_action(
+        f"تعديل الرتبة المخصصة: {role_name}"
     )
 
-    embed.add_field(
-        name="🔢 الرقم",
-        value=f"`WARRANT-{warrant_id:05d}`"
+    flash(
+        "تم تعديل الرتبة المخصصة."
     )
 
-    embed.add_field(
-        name="👤 المطلوب",
-        value=citizen.mention
+    return redirect(
+        url_for("admin_panel")
     )
 
-    embed.add_field(
-        name="📄 النوع",
-        value=warrant_type.value
-    )
-
-    embed.add_field(
-        name="📝 السبب",
-        value=reason[:1024],
-        inline=False
-    )
-
-    await interaction.response.send_message(
-        embed=embed
-    )
-
-    await send_log(
-        interaction.guild,
-        "mod_log_channel_id",
-        "⚖️ إصدار مذكرة",
-        f"تم إصدار مذكرة `WARRANT-{warrant_id:05d}`.",
-        discord.Color.red(),
-        actor=interaction.user,
-        target=citizen
-    )
 
 # =========================================================
-# 911
+# حذف رتبة مخصصة
 # =========================================================
 
-@bot.tree.command(
-    name="911-dispatch",
-    description="إرسال بلاغ عمليات 911"
+@app.route(
+    "/admin/roles/<int:role_id>/delete",
+    methods=["POST"]
 )
-@app_commands.describe(
-    location="موقع البلاغ",
-    details="تفاصيل البلاغ"
-)
-async def dispatch_911(
-    interaction,
-    location: str,
-    details: str
-):
+def delete_custom_role(role_id):
 
-    if not check_role(
-        interaction.user,
-        ROLE_POLICE
+    if not (
+        has_permission("admins_remove")
+        or has_permission("admins_manage")
     ):
 
-        await interaction.response.send_message(
-            "❌ الأمر مخصص لقطاع LSPD.",
-            ephemeral=True
+        flash(
+            "لا تملك صلاحية حذف الرتبة."
         )
 
-        return
-
-    db = db_connect()
-    cursor = db.cursor()
-
-    cursor.execute(
-        """
-        INSERT INTO dispatches
-        (
-            guild_id,
-            officer_id,
-            location,
-            details,
-            created_at
+        return redirect(
+            url_for("admin_panel")
         )
-        VALUES (?, ?, ?, ?, ?)
-        """,
-        (
-            interaction.guild.id,
-            interaction.user.id,
-            location,
-            details,
-            now_utc()
-        )
-    )
 
-    dispatch_id = cursor.lastrowid
+    db = get_db()
+
+    role = db.execute("""
+        SELECT *
+        FROM custom_admin_roles
+        WHERE id = ?
+    """, (
+        role_id,
+    )).fetchone()
+
+    if not role:
+
+        db.close()
+
+        flash(
+            "الرتبة غير موجودة."
+        )
+
+        return redirect(
+            url_for("admin_panel")
+        )
+
+    db.execute("""
+        UPDATE users
+        SET role = 'helper'
+        WHERE role = ?
+    """, (
+        role["role_key"],
+    ))
+
+    db.execute("""
+        DELETE FROM custom_admin_roles
+        WHERE id = ?
+    """, (
+        role_id,
+    ))
 
     db.commit()
     db.close()
 
-    embed = discord.Embed(
-        title="🚨 911 DISPATCH",
-        description="تم استلام بلاغ عمليات.",
-        color=discord.Color.red()
+    log_action(
+        f"حذف الرتبة المخصصة: "
+        f"{role['role_name']}"
     )
 
-    embed.add_field(
-        name="🔢 رقم البلاغ",
-        value=f"`911-{dispatch_id:05d}`"
+    flash(
+        f"تم حذف الرتبة {role['role_name']}."
     )
 
-    embed.add_field(
-        name="📍 الموقع",
-        value=location
+    return redirect(
+        url_for("admin_panel")
     )
 
-    embed.add_field(
-        name="📝 التفاصيل",
-        value=details[:1024],
-        inline=False
-    )
-
-    await interaction.response.send_message(
-        content="@everyone",
-        embed=embed,
-        allowed_mentions=discord.AllowedMentions(
-            everyone=True
-        )
-    )
-
-    await send_log(
-        interaction.guild,
-        "mod_log_channel_id",
-        "🚨 بلاغ 911",
-        f"تم إرسال بلاغ `911-{dispatch_id:05d}`.",
-        discord.Color.red(),
-        actor=interaction.user,
-        extra_fields=[
-            ("📍 الموقع", location),
-            ("📝 التفاصيل", details)
-        ]
-    )
 
 # =========================================================
-# CRIMINAL RECORD
+# إعطاء رتبة مخصصة لمستخدم
 # =========================================================
 
-@bot.tree.command(
-    name="add-record",
-    description="إضافة سجل جنائي"
+@app.route(
+    "/admin/users/<int:user_id>/role",
+    methods=["POST"]
 )
-@app_commands.describe(
-    citizen="الشخص",
-    crime="الجريمة",
-    fine="الغرامة",
-    jail_time="مدة السجن"
-)
-async def add_record(
-    interaction,
-    citizen: discord.Member,
-    crime: str,
-    fine: int,
-    jail_time: str
-):
+def assign_user_role(user_id):
 
-    if not check_role(
-        interaction.user,
-        ROLE_POLICE
+    if not (
+        has_permission("admins_add")
+        or has_permission("permissions_give")
+        or has_permission("admins_manage")
     ):
 
-        await interaction.response.send_message(
-            "❌ الأمر مخصص لقطاع LSPD.",
-            ephemeral=True
+        flash(
+            "لا تملك صلاحية إعطاء رتبة."
         )
 
-        return
-
-    fine = max(
-        0,
-        fine
-    )
-
-    db = db_connect()
-    cursor = db.cursor()
-
-    cursor.execute(
-        """
-        INSERT INTO criminal_records
-        (
-            guild_id,
-            citizen_id,
-            officer_id,
-            crime,
-            fine,
-            jail_time,
-            created_at
+        return redirect(
+            url_for("users")
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            interaction.guild.id,
-            citizen.id,
-            interaction.user.id,
-            crime,
-            fine,
-            jail_time,
-            now_utc()
-        )
-    )
 
-    record_id = cursor.lastrowid
+    role_key = request.form.get(
+        "role",
+        ""
+    ).strip()
+
+    db = get_db()
+
+    target = db.execute("""
+        SELECT *
+        FROM users
+        WHERE id = ?
+    """, (
+        user_id,
+    )).fetchone()
+
+    if not target:
+
+        db.close()
+
+        flash(
+            "المستخدم غير موجود."
+        )
+
+        return redirect(
+            url_for("users")
+        )
+
+    current = current_user()
+
+    if (
+        target["is_owner"]
+        and not current["is_owner"]
+    ):
+
+        db.close()
+
+        flash(
+            "لا يمكنك تعديل Owner."
+        )
+
+        return redirect(
+            url_for("users")
+        )
+
+    custom_role = db.execute("""
+        SELECT *
+        FROM custom_admin_roles
+        WHERE role_key = ?
+        LIMIT 1
+    """, (
+        role_key,
+    )).fetchone()
+
+    if (
+        role_key not in ROLES
+        and not custom_role
+    ):
+
+        db.close()
+
+        flash(
+            "الرتبة غير موجودة."
+        )
+
+        return redirect(
+            url_for("users")
+        )
+
+    if (
+        role_key == "owner"
+        and not current["is_owner"]
+    ):
+
+        db.close()
+
+        flash(
+            "فقط Owner يستطيع تعيين Owner."
+        )
+
+        return redirect(
+            url_for("users")
+        )
+
+    db.execute("""
+        UPDATE users
+        SET
+            role = ?,
+            is_owner = ?
+        WHERE id = ?
+    """, (
+        role_key,
+        1 if role_key == "owner" else 0,
+        user_id
+    ))
 
     db.commit()
     db.close()
 
-    embed = discord.Embed(
-        title="📁 سجل جنائي",
-        color=discord.Color.dark_red()
+    log_action(
+        f"تعيين رتبة "
+        f"{role_display_name(role_key)} "
+        f"للمستخدم {target['username']}"
     )
 
-    embed.add_field(
-        name="🔢 رقم السجل",
-        value=f"`RECORD-{record_id:05d}`"
+    flash(
+        f"تم تعيين رتبة "
+        f"{role_display_name(role_key)} "
+        f"للمستخدم {target['username']}."
     )
 
-    embed.add_field(
-        name="👤 الشخص",
-        value=citizen.mention
+    return redirect(
+        url_for("users")
     )
 
-    embed.add_field(
-        name="⚠️ الجريمة",
-        value=crime
-    )
 
-    embed.add_field(
-        name="💰 الغرامة",
-        value=f"{fine:,}"
-    )
+# =========================================================
+# المستخدمون
+# =========================================================
 
-    embed.add_field(
-        name="⛓️ السجن",
-        value=jail_time
-    )
+@app.route("/admin/users")
+def users():
 
-    await interaction.response.send_message(
-        embed=embed
-    )
-
-    await send_log(
-        interaction.guild,
-        "mod_log_channel_id",
-        "📁 إضافة سجل جنائي",
-        f"تم إنشاء السجل `RECORD-{record_id:05d}`.",
-        discord.Color.dark_red(),
-        actor=interaction.user,
-        target=citizen,
-        extra_fields=[
-            ("⚠️ الجريمة", crime),
-            ("💰 الغرامة", fine),
-            ("⛓️ السجن", jail_time)
-        ]
-    )
-
-@bot.tree.command(
-    name="view-records",
-    description="عرض السجل الجنائي"
-)
-@app_commands.describe(
-    citizen="الشخص المطلوب سجله"
-)
-async def view_records(
-    interaction,
-    citizen: discord.Member
-):
-
-    if not check_role(
-        interaction.user,
-        ROLE_POLICE
+    if not (
+        has_permission("users_view")
+        or has_section_access("users")
+        or has_permission("admins_manage")
     ):
 
-        await interaction.response.send_message(
-            "❌ الأمر مخصص لقطاع LSPD.",
-            ephemeral=True
+        flash(
+            "لا تملك صلاحية عرض المستخدمين."
         )
 
-        return
+        return redirect(
+            url_for("home")
+        )
 
-    db = db_connect()
-    cursor = db.cursor()
+    db = get_db()
 
-    cursor.execute(
-        """
+    users_list = db.execute("""
         SELECT
             id,
-            crime,
-            fine,
-            jail_time,
+            username,
+            is_banned,
+            is_disabled,
+            is_owner,
+            role,
             created_at
-        FROM criminal_records
-        WHERE guild_id = ?
-        AND citizen_id = ?
+        FROM users
         ORDER BY id DESC
-        LIMIT 15
-        """,
-        (
-            interaction.guild.id,
-            citizen.id
-        )
-    )
+    """).fetchall()
 
-    rows = cursor.fetchall()
+    custom_roles = db.execute("""
+        SELECT *
+        FROM custom_admin_roles
+        ORDER BY role_name
+    """).fetchall()
 
     db.close()
 
-    if not rows:
+    user_roles = {}
 
-        await interaction.response.send_message(
-            f"📁 لا توجد سجلات على {citizen.mention}.",
-            ephemeral=True
+    for account in users_list:
+
+        user_roles[
+            account["id"]
+        ] = role_display_name(
+            "owner"
+            if account["is_owner"]
+            else (
+                account["role"]
+                or "helper"
+            )
         )
 
-        return
+    all_roles = dict(ROLES)
 
-    embed = discord.Embed(
-        title=f"📁 السجل الجنائي - {citizen}",
-        color=discord.Color.dark_red()
+    for role in custom_roles:
+
+        all_roles[
+            role["role_key"]
+        ] = {
+            "name": role["role_name"],
+            "permissions": set()
+        }
+
+    return render_template(
+        "users.html",
+        users=users_list,
+        user_roles=user_roles,
+        ROLES=all_roles,
+        custom_roles=custom_roles
     )
 
-    for (
-        record_id,
-        crime,
-        fine,
-        jail_time,
-        created_at
-    ) in rows:
-
-        embed.add_field(
-            name=f"RECORD-{record_id:05d}",
-            value=(
-                f"⚠️ **الجريمة:** {crime}\n"
-                f"💰 **الغرامة:** {fine:,}\n"
-                f"⛓️ **السجن:** {jail_time}\n"
-                f"🕒 **التاريخ:** {created_at[:19]}"
-            ),
-            inline=False
-        )
-
-    await interaction.response.send_message(
-        embed=embed,
-        ephemeral=True
-    )
 
 # =========================================================
-# SWAT DEPLOY
+# إضافة مستخدم
 # =========================================================
 
-@bot.tree.command(
-    name="swat-deploy",
-    description="إرسال انتشار S.W.A.T"
+@app.route(
+    "/admin/users/add",
+    methods=["POST"]
 )
-@app_commands.describe(
-    zone="منطقة الانتشار",
-    threat="مستوى الخطورة"
-)
-@app_commands.choices(
-    threat=[
-        app_commands.Choice(
-            name="منخفض",
-            value="منخفض"
-        ),
-        app_commands.Choice(
-            name="متوسط",
-            value="متوسط"
-        ),
-        app_commands.Choice(
-            name="عالي",
-            value="عالي"
-        ),
-        app_commands.Choice(
-            name="حرج",
-            value="حرج"
-        )
-    ]
-)
-async def swat_deploy(
-    interaction,
-    zone: str,
-    threat
-):
+def add_user():
 
-    if not check_role(
-        interaction.user,
-        ROLE_SWAT
+    if not (
+        has_permission("admins_add")
+        or has_permission("admins_manage")
     ):
 
-        await interaction.response.send_message(
-            "❌ الأمر مخصص لقطاع S.W.A.T.",
-            ephemeral=True
+        flash(
+            "لا تملك صلاحية إضافة مستخدم."
         )
 
-        return
-
-    embed = discord.Embed(
-        title="🛡️ S.W.A.T DEPLOYMENT",
-        description="تم إصدار أمر انتشار S.W.A.T.",
-        color=discord.Color.orange()
-    )
-
-    embed.add_field(
-        name="📍 المنطقة",
-        value=zone
-    )
-
-    embed.add_field(
-        name="🚨 مستوى الخطورة",
-        value=threat.value
-    )
-
-    embed.add_field(
-        name="👮 المسؤول",
-        value=interaction.user.mention
-    )
-
-    await interaction.response.send_message(
-        content="@everyone",
-        embed=embed,
-        allowed_mentions=discord.AllowedMentions(
-            everyone=True
+        return redirect(
+            url_for("users")
         )
+
+    username = request.form.get(
+        "username",
+        ""
+    ).strip()
+
+    password = request.form.get(
+        "password",
+        ""
     )
 
-    await send_log(
-        interaction.guild,
-        "mod_log_channel_id",
-        "🛡️ انتشار S.W.A.T",
-        "تم إصدار أمر انتشار S.W.A.T.",
-        discord.Color.orange(),
-        actor=interaction.user,
-        extra_fields=[
-            ("📍 المنطقة", zone),
-            ("🚨 الخطورة", threat.value)
-        ]
-    )
+    role_key = request.form.get(
+        "role",
+        "helper"
+    ).strip()
 
-# =========================================================
-# MEDICAL REPORT
-# =========================================================
+    if not username or not password:
 
-@bot.tree.command(
-    name="medical-report",
-    description="إصدار تقرير طبي"
-)
-@app_commands.describe(
-    citizen="المواطن",
-    diagnosis="التشخيص",
-    treatment="العلاج"
-)
-async def medical_report(
-    interaction,
-    citizen: discord.Member,
-    diagnosis: str,
-    treatment: str
-):
+        flash(
+            "اسم المستخدم وكلمة المرور مطلوبة."
+        )
 
-    if not check_role(
-        interaction.user,
-        ROLE_HEALTH
+        return redirect(
+            url_for("users")
+        )
+
+    if len(username) < 3:
+
+        flash(
+            "اسم المستخدم يجب أن يكون 3 أحرف على الأقل."
+        )
+
+        return redirect(
+            url_for("users")
+        )
+
+    if len(password) < 6:
+
+        flash(
+            "كلمة المرور يجب أن تكون 6 أحرف على الأقل."
+        )
+
+        return redirect(
+            url_for("users")
+        )
+
+    db = get_db()
+
+    custom_role = db.execute("""
+        SELECT id
+        FROM custom_admin_roles
+        WHERE role_key = ?
+        LIMIT 1
+    """, (
+        role_key,
+    )).fetchone()
+
+    if (
+        role_key not in ROLES
+        and not custom_role
     ):
 
-        await interaction.response.send_message(
-            "❌ الأمر مخصص لقطاع PHMC.",
-            ephemeral=True
+        role_key = "helper"
+
+    current = current_user()
+
+    if (
+        role_key == "owner"
+        and not current["is_owner"]
+    ):
+
+        db.close()
+
+        flash(
+            "فقط Owner يستطيع إنشاء Owner."
         )
 
-        return
+        return redirect(
+            url_for("users")
+        )
 
-    db = db_connect()
-    cursor = db.cursor()
+    exists = db.execute("""
+        SELECT id
+        FROM users
+        WHERE username = ?
+    """, (
+        username,
+    )).fetchone()
 
-    cursor.execute(
-        """
-        INSERT INTO medical_reports
+    if exists:
+
+        db.close()
+
+        flash(
+            "اسم المستخدم موجود مسبقًا."
+        )
+
+        return redirect(
+            url_for("users")
+        )
+
+    db.execute("""
+        INSERT INTO users
         (
-            guild_id,
-            citizen_id,
-            medic_id,
-            diagnosis,
-            treatment,
-            created_at
+            username,
+            password_hash,
+            is_owner,
+            role
         )
-        VALUES (?, ?, ?, ?, ?, ?)
-        """,
-        (
-            interaction.guild.id,
-            citizen.id,
-            interaction.user.id,
-            diagnosis,
-            treatment,
-            now_utc()
-        )
-    )
-
-    report_id = cursor.lastrowid
+        VALUES (?, ?, ?, ?)
+    """, (
+        username,
+        generate_password_hash(password),
+        1 if role_key == "owner" else 0,
+        role_key
+    ))
 
     db.commit()
     db.close()
 
-    embed = discord.Embed(
-        title="🏥 تقرير طبي",
-        color=discord.Color.green()
+    log_action(
+        f"إنشاء مستخدم: {username}"
     )
 
-    embed.add_field(
-        name="🔢 رقم التقرير",
-        value=f"`MED-{report_id:05d}`"
+    flash(
+        f"تم إنشاء المستخدم {username}."
     )
 
-    embed.add_field(
-        name="👤 المواطن",
-        value=citizen.mention
+    return redirect(
+        url_for("users")
     )
 
-    embed.add_field(
-        name="🩺 التشخيص",
-        value=diagnosis[:1024]
-    )
-
-    embed.add_field(
-        name="💊 العلاج",
-        value=treatment[:1024]
-    )
-
-    embed.set_footer(
-        text=f"PHMC • {interaction.user}"
-    )
-
-    await interaction.response.send_message(
-        embed=embed
-    )
-
-    await send_log(
-        interaction.guild,
-        "mod_log_channel_id",
-        "🏥 تقرير طبي",
-        f"تم إنشاء تقرير طبي `MED-{report_id:05d}`.",
-        discord.Color.green(),
-        actor=interaction.user,
-        target=citizen
-    )
 
 # =========================================================
-# AI COMMAND
+# حظر المستخدم
 # =========================================================
 
-@bot.tree.command(
-    name="ai",
-    description="إدارة نظام الذكاء الاصطناعي"
+@app.route(
+    "/admin/users/<int:user_id>/ban",
+    methods=["POST"]
 )
-@app_commands.describe(
-    action="اختر الإجراء",
-    channel="الروم الذي يعمل فيه AI"
+@permission_required(
+    "users_ban"
 )
-@app_commands.choices(
-    action=[
-        app_commands.Choice(
-            name="تفعيل",
-            value="enable"
-        ),
-        app_commands.Choice(
-            name="تعطيل",
-            value="disable"
-        ),
-        app_commands.Choice(
-            name="تحديد روم",
-            value="channel"
+def ban_user(user_id):
+
+    db = get_db()
+
+    user = db.execute("""
+        SELECT *
+        FROM users
+        WHERE id = ?
+    """, (
+        user_id,
+    )).fetchone()
+
+    if user and user["is_owner"]:
+
+        db.close()
+
+        flash(
+            "لا يمكن حظر مالك الموقع."
         )
-    ]
-)
-async def ai_command(
-    interaction,
-    action,
-    channel: discord.TextChannel = None
-):
 
-    if not is_whitelisted(
-        interaction.user,
-        interaction.guild
+        return redirect(
+            url_for("users")
+        )
+
+    db.execute("""
+        UPDATE users
+        SET is_banned = 1
+        WHERE id = ?
+    """, (
+        user_id,
+    ))
+
+    db.commit()
+    db.close()
+
+    log_action(
+        f"حظر المستخدم رقم {user_id}"
+    )
+
+    flash(
+        "تم حظر المستخدم."
+    )
+
+    return redirect(
+        url_for("users")
+    )
+
+
+# =========================================================
+# فك الحظر
+# =========================================================
+
+@app.route(
+    "/admin/users/<int:user_id>/unban",
+    methods=["POST"]
+)
+@permission_required(
+    "users_unban"
+)
+def unban_user(user_id):
+
+    db = get_db()
+
+    db.execute("""
+        UPDATE users
+        SET is_banned = 0
+        WHERE id = ?
+    """, (
+        user_id,
+    ))
+
+    db.commit()
+    db.close()
+
+    log_action(
+        f"فك حظر المستخدم رقم {user_id}"
+    )
+
+    flash(
+        "تم فك الحظر."
+    )
+
+    return redirect(
+        url_for("users")
+    )
+
+
+# =========================================================
+# تعطيل المستخدم
+# =========================================================
+
+@app.route(
+    "/admin/users/<int:user_id>/disable",
+    methods=["POST"]
+)
+@permission_required(
+    "users_disable"
+)
+def disable_user(user_id):
+
+    db = get_db()
+
+    user = db.execute("""
+        SELECT *
+        FROM users
+        WHERE id = ?
+    """, (
+        user_id,
+    )).fetchone()
+
+    if user and user["is_owner"]:
+
+        db.close()
+
+        flash(
+            "لا يمكن تعطيل مالك الموقع."
+        )
+
+        return redirect(
+            url_for("users")
+        )
+
+    db.execute("""
+        UPDATE users
+        SET is_disabled = 1
+        WHERE id = ?
+    """, (
+        user_id,
+    ))
+
+    db.commit()
+    db.close()
+
+    log_action(
+        f"تعطيل المستخدم رقم {user_id}"
+    )
+
+    flash(
+        "تم تعطيل المستخدم."
+    )
+
+    return redirect(
+        url_for("users")
+    )
+
+
+# =========================================================
+# تفعيل المستخدم
+# =========================================================
+
+@app.route(
+    "/admin/users/<int:user_id>/enable",
+    methods=["POST"]
+)
+@permission_required(
+    "users_enable"
+)
+def enable_user(user_id):
+
+    db = get_db()
+
+    db.execute("""
+        UPDATE users
+        SET is_disabled = 0
+        WHERE id = ?
+    """, (
+        user_id,
+    ))
+
+    db.commit()
+    db.close()
+
+    log_action(
+        f"تفعيل المستخدم رقم {user_id}"
+    )
+
+    flash(
+        "تم تفعيل المستخدم."
+    )
+
+    return redirect(
+        url_for("users")
+    )
+
+
+# =========================================================
+# حذف المستخدم
+# =========================================================
+
+@app.route(
+    "/admin/users/<int:user_id>/delete",
+    methods=["POST"]
+)
+@permission_required(
+    "users_delete"
+)
+def delete_user(user_id):
+
+    db = get_db()
+
+    user = db.execute("""
+        SELECT *
+        FROM users
+        WHERE id = ?
+    """, (
+        user_id,
+    )).fetchone()
+
+    if user and user["is_owner"]:
+
+        db.close()
+
+        flash(
+            "لا يمكن حذف مالك الموقع."
+        )
+
+        return redirect(
+            url_for("users")
+        )
+
+    db.execute("""
+        DELETE FROM users
+        WHERE id = ?
+    """, (
+        user_id,
+    ))
+
+    db.commit()
+    db.close()
+
+    log_action(
+        f"حذف المستخدم رقم {user_id}"
+    )
+
+    flash(
+        "تم حذف المستخدم."
+    )
+
+    return redirect(
+        url_for("users")
+    )
+
+
+# =========================================================
+# السجلات
+# =========================================================
+
+@app.route("/admin/logs")
+def logs():
+
+    if not (
+        has_permission("logs_view")
+        or has_section_access("logs")
+        or has_permission("admins_manage")
     ):
 
-        await interaction.response.send_message(
-            "❌ ما عندك صلاحية استخدام هذا الأمر.",
-            ephemeral=True
+        flash(
+            "لا تملك صلاحية عرض السجلات."
         )
 
-        return
+        return redirect(
+            url_for("home")
+        )
 
-    settings = get_guild_settings(
-        interaction.guild.id
+    db = get_db()
+
+    logs_list = db.execute("""
+        SELECT
+            activity_logs.id,
+            activity_logs.action,
+            activity_logs.details,
+            activity_logs.created_at,
+            users.username
+
+        FROM activity_logs
+
+        LEFT JOIN users
+        ON users.id = activity_logs.user_id
+
+        ORDER BY activity_logs.id DESC
+    """).fetchall()
+
+    db.close()
+
+    return render_template(
+        "logs.html",
+        logs=logs_list
     )
 
-    if action.value == "enable":
-
-        if not settings["ai_channel_id"]:
-
-            await interaction.response.send_message(
-                "❌ حدد روم AI أولًا.",
-                ephemeral=True
-            )
-
-            return
-
-        set_ai_settings(
-            interaction.guild.id,
-            enabled=True
-        )
-
-        await interaction.response.send_message(
-            "✅ تم تفعيل AI.",
-            ephemeral=True
-        )
-
-    elif action.value == "disable":
-
-        set_ai_settings(
-            interaction.guild.id,
-            enabled=False
-        )
-
-        await interaction.response.send_message(
-            "🛑 تم تعطيل AI.",
-            ephemeral=True
-        )
-
-    elif action.value == "channel":
-
-        if not channel:
-
-            await interaction.response.send_message(
-                "❌ لازم تحدد الروم.",
-                ephemeral=True
-            )
-
-            return
-
-        set_ai_settings(
-            interaction.guild.id,
-            channel_id=channel.id
-        )
-
-        await interaction.response.send_message(
-            f"✅ تم تحديد روم AI إلى {channel.mention}.",
-            ephemeral=True
-        )
-
-    await send_log(
-        interaction.guild,
-        "mod_log_channel_id",
-        "🤖 إعداد AI",
-        f"تم تنفيذ إعداد AI: `{action.value}`.",
-        discord.Color.blue(),
-        actor=interaction.user
-    )
 
 # =========================================================
-# APP COMMAND ERROR
+# تشغيل قاعدة البيانات
 # =========================================================
 
-async def app_command_error_handler(
-    interaction,
-    error
-):
+init_db()
+create_owner()
 
-    logging.error(
-        f"Slash command error: {error}"
-    )
-
-    message = (
-        "❌ حدث خطأ أثناء تنفيذ الأمر."
-    )
-
-    try:
-
-        if interaction.response.is_done():
-
-            await interaction.followup.send(
-                message,
-                ephemeral=True
-            )
-
-        else:
-
-            await interaction.response.send_message(
-                message,
-                ephemeral=True
-            )
-
-    except Exception as send_error:
-
-        logging.error(
-            f"Command error response failed: {send_error}"
-        )
-
-bot.tree.on_error = app_command_error_handler
 
 # =========================================================
-# COMMAND COMPLETION LOG
-# =========================================================
-
-@bot.event
-async def on_app_command_completion(
-    interaction,
-    command
-):
-
-    if not interaction.guild:
-        return
-
-    try:
-
-        await send_log(
-            interaction.guild,
-            "mod_log_channel_id",
-            "📋 تنفيذ أمر",
-            f"تم تنفيذ الأمر `/{command.name}` بنجاح.",
-            discord.Color.blue(),
-            actor=interaction.user
-        )
-
-    except Exception as error:
-
-        logging.error(
-            f"Command completion log error: {error}"
-        )
-
-# =========================================================
-# ROLE / CHANNEL SECURITY
-# =========================================================
-
-async def protect_security_change(
-    guild,
-    action,
-    target,
-    audit_action,
-    description
-):
-
-    actor = await get_audit_actor_fast(
-        guild,
-        audit_action,
-        getattr(target, "id", None)
-    )
-
-    if not actor:
-        return
-
-    if bot.user and actor.id == bot.user.id:
-        return
-
-    actor_member = guild.get_member(
-        actor.id
-    )
-
-    if actor_member and is_whitelisted(
-        actor_member,
-        guild
-    ):
-
-        await send_log(
-            guild,
-            "role_log_channel_id",
-            f"✅ {action} مصرح",
-            description,
-            discord.Color.green(),
-            actor=actor_member
-        )
-
-        return
-
-    result = await ban_unauthorized_actor(
-        guild,
-        actor,
-        f"MTRP Security: Unauthorized {action}"
-    )
-
-    await security_report(
-        guild,
-        f"🚨 {action} غير مصرح",
-        description,
-        discord.Color.red(),
-        actor=actor_member or actor,
-        extra_fields=[
-            ("🔨 الإجراء", result)
-        ],
-        security_event=True
-    )
-
-@bot.event
-async def on_guild_role_create(
-    role
-):
-
-    await protect_security_change(
-        role.guild,
-        "إنشاء رتبة",
-        role,
-        discord.AuditLogAction.role_create,
-        f"تم إنشاء الرتبة `{role.name}`."
-    )
-
-@bot.event
-async def on_guild_role_delete(
-    role
-):
-
-    await protect_security_change(
-        role.guild,
-        "حذف رتبة",
-        role,
-        discord.AuditLogAction.role_delete,
-        f"تم حذف الرتبة `{role.name}`."
-    )
-
-@bot.event
-async def on_guild_channel_create(
-    channel
-):
-
-    if not channel.guild:
-        return
-
-    await protect_security_change(
-        channel.guild,
-        "إنشاء روم",
-        channel,
-        discord.AuditLogAction.channel_create,
-        f"تم إنشاء الروم `{channel.name}`."
-    )
-
-@bot.event
-async def on_guild_channel_delete(
-    channel
-):
-
-    if not channel.guild:
-        return
-
-    await protect_security_change(
-        channel.guild,
-        "حذف روم",
-        channel,
-        discord.AuditLogAction.channel_delete,
-        f"تم حذف الروم `{channel.name}`."
-    )
-
-# =========================================================
-# READY
-# =========================================================
-
-@bot.event
-async def on_ready():
-
-    if not getattr(
-        bot,
-        "_mt_views_loaded",
-        False
-    ):
-
-        bot.add_view(
-            TicketTypeView("general")
-        )
-
-        bot.add_view(
-            TicketTypeView("swat")
-        )
-
-        bot.add_view(
-            TicketTypeView("justice")
-        )
-
-        bot.add_view(
-            TicketTypeView("interior")
-        )
-
-        bot.add_view(
-            TicketTypeView("health")
-        )
-
-        bot.add_view(
-            TicketCloseView()
-        )
-
-        bot._mt_views_loaded = True
-
-    try:
-
-        await bot.tree.sync()
-
-        logging.info(
-            "تمت مزامنة أوامر Slash بنجاح."
-        )
-
-    except Exception as error:
-
-        logging.error(
-            f"Sync Error: {error}"
-        )
-
-    logging.info(
-        f"MTRP Bot Online: {bot.user}"
-    )
-
-# =========================================================
-# START
+# تشغيل الموقع
 # =========================================================
 
 if __name__ == "__main__":
 
-    TOKEN = os.getenv(
-        "TOKEN"
-    )
-
-    if not TOKEN:
-
-        raise RuntimeError(
-            "❌ لم يتم العثور على Environment Variable باسم TOKEN في Render."
+    app.run(
+        host="0.0.0.0",
+        port=int(
+            os.environ.get(
+                "PORT",
+                5000
+            )
         )
-
-    keep_alive(
-        bot
-    )
-
-    bot.run(
-        TOKEN
     )
