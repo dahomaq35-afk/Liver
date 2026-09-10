@@ -2598,7 +2598,7 @@ async def list_excluded_roles_command(
         interaction.guild.id
     )
 
-            if not role_ids:
+    if not role_ids:
 
         await interaction.response.send_message(
             "📋 لا توجد رتب مستثناة.",
@@ -2844,239 +2844,10 @@ SECTOR_OPTIONS = {
 }
 
 
-# =========================================================
-# TICKET MENUS
-# =========================================================
-
-TICKET_MENUS = {
-
-    "swat": {
-        "title": "🛡️ تكتات SWAT",
-        "description": "تكتات خاصة بقوات الـSWAT",
-        "role": ROLE_SWAT,
-        "category": "📂 تذاكر SWAT",
-        "options": [
-            (
-                "🚨 طلب تدخل SWAT",
-                "swat_intervention",
-                "طلب تدخل قوات الـSWAT"
-            ),
-            (
-                "🔫 بلاغ أمني",
-                "swat_security",
-                "بلاغ أمني لقوات الـSWAT"
-            ),
-            (
-                "👮 طلب دعم",
-                "swat_support",
-                "طلب دعم من قوات الـSWAT"
-            ),
-            (
-                "📋 شكوى على عضو",
-                "swat_complaint",
-                "شكوى على أحد أعضاء الـSWAT"
-            ),
-            (
-                "🎖️ استفسار SWAT",
-                "swat_question",
-                "استفسار خاص بقوات الـSWAT"
-            )
-        ]
-    },
-
-    "justice": {
-        "title": "⚖️ تكتات وزارة العدل",
-        "description": "تكتات خاصة بوزارة العدل",
-        "role": ROLE_JUSTICE,
-        "category": "📂 تذاكر وزارة العدل",
-        "options": [
-            (
-                "⚖️ طلب محكمة",
-                "court_request",
-                "طلب متعلق بالمحكمة"
-            ),
-            (
-                "📜 طلب محامي",
-                "lawyer_request",
-                "طلب محامي"
-            ),
-            (
-                "📋 تقديم قضية",
-                "case_request",
-                "تقديم قضية جديدة"
-            ),
-            (
-                "🧑‍⚖️ استفسار قضائي",
-                "justice_question",
-                "استفسار قضائي"
-            ),
-            (
-                "⚠️ شكوى على عضو",
-                "justice_complaint",
-                "شكوى على أحد أعضاء وزارة العدل"
-            )
-        ]
-    },
-
-    "interior": {
-        "title": "🪖 تكتات وزارة الداخلية",
-        "description": "تكتات خاصة بوزارة الداخلية",
-        "role": ROLE_POLICE,
-        "category": "📂 تذاكر وزارة الداخلية",
-        "options": [
-            (
-                "🚓 طلب الشرطة",
-                "police_request",
-                "طلب متعلق بالشرطة"
-            ),
-            (
-                "🚨 بلاغ أمني",
-                "police_report",
-                "بلاغ أمني"
-            ),
-            (
-                "👮 طلب مساعدة",
-                "police_help",
-                "طلب مساعدة من الشرطة"
-            ),
-            (
-                "📋 شكوى على عسكري",
-                "police_complaint",
-                "شكوى على أحد العسكريين"
-            ),
-            (
-                "📝 استفسار الداخلية",
-                "interior_question",
-                "استفسار خاص بوزارة الداخلية"
-            )
-        ]
-    },
-
-    "health": {
-        "title": "🏥 تكتات الصحة",
-        "description": "تكتات خاصة بوزارة الصحة",
-        "role": ROLE_HEALTH,
-        "category": "📂 تذاكر وزارة الصحة",
-        "options": [
-            (
-                "🏥 طلب إسعاف",
-                "ambulance_request",
-                "طلب إسعاف"
-            ),
-            (
-                "🚑 بلاغ طبي",
-                "medical_report",
-                "بلاغ طبي"
-            ),
-            (
-                "👨‍⚕️ طلب طبيب",
-                "doctor_request",
-                "طلب طبيب"
-            ),
-            (
-                "📋 شكوى على موظف",
-                "health_complaint",
-                "شكوى على أحد موظفي الصحة"
-            ),
-            (
-                "📝 استفسار الصحة",
-                "health_question",
-                "استفسار خاص بوزارة الصحة"
-            )
-        ]
-    },
-
-    "general": {
-        "title": "🎫 التكتات العامة",
-        "description": "التكتات العامة والاستفسارات والطلبات",
-        "role": None,
-        "category": "📂 التذاكر العامة",
-        "options": [
-            (
-                "📝 استفسار",
-                "general_question",
-                "للاستفسارات العامة"
-            ),
-            (
-                "🏅 طلب رتبة",
-                "rank_request",
-                "لطلبات الرتب"
-            ),
-            (
-                "⚠️ شكوى على إداري",
-                "admin_complaint",
-                "للشكاوى الإدارية"
-            ),
-            (
-                "🏪 طلب متجر",
-                "store_request",
-                "لطلبات المتاجر"
-            ),
-            (
-                "🎬 طلب سيناريو",
-                "scenario_request",
-                "لطلبات السيناريو"
-            ),
-            (
-                "🛡️ الإشراف",
-                "staff_request",
-                "للتواصل مع الإشراف"
-            )
-        ]
-    }
-}
-
-
-# =========================================================
-# TICKET DATABASE MIGRATION
-# =========================================================
-
-def ensure_ticket_type_column():
-
-    db = db_connect()
-    cursor = db.cursor()
-
-    try:
-
-        cursor.execute(
-            "PRAGMA table_info(tickets)"
-        )
-
-        columns = [
-            row[1]
-            for row in cursor.fetchall()
-        ]
-
-        if "ticket_type" not in columns:
-
-            cursor.execute(
-                """
-                ALTER TABLE tickets
-                ADD COLUMN ticket_type TEXT DEFAULT ''
-                """
-            )
-
-            db.commit()
-
-    except Exception as error:
-
-        logging.error(
-            f"Ticket DB migration error: {error}"
-        )
-
-    finally:
-
-        db.close()
-
-
 def find_role(
     guild,
     role_name
 ):
-
-    if not role_name:
-
-        return None
 
     for role in guild.roles:
 
@@ -3088,89 +2859,6 @@ def find_role(
             return role
 
     return None
-
-
-def get_ticket_whitelist_roles(
-    guild
-):
-
-    roles = []
-
-    whitelist_names = [
-        "MT | CEO",
-        "MT | COowner",
-        "MT | Owner",
-        "Bot"
-    ]
-
-    for role_name in whitelist_names:
-
-        role = find_role(
-            guild,
-            role_name
-        )
-
-        if role and role not in roles:
-
-            roles.append(role)
-
-    return roles
-
-
-def ticket_safe_name(
-    member
-):
-
-    name = member.name.lower()
-
-    allowed = (
-        "abcdefghijklmnopqrstuvwxyz"
-        "0123456789"
-        "-"
-        "_"
-    )
-
-    name = "".join(
-        char
-        for char in name
-        if char in allowed
-    )
-
-    if not name:
-
-        name = "user"
-
-    return name[:70]
-
-
-async def get_or_create_ticket_category(
-    guild,
-    category_name
-):
-
-    category = discord.utils.get(
-        guild.categories,
-        name=category_name
-    )
-
-    if category:
-
-        return category
-
-    try:
-
-        return await guild.create_category(
-            category_name,
-            reason="MT Ticket System"
-        )
-
-    except Exception as error:
-
-        logging.error(
-            f"Ticket category error: {error}"
-        )
-
-        return None
 
 
 # =========================================================
@@ -3202,26 +2890,12 @@ class TicketCloseView(
         channel = interaction.channel
         guild = interaction.guild
 
-        if not channel or not guild:
-
-            await interaction.response.send_message(
-                "❌ تعذر العثور على التذكرة.",
-                ephemeral=True
-            )
-
-            return
-
-        ensure_ticket_type_column()
-
         db = db_connect()
         cursor = db.cursor()
 
         cursor.execute(
             """
-            SELECT
-                user_id,
-                sector,
-                ticket_type
+            SELECT user_id, sector
             FROM tickets
             WHERE channel_id = ?
             AND closed = 0
@@ -3244,17 +2918,13 @@ class TicketCloseView(
 
             return
 
-        owner_id = row[0]
-        sector_name = row[1]
-        ticket_type = row[2] or "غير محدد"
-
         if not (
             is_whitelisted(
                 interaction.user,
                 guild
             )
             or
-            interaction.user.id == owner_id
+            interaction.user.id == row[0]
         ):
 
             await interaction.response.send_message(
@@ -3288,7 +2958,9 @@ class TicketCloseView(
 
                 if not content:
 
-                    content = "[Embed / Attachment]"
+                    content = (
+                        "[Embed / Attachment]"
+                    )
 
                 lines.append(
                     f"[{timestamp}] "
@@ -3341,19 +3013,13 @@ class TicketCloseView(
 
             embed.add_field(
                 name="👤 صاحب التذكرة",
-                value=f"<@{owner_id}>",
+                value=f"<@{row[0]}>",
                 inline=True
             )
 
             embed.add_field(
                 name="📂 القطاع",
-                value=sector_name,
-                inline=True
-            )
-
-            embed.add_field(
-                name="📋 نوع التذكرة",
-                value=ticket_type,
+                value=row[1],
                 inline=True
             )
 
@@ -3427,522 +3093,7 @@ class TicketCloseView(
 
 
 # =========================================================
-# TICKET MENU VIEW
-# =========================================================
-
-class TicketMenuView(
-    discord.ui.View
-):
-
-    def __init__(
-        self,
-        menu_key
-    ):
-
-        super().__init__(
-            timeout=None
-        )
-
-        self.menu_key = menu_key
-
-        menu_data = TICKET_MENUS[
-            menu_key
-        ]
-
-        options = []
-
-        for (
-            label,
-            value,
-            description
-        ) in menu_data["options"]:
-
-            emoji = label[0]
-
-            clean_label = label
-
-            if len(clean_label) > 100:
-
-                clean_label = clean_label[:97] + "..."
-
-            if len(description) > 100:
-
-                description = (
-                    description[:97] + "..."
-                )
-
-            options.append(
-                discord.SelectOption(
-                    label=clean_label,
-                    value=value,
-                    description=description,
-                    emoji=emoji
-                )
-            )
-
-        select = discord.ui.Select(
-            placeholder="اختر نوع التذكرة",
-            min_values=1,
-            max_values=1,
-            options=options,
-            custom_id=f"mt_ticket_menu_{menu_key}"
-        )
-
-        select.callback = self.ticket_selected
-
-        self.add_item(
-            select
-        )
-
-    async def ticket_selected(
-        self,
-        interaction: discord.Interaction
-    ):
-
-        guild = interaction.guild
-        member = interaction.user
-
-        if not guild:
-
-            await interaction.response.send_message(
-                "❌ لا يمكن استخدام التكت هنا.",
-                ephemeral=True
-            )
-
-            return
-
-        menu_data = TICKET_MENUS[
-            self.menu_key
-        ]
-
-        select = self.children[0]
-
-        ticket_type = select.values[0]
-
-        selected_label = ticket_type
-
-        for (
-            label,
-            value,
-            description
-        ) in menu_data["options"]:
-
-            if value == ticket_type:
-
-                selected_label = label
-                break
-
-        ensure_ticket_type_column()
-
-        db = db_connect()
-        cursor = db.cursor()
-
-        cursor.execute(
-            """
-            SELECT
-                channel_id
-            FROM tickets
-            WHERE guild_id = ?
-            AND user_id = ?
-            AND closed = 0
-            """,
-            (
-                guild.id,
-                member.id
-            )
-        )
-
-        existing_rows = cursor.fetchall()
-
-        db.close()
-
-        for existing in existing_rows:
-
-            existing_channel = guild.get_channel(
-                existing[0]
-            )
-
-            if existing_channel:
-
-                await interaction.response.send_message(
-                    (
-                        "❌ عندك تذكرة مفتوحة بالفعل: "
-                        f"{existing_channel.mention}"
-                    ),
-                    ephemeral=True
-                )
-
-                return
-
-            else:
-
-                db = db_connect()
-                cursor = db.cursor()
-
-                cursor.execute(
-                    """
-                    UPDATE tickets
-                    SET closed = 1
-                    WHERE channel_id = ?
-                    """,
-                    (
-                        existing[0],
-                    )
-                )
-
-                db.commit()
-                db.close()
-
-        category = await get_or_create_ticket_category(
-            guild,
-            menu_data["category"]
-        )
-
-        if not category:
-
-            await interaction.response.send_message(
-                "❌ تعذر إنشاء قسم التذاكر.",
-                ephemeral=True
-            )
-
-            return
-
-        department_role = find_role(
-            guild,
-            menu_data["role"]
-        )
-
-        overwrites = {
-
-            guild.default_role:
-                discord.PermissionOverwrite(
-                    view_channel=False
-                ),
-
-            member:
-                discord.PermissionOverwrite(
-                    view_channel=True,
-                    send_messages=True,
-                    read_message_history=True,
-                    attach_files=True
-                ),
-
-            guild.me:
-                discord.PermissionOverwrite(
-                    view_channel=True,
-                    send_messages=True,
-                    manage_channels=True,
-                    manage_messages=True,
-                    read_message_history=True
-                )
-        }
-
-        if department_role:
-
-            overwrites[
-                department_role
-            ] = discord.PermissionOverwrite(
-                view_channel=True,
-                send_messages=True,
-                read_message_history=True
-            )
-
-        whitelist_roles = get_ticket_whitelist_roles(
-            guild
-        )
-
-        for role in whitelist_roles:
-
-            overwrites[
-                role
-            ] = discord.PermissionOverwrite(
-                view_channel=True,
-                send_messages=True,
-                read_message_history=True
-            )
-
-        base_name = (
-            f"ticket-{ticket_safe_name(member)}"
-        )
-
-        channel_name = base_name[:95]
-
-        existing_names = {
-            channel.name
-            for channel in guild.text_channels
-        }
-
-        counter = 2
-
-        while channel_name in existing_names:
-
-            suffix = f"-{counter}"
-
-            channel_name = (
-                base_name[:95 - len(suffix)]
-                + suffix
-            )
-
-            counter += 1
-
-        try:
-
-            channel = await guild.create_text_channel(
-                name=channel_name,
-                category=category,
-                overwrites=overwrites,
-                reason="MT Ticket System"
-            )
-
-        except Exception as error:
-
-            logging.error(
-                f"Ticket channel error: {error}"
-            )
-
-            await interaction.response.send_message(
-                "❌ تعذر إنشاء التذكرة. تأكد من صلاحيات البوت.",
-                ephemeral=True
-            )
-
-            return
-
-        sector_name = (
-            menu_data["role"]
-            if menu_data["role"]
-            else "عام"
-        )
-
-        db = db_connect()
-        cursor = db.cursor()
-
-        cursor.execute(
-            """
-            INSERT INTO tickets
-            (
-                guild_id,
-                user_id,
-                channel_id,
-                sector,
-                ticket_type,
-                created_at,
-                closed
-            )
-            VALUES (?, ?, ?, ?, ?, ?, 0)
-            """,
-            (
-                guild.id,
-                member.id,
-                channel.id,
-                sector_name,
-                selected_label,
-                now_utc()
-            )
-        )
-
-        db.commit()
-        db.close()
-
-        embed = discord.Embed(
-            title="🎫 تذكرة MT",
-            description=(
-                f"مرحبًا {member.mention}\n\n"
-                f"**📂 القسم:** {sector_name}\n"
-                f"**📋 نوع الطلب:** {selected_label}\n\n"
-                "اكتب طلبك أو مشكلتك بالتفصيل، "
-                "وسيتم خدمتك من المختصين.\n\n"
-                "🔒 عند الانتهاء استخدم زر إغلاق التذكرة."
-            ),
-            color=discord.Color.blurple()
-        )
-
-        embed.add_field(
-            name="📌 حالة التذكرة",
-            value="🟢 مفتوحة",
-            inline=True
-        )
-
-        embed.add_field(
-            name="👤 صاحب التذكرة",
-            value=member.mention,
-            inline=True
-        )
-
-        embed.set_footer(
-            text="MT Ticket System"
-        )
-
-        try:
-
-            await channel.send(
-                content=member.mention,
-                embed=embed,
-                view=TicketCloseView()
-            )
-
-        except Exception as error:
-
-            logging.error(
-                f"Ticket welcome message error: {error}"
-            )
-
-        await interaction.response.send_message(
-            f"✅ تم إنشاء تذكرتك: {channel.mention}",
-            ephemeral=True
-        )
-
-        extra_fields = [
-            (
-                "📂 القسم",
-                sector_name
-            ),
-            (
-                "📋 نوع التذكرة",
-                selected_label
-            ),
-            (
-                "📍 القناة",
-                channel.mention
-            )
-        ]
-
-        await send_log(
-            guild,
-            "channel_log_channel_id",
-            "🎫 فتح تذكرة",
-            "تم فتح تذكرة جديدة.",
-            discord.Color.blue(),
-            actor=member,
-            extra_fields=extra_fields
-        )
-
-
-# =========================================================
-# TICKET PANEL COMMANDS
-# =========================================================
-
-async def send_ticket_menu(
-    interaction,
-    menu_key
-):
-
-    if not is_whitelisted(
-        interaction.user,
-        interaction.guild
-    ):
-
-        await interaction.response.send_message(
-            "❌ ما عندك صلاحية.",
-            ephemeral=True
-        )
-
-        return
-
-    menu_data = TICKET_MENUS[
-        menu_key
-    ]
-
-    embed = discord.Embed(
-        title=menu_data["title"],
-        description=(
-            f"{menu_data['description']}\n\n"
-            "اختر نوع التذكرة من القائمة بالأسفل:"
-        ),
-        color=discord.Color.blurple()
-    )
-
-    for (
-        label,
-        value,
-        description
-    ) in menu_data["options"]:
-
-        embed.add_field(
-            name=label,
-            value=description,
-            inline=False
-        )
-
-    await interaction.response.send_message(
-        embed=embed,
-        view=TicketMenuView(
-            menu_key
-        )
-    )
-
-
-@bot.tree.command(
-    name="swat",
-    description="إرسال لوحة تكتات SWAT"
-)
-async def swat_ticket(
-    interaction: discord.Interaction
-):
-
-    await send_ticket_menu(
-        interaction,
-        "swat"
-    )
-
-
-@bot.tree.command(
-    name="justice",
-    description="إرسال لوحة تكتات وزارة العدل"
-)
-async def justice_ticket(
-    interaction: discord.Interaction
-):
-
-    await send_ticket_menu(
-        interaction,
-        "justice"
-    )
-
-
-@bot.tree.command(
-    name="interior",
-    description="إرسال لوحة تكتات وزارة الداخلية"
-)
-async def interior_ticket(
-    interaction: discord.Interaction
-):
-
-    await send_ticket_menu(
-        interaction,
-        "interior"
-    )
-
-
-@bot.tree.command(
-    name="health",
-    description="إرسال لوحة تكتات وزارة الصحة"
-)
-async def health_ticket(
-    interaction: discord.Interaction
-):
-
-    await send_ticket_menu(
-        interaction,
-        "health"
-    )
-
-
-@bot.tree.command(
-    name="general",
-    description="إرسال لوحة التكتات العامة"
-)
-async def general_ticket(
-    interaction: discord.Interaction
-):
-
-    await send_ticket_menu(
-        interaction,
-        "general"
-    )
-
-
-# =========================================================
-# OLD TICKET PANEL
+# TICKET SELECT
 # =========================================================
 
 class TicketSelectView(
@@ -3955,7 +3106,10 @@ class TicketSelectView(
             timeout=None
         )
 
-        options = [
+    @discord.ui.select(
+        placeholder="اختر القطاع لفتح التذكرة",
+        custom_id="mt_ticket_sector",
+        options=[
             discord.SelectOption(
                 label="Justice",
                 value="justice",
@@ -3977,30 +3131,15 @@ class TicketSelectView(
                 emoji="🏥"
             )
         ]
-
-        select = discord.ui.Select(
-            placeholder="اختر القطاع لفتح التذكرة",
-            min_values=1,
-            max_values=1,
-            options=options,
-            custom_id="mt_ticket_sector"
-        )
-
-        select.callback = self.select_sector
-
-        self.add_item(
-            select
-        )
-
+    )
     async def select_sector(
         self,
-        interaction: discord.Interaction
+        interaction: discord.Interaction,
+        select: discord.ui.Select
     ):
 
         guild = interaction.guild
         member = interaction.user
-
-        select = self.children[0]
 
         sector_key = select.values[0]
 
@@ -4009,8 +3148,6 @@ class TicketSelectView(
                 sector_key
             ]
         )
-
-        ensure_ticket_type_column()
 
         db = db_connect()
         cursor = db.cursor()
@@ -4042,10 +3179,7 @@ class TicketSelectView(
             if existing_channel:
 
                 await interaction.response.send_message(
-                    (
-                        "❌ عندك تذكرة مفتوحة بالفعل: "
-                        f"{existing_channel.mention}"
-                    ),
+                    f"❌ عندك تذكرة مفتوحة بالفعل: {existing_channel.mention}",
                     ephemeral=True
                 )
 
@@ -4083,8 +3217,7 @@ class TicketSelectView(
                 discord.PermissionOverwrite(
                     view_channel=True,
                     send_messages=True,
-                    read_message_history=True,
-                    attach_files=True
+                    read_message_history=True
                 ),
 
             guild.me:
@@ -4092,7 +3225,6 @@ class TicketSelectView(
                     view_channel=True,
                     send_messages=True,
                     manage_channels=True,
-                    manage_messages=True,
                     read_message_history=True
                 )
         }
@@ -4107,20 +3239,8 @@ class TicketSelectView(
                 read_message_history=True
             )
 
-        for role in get_ticket_whitelist_roles(
-            guild
-        ):
-
-            overwrites[
-                role
-            ] = discord.PermissionOverwrite(
-                view_channel=True,
-                send_messages=True,
-                read_message_history=True
-            )
-
         channel = await guild.create_text_channel(
-            name=f"ticket-{ticket_safe_name(member)}",
+            name=f"ticket-{member.name}",
             category=category,
             overwrites=overwrites,
             reason="MT Ticket System"
@@ -4137,18 +3257,15 @@ class TicketSelectView(
                 user_id,
                 channel_id,
                 sector,
-                ticket_type,
-                created_at,
-                closed
+                created_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, 0)
+            VALUES (?, ?, ?, ?, ?)
             """,
             (
                 guild.id,
                 member.id,
                 channel.id,
                 sector_role_name,
-                "قطاع عام",
                 now_utc()
             )
         )
@@ -4200,7 +3317,7 @@ class TicketSelectView(
 
 
 # =========================================================
-# OLD TICKET PANEL COMMAND
+# TICKET PANEL
 # =========================================================
 
 @bot.tree.command(
@@ -5211,35 +4328,10 @@ async def on_ready():
         False
     ):
 
-        ensure_ticket_type_column()
-
-        # لوحات التكتات الجديدة
-        bot.add_view(
-            TicketMenuView("swat")
-        )
-
-        bot.add_view(
-            TicketMenuView("justice")
-        )
-
-        bot.add_view(
-            TicketMenuView("interior")
-        )
-
-        bot.add_view(
-            TicketMenuView("health")
-        )
-
-        bot.add_view(
-            TicketMenuView("general")
-        )
-
-        # اللوحة القديمة
         bot.add_view(
             TicketSelectView()
         )
 
-        # زر إغلاق التذاكر
         bot.add_view(
             TicketCloseView()
         )
