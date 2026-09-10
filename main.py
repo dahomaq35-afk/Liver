@@ -1,6 +1,7 @@
 import os
 import io
 import re
+import time
 import asyncio
 import datetime
 import logging
@@ -30,6 +31,9 @@ ROLE_JUSTICE = "𝗠𝗧 | Justice"
 ROLE_POLICE = "𝗠𝗧 | LSPD"
 ROLE_SWAT = "𝗠𝗧 | S.W.A.T"
 ROLE_HEALTH = "𝗠𝗧 | PHMC"
+
+# دور وزارة الداخلية الإضافي إن كان موجودًا
+ROLE_INTERIOR = "𝗠𝗧 | Interior"
 
 
 # =========================================================
@@ -691,7 +695,6 @@ if OPENAI_API_KEY:
         api_key=OPENAI_API_KEY
     )
 
-
 AI_MODEL = os.getenv(
     "OPENAI_MODEL",
     "gpt-5.6-luna"
@@ -704,7 +707,7 @@ AI_MODEL = os.getenv(
 
 SUPPORT_CHANNEL_ID = 1541582061893062656
 
-# كلمات وأسئلة تدل على أن المستخدم يسأل عن اسم/هوية البوت
+
 NAME_KEYWORDS = [
     "وش اسمك",
     "وش اسمك؟",
@@ -743,13 +746,11 @@ NAME_KEYWORDS = [
 # =========================================================
 
 SERVER_KEYWORDS = [
-    # MT
     "mtrp",
     "ام تي",
     "امتي",
     "ام تى",
 
-    # السيرفر
     "السيرفر",
     "سيرفر",
     "سيرفرك",
@@ -757,7 +758,6 @@ SERVER_KEYWORDS = [
     "سيرفر mt",
     "سيرفر ام تي",
 
-    # الإدارة
     "الاداره",
     "الإدارة",
     "اداره",
@@ -774,7 +774,6 @@ SERVER_KEYWORDS = [
     "المشرف",
     "الادارة",
 
-    # القوانين
     "القانون",
     "القوانين",
     "قانون السيرفر",
@@ -784,7 +783,6 @@ SERVER_KEYWORDS = [
     "قواعد السيرفر",
     "قواعد",
 
-    # التقديم
     "التقديم",
     "تقديم",
     "التوظيف",
@@ -797,7 +795,6 @@ SERVER_KEYWORDS = [
     "متى يفتح",
     "التقديم متى",
 
-    # القطاعات
     "القطاعات",
     "قطاع",
     "الشرطة",
@@ -809,26 +806,22 @@ SERVER_KEYWORDS = [
     "العدل",
     "الصحة",
 
-    # الرتب
     "الرتب",
     "رتبة",
     "رتب",
     "الرتبة",
     "رتب السيرفر",
 
-    # الفعاليات
     "الفعالية",
     "الفعاليات",
     "فعالية",
     "فعاليات",
 
-    # التحديثات
     "التحديث",
     "التحديثات",
     "تحديث",
     "تحديثات",
 
-    # الملكية والإدارة
     "المؤسس",
     "المؤسسين",
     "المؤسس مين",
@@ -841,7 +834,6 @@ SERVER_KEYWORDS = [
     "coowner",
     "ceo",
 
-    # البوت ولوحة التحكم
     "البوت",
     "بوت mt",
     "لوحة التحكم",
@@ -851,7 +843,6 @@ SERVER_KEYWORDS = [
     "اعدادات السيرفر",
     "إعدادات السيرفر",
 
-    # التذاكر والدعم
     "التذاكر",
     "تذكرة",
     "التذكرة",
@@ -859,7 +850,6 @@ SERVER_KEYWORDS = [
     "الدعم",
     "support",
 
-    # معلومات داخلية
     "معلومات السيرفر",
     "معلومات خاصة",
     "معلومات داخليه",
@@ -880,18 +870,15 @@ def normalize_ai_text(text):
 
     text = str(text)
 
-    # توحيد الحروف العربية
     text = text.replace("أ", "ا")
     text = text.replace("إ", "ا")
     text = text.replace("آ", "ا")
     text = text.replace("ة", "ه")
     text = text.replace("ى", "ي")
 
-    # توحيد بعض علامات الترقيم
     text = text.replace("؟", "?")
     text = text.replace("،", " ")
 
-    # إزالة التشكيل
     text = unicodedata.normalize(
         "NFKD",
         text
@@ -903,7 +890,6 @@ def normalize_ai_text(text):
         if not unicodedata.combining(char)
     )
 
-    # مسافات موحدة
     text = re.sub(
         r"\s+",
         " ",
@@ -914,7 +900,10 @@ def normalize_ai_text(text):
 
 
 def is_name_question(question):
-    normalized = normalize_ai_text(question).rstrip("?").strip()
+
+    normalized = normalize_ai_text(
+        question
+    ).rstrip("?").strip()
 
     NAME_QUESTIONS = {
         "وش اسمك",
@@ -957,44 +946,6 @@ def is_name_question(question):
         for x in NAME_QUESTIONS
     }
 
-    normalized = normalize_ai_text(
-        question
-    )
-
-    # أسئلة الاسم المباشرة
-    for keyword in NAME_KEYWORDS:
-
-        keyword_normalized = normalize_ai_text(
-            keyword
-        )
-
-        if normalized == keyword_normalized:
-            return True
-
-        if keyword_normalized in normalized:
-            return True
-
-    # حالات إضافية
-    name_patterns = [
-        r"\bوش\s+اسم",
-        r"\bما\s+اسم",
-        r"\bمين\s+انت",
-        r"\bمن\s+انت",
-        r"\bوش\s+تسمى",
-        r"\bماذا\s+تسمى",
-        r"\bwho\s+are\s+you\b",
-        r"\bwhat\s+is\s+your\s+name\b"
-    ]
-
-    return any(
-        re.search(
-            pattern,
-            normalized,
-            re.IGNORECASE
-        )
-        for pattern in name_patterns
-    )
-
 
 def is_server_question(question):
 
@@ -1002,7 +953,6 @@ def is_server_question(question):
         question
     )
 
-    # حماية MT / MTRP بدون اعتبار أي كلمة تحتوي mt سؤال سيرفر
     if re.search(
         r"\bmtrp\b",
         normalized
@@ -1068,20 +1018,11 @@ async def ask_ai(
     guild_name
 ):
 
-    # =====================================================
-    # الاسم والهوية
-    # =====================================================
-
     if is_name_question(
         question
     ):
 
         return "MTRP"
-
-
-    # =====================================================
-    # معلومات السيرفر
-    # =====================================================
 
     if is_server_question(
         question
@@ -1089,21 +1030,11 @@ async def ask_ai(
 
         return get_support_message()
 
-
-    # =====================================================
-    # AI غير مهيأ
-    # =====================================================
-
     if not ai_client:
 
         return (
             "⚠️ نظام الذكاء الاصطناعي غير مهيأ حاليًا."
         )
-
-
-    # =====================================================
-    # SYSTEM PROMPT
-    # =====================================================
 
     system_prompt = f"""
 أنت MTRP.
@@ -1176,7 +1107,7 @@ MTRP
 
 في هذه الحالات لا تخمن ولا تخترع ولا تستخدم معلومات من سياق المحادثة.
 
-لكن الكود الخارجي هو الذي يتعامل مع هذه الأسئلة ويرسل المستخدم للدعم الفني.
+الكود الخارجي هو الذي يتعامل مع هذه الأسئلة ويرسل المستخدم للدعم الفني.
 
 الأسئلة العامة التي لا تتعلق بالسيرفر:
 أجب عنها بشكل طبيعي ومفيد.
@@ -1192,11 +1123,6 @@ MTRP
 
 إذا لم تعرف إجابة سؤال عام، قل بوضوح إنك غير متأكد بدل اختراع معلومة.
 """
-
-
-    # =====================================================
-    # OPENAI REQUEST
-    # =====================================================
 
     try:
 
@@ -1214,19 +1140,9 @@ MTRP
                 "⚠️ ما قدرت أجهز رد حاليًا."
             )
 
-
-        # =================================================
-        # منع تسريب اسم ChatGPT من رد النموذج
-        # =================================================
-
         answer = remove_ai_identity_leaks(
             answer
         )
-
-
-        # =================================================
-        # حماية إضافية للهوية
-        # =================================================
 
         if is_name_question(
             question
@@ -1234,9 +1150,7 @@ MTRP
 
             return "MTRP"
 
-
         return answer[:4000]
-
 
     except Exception as error:
 
@@ -1247,7 +1161,7 @@ MTRP
         return (
             "⚠️ حدث خطأ مؤقت في نظام الذكاء الاصطناعي."
         )
-        
+
 
 # =========================================================
 # LOG CHANNEL
@@ -2836,14 +2750,6 @@ async def set_channel_log(
 # TICKET SYSTEM
 # =========================================================
 
-SECTOR_OPTIONS = {
-    "justice": ROLE_JUSTICE,
-    "police": ROLE_POLICE,
-    "swat": ROLE_SWAT,
-    "health": ROLE_HEALTH
-}
-
-
 def find_role(
     guild,
     role_name
@@ -3093,239 +2999,544 @@ class TicketCloseView(
 
 
 # =========================================================
-# TICKET SELECT
+# NEW TICKET MENUS
 # =========================================================
 
-class TicketSelectView(
-    discord.ui.View
+GENERAL_TICKET_OPTIONS = [
+    (
+        "📝 استفسار",
+        "general_question",
+        "للاستفسارات العامة"
+    ),
+    (
+        "🏅 طلب رتبة",
+        "general_rank",
+        "لطلبات الرتب"
+    ),
+    (
+        "⚠️ شكوى على إداري",
+        "general_admin_complaint",
+        "للشكاوى الإدارية"
+    ),
+    (
+        "🏪 طلب متجر",
+        "general_store",
+        "لطلبات المتاجر"
+    ),
+    (
+        "🎬 طلب سيناريو",
+        "general_scenario",
+        "لطلبات السيناريو"
+    ),
+    (
+        "🛡️ الإشراف",
+        "general_supervision",
+        "للتواصل مع الإشراف"
+    )
+]
+
+SWAT_TICKET_OPTIONS = [
+    (
+        "📝 استفسار SWAT",
+        "swat_question",
+        "للاستفسارات الخاصة بـ SWAT"
+    ),
+    (
+        "📋 طلب SWAT",
+        "swat_request",
+        "لتقديم طلبات خاصة بـ SWAT"
+    ),
+    (
+        "⚠️ شكوى SWAT",
+        "swat_complaint",
+        "للشكاوى المتعلقة بـ SWAT"
+    )
+]
+
+JUSTICE_TICKET_OPTIONS = [
+    (
+        "📝 استفسار قضائي",
+        "justice_question",
+        "للاستفسارات عن القضاء"
+    ),
+    (
+        "⚖️ قضية",
+        "justice_case",
+        "لرفع قضية أو متابعة قضية"
+    ),
+    (
+        "📋 طلب قضائي",
+        "justice_request",
+        "للطلبات المتعلقة بالعدل"
+    ),
+    (
+        "⚠️ شكوى",
+        "justice_complaint",
+        "للشكاوى المتعلقة بوزارة العدل"
+    )
+]
+
+INTERIOR_TICKET_OPTIONS = [
+    (
+        "📝 استفسار الداخلية",
+        "interior_question",
+        "للاستفسارات الخاصة بالداخلية"
+    ),
+    (
+        "📋 طلب",
+        "interior_request",
+        "للطلبات المتعلقة بالوزارة"
+    ),
+    (
+        "⚠️ شكوى",
+        "interior_complaint",
+        "للشكاوى على قطاعات الداخلية"
+    ),
+    (
+        "🎖️ طلب رتبة",
+        "interior_rank",
+        "لطلبات الرتب والترقيات"
+    )
+]
+
+HEALTH_TICKET_OPTIONS = [
+    (
+        "📝 استفسار صحي",
+        "health_question",
+        "للاستفسارات الصحية"
+    ),
+    (
+        "📋 طلب صحي",
+        "health_request",
+        "للطلبات المتعلقة بالصحة"
+    ),
+    (
+        "⚠️ شكوى",
+        "health_complaint",
+        "للشكاوى المتعلقة بالصحه"
+    )
+]
+
+
+TICKET_CONFIGS = {
+
+    "general": {
+        "title": "🎫 التذاكر العامة",
+        "description": "التكتات العامة والاستفسارات والطلبات",
+        "category": "📂 التذاكر العامة",
+        "roles": [],
+        "options": GENERAL_TICKET_OPTIONS
+    },
+
+    "swat": {
+        "title": "🛡️ تذاكر S.W.A.T",
+        "description": "التذاكر الخاصة بقطاع S.W.A.T",
+        "category": "📂 تذاكر - S.W.A.T",
+        "roles": [
+            ROLE_SWAT
+        ],
+        "options": SWAT_TICKET_OPTIONS
+    },
+
+    "justice": {
+        "title": "⚖️ تذاكر وزارة العدل",
+        "description": "التذاكر الخاصة بوزارة العدل",
+        "category": "📂 تذاكر - Justice",
+        "roles": [
+            ROLE_JUSTICE
+        ],
+        "options": JUSTICE_TICKET_OPTIONS
+    },
+
+    "interior": {
+        "title": "🏛️ تذاكر وزارة الداخلية",
+        "description": "التذاكر الخاصة بوزارة الداخلية",
+        "category": "📂 تذاكر - Interior",
+        "roles": [
+            ROLE_INTERIOR,
+            ROLE_POLICE
+        ],
+        "options": INTERIOR_TICKET_OPTIONS
+    },
+
+    "health": {
+        "title": "🏥 تذاكر الصحة",
+        "description": "التذاكر الخاصة بقطاع الصحة",
+        "category": "📂 تذاكر - PHMC",
+        "roles": [
+            ROLE_HEALTH
+        ],
+        "options": HEALTH_TICKET_OPTIONS
+    }
+}
+
+
+# =========================================================
+# CREATE TICKET
+# =========================================================
+
+async def create_ticket(
+    interaction,
+    department,
+    option_key
 ):
 
-    def __init__(self):
+    guild = interaction.guild
+    member = interaction.user
 
-        super().__init__(
-            timeout=None
+    if not guild:
+
+        await interaction.response.send_message(
+            "❌ هذا النظام داخل السيرفر فقط.",
+            ephemeral=True
         )
 
-    @discord.ui.select(
-        placeholder="اختر القطاع لفتح التذكرة",
-        custom_id="mt_ticket_sector",
-        options=[
-            discord.SelectOption(
-                label="Justice",
-                value="justice",
-                emoji="⚖️"
-            ),
-            discord.SelectOption(
-                label="LSPD",
-                value="police",
-                emoji="🚓"
-            ),
-            discord.SelectOption(
-                label="S.W.A.T",
-                value="swat",
-                emoji="🛡️"
-            ),
-            discord.SelectOption(
-                label="PHMC",
-                value="health",
-                emoji="🏥"
-            )
-        ]
+        return
+
+    config = TICKET_CONFIGS.get(
+        department
     )
-    async def select_sector(
-        self,
-        interaction: discord.Interaction,
-        select: discord.ui.Select
-    ):
 
-        guild = interaction.guild
-        member = interaction.user
+    if not config:
 
-        sector_key = select.values[0]
-
-        sector_role_name = (
-            SECTOR_OPTIONS[
-                sector_key
-            ]
+        await interaction.response.send_message(
+            "❌ حدث خطأ في إعداد التذكرة.",
+            ephemeral=True
         )
 
-        db = db_connect()
-        cursor = db.cursor()
+        return
 
-        cursor.execute(
-            """
-            SELECT channel_id
-            FROM tickets
-            WHERE guild_id = ?
-            AND user_id = ?
-            AND closed = 0
-            """,
-            (
-                guild.id,
-                member.id
+    option_data = None
+
+    for option in config["options"]:
+
+        if option[1] == option_key:
+
+            option_data = option
+            break
+
+    if not option_data:
+
+        await interaction.response.send_message(
+            "❌ نوع التذكرة غير معروف.",
+            ephemeral=True
+        )
+
+        return
+
+    option_label = option_data[0]
+
+    department_roles = []
+
+    for role_name in config["roles"]:
+
+        role = find_role(
+            guild,
+            role_name
+        )
+
+        if role:
+            department_roles.append(
+                role
             )
+
+    db = db_connect()
+    cursor = db.cursor()
+
+    cursor.execute(
+        """
+        SELECT channel_id
+        FROM tickets
+        WHERE guild_id = ?
+        AND user_id = ?
+        AND closed = 0
+        """,
+        (
+            guild.id,
+            member.id
+        )
+    )
+
+    existing = cursor.fetchone()
+
+    db.close()
+
+    if existing:
+
+        existing_channel = guild.get_channel(
+            existing[0]
         )
 
-        existing = cursor.fetchone()
+        if existing_channel:
 
-        db.close()
-
-        if existing:
-
-            existing_channel = guild.get_channel(
-                existing[0]
+            await interaction.response.send_message(
+                f"❌ عندك تذكرة مفتوحة بالفعل: {existing_channel.mention}",
+                ephemeral=True
             )
 
-            if existing_channel:
+            return
 
-                await interaction.response.send_message(
-                    f"❌ عندك تذكرة مفتوحة بالفعل: {existing_channel.mention}",
-                    ephemeral=True
-                )
+    category = discord.utils.get(
+        guild.categories,
+        name=config["category"]
+    )
 
-                return
+    if not category:
 
-        category_name = (
-            f"📂 تذاكر قطاع - "
-            f"{sector_role_name}"
-        )
-
-        category = discord.utils.get(
-            guild.categories,
-            name=category_name
-        )
-
-        if not category:
+        try:
 
             category = await guild.create_category(
-                category_name
+                config["category"],
+                reason="MT Ticket System"
             )
 
-        sector_role = find_role(
-            guild,
-            sector_role_name
-        )
+        except Exception as error:
 
-        overwrites = {
+            logging.error(
+                f"Ticket category error: {error}"
+            )
 
-            guild.default_role:
-                discord.PermissionOverwrite(
-                    view_channel=False
-                ),
+            await interaction.response.send_message(
+                "❌ ما قدرت أنشئ تصنيف التذاكر.",
+                ephemeral=True
+            )
 
-            member:
-                discord.PermissionOverwrite(
-                    view_channel=True,
-                    send_messages=True,
-                    read_message_history=True
-                ),
+            return
 
-            guild.me:
-                discord.PermissionOverwrite(
-                    view_channel=True,
-                    send_messages=True,
-                    manage_channels=True,
-                    read_message_history=True
-                )
-        }
+    overwrites = {
 
-        if sector_role:
+        guild.default_role:
+            discord.PermissionOverwrite(
+                view_channel=False
+            ),
 
-            overwrites[
-                sector_role
-            ] = discord.PermissionOverwrite(
+        member:
+            discord.PermissionOverwrite(
                 view_channel=True,
                 send_messages=True,
                 read_message_history=True
+            ),
+
+        guild.me:
+            discord.PermissionOverwrite(
+                view_channel=True,
+                send_messages=True,
+                manage_channels=True,
+                read_message_history=True
             )
+    }
+
+    for role in department_roles:
+
+        overwrites[role] = discord.PermissionOverwrite(
+            view_channel=True,
+            send_messages=True,
+            read_message_history=True
+        )
+
+    safe_name = re.sub(
+        r"[^a-zA-Z0-9\u0600-\u06FF_-]",
+        "-",
+        member.name
+    )
+
+    safe_name = safe_name[:70]
+
+    channel_name = (
+        f"ticket-{safe_name}"
+    )
+
+    try:
 
         channel = await guild.create_text_channel(
-            name=f"ticket-{member.name}",
+            name=channel_name,
             category=category,
             overwrites=overwrites,
             reason="MT Ticket System"
         )
 
-        db = db_connect()
-        cursor = db.cursor()
+    except Exception as error:
 
-        cursor.execute(
-            """
-            INSERT INTO tickets
-            (
-                guild_id,
-                user_id,
-                channel_id,
-                sector,
-                created_at
-            )
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (
-                guild.id,
-                member.id,
-                channel.id,
-                sector_role_name,
-                now_utc()
-            )
-        )
-
-        db.commit()
-        db.close()
-
-        embed = discord.Embed(
-            title="🎫 تذكرة MT",
-            description=(
-                f"مرحبًا {member.mention}\n\n"
-                f"**القطاع:** {sector_role_name}\n\n"
-                "اكتب مشكلتك بالتفصيل، "
-                "وسيتم خدمتك من المختصين.\n\n"
-                "عند الانتهاء استخدم زر الإغلاق."
-            ),
-            color=discord.Color.blurple()
-        )
-
-        await channel.send(
-            content=member.mention,
-            embed=embed,
-            view=TicketCloseView()
+        logging.error(
+            f"Ticket channel error: {error}"
         )
 
         await interaction.response.send_message(
-            f"✅ تم إنشاء تذكرتك: {channel.mention}",
+            "❌ ما قدرت أنشئ قناة التذكرة. تأكد من صلاحيات البوت.",
             ephemeral=True
         )
 
-        await send_log(
-            guild,
-            "channel_log_channel_id",
-            "🎫 فتح تذكرة",
-            "تم فتح تذكرة جديدة.",
-            discord.Color.blue(),
-            actor=member,
-            extra_fields=[
-                (
-                    "📂 القطاع",
-                    sector_role_name
-                ),
-                (
-                    "📍 القناة",
-                    channel.mention
+        return
+
+    sector_name = (
+        f"{config['title']} | {option_label}"
+    )
+
+    db = db_connect()
+    cursor = db.cursor()
+
+    cursor.execute(
+        """
+        INSERT INTO tickets
+        (
+            guild_id,
+            user_id,
+            channel_id,
+            sector,
+            created_at
+        )
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (
+            guild.id,
+            member.id,
+            channel.id,
+            sector_name,
+            now_utc()
+        )
+    )
+
+    db.commit()
+    db.close()
+
+    embed = discord.Embed(
+        title="🎫 تذكرة MT",
+        description=(
+            f"مرحبًا {member.mention}\n\n"
+            f"**القسم:** {config['title']}\n"
+            f"**نوع الطلب:** {option_label}\n\n"
+            "اكتب طلبك أو استفسارك بالتفصيل، "
+            "وسيتم خدمتك من المختصين.\n\n"
+            "🔒 عند الانتهاء استخدم زر إغلاق التذكرة."
+        ),
+        color=discord.Color.blurple()
+    )
+
+    embed.add_field(
+        name="📌 نوع التذكرة",
+        value=option_label,
+        inline=True
+    )
+
+    embed.add_field(
+        name="👤 صاحب التذكرة",
+        value=member.mention,
+        inline=True
+    )
+
+    await channel.send(
+        content=member.mention,
+        embed=embed,
+        view=TicketCloseView()
+    )
+
+    await interaction.response.send_message(
+        f"✅ تم إنشاء تذكرتك: {channel.mention}",
+        ephemeral=True
+    )
+
+    await send_log(
+        guild,
+        "channel_log_channel_id",
+        "🎫 فتح تذكرة",
+        "تم فتح تذكرة جديدة.",
+        discord.Color.blue(),
+        actor=member,
+        extra_fields=[
+            (
+                "📂 القسم",
+                config["title"]
+            ),
+            (
+                "📌 النوع",
+                option_label
+            ),
+            (
+                "📍 القناة",
+                channel.mention
+            )
+        ]
+    )
+
+
+# =========================================================
+# TICKET SELECT CLASS
+# =========================================================
+
+class TicketTypeSelect(
+    discord.ui.Select
+):
+
+    def __init__(
+        self,
+        department
+    ):
+
+        self.department = department
+
+        config = TICKET_CONFIGS[
+            department
+        ]
+
+        options = []
+
+        for label, value, description in config["options"]:
+
+            options.append(
+                discord.SelectOption(
+                    label=label,
+                    value=value,
+                    description=description
                 )
-            ]
+            )
+
+        super().__init__(
+            placeholder="اختر نوع التذكرة",
+            min_values=1,
+            max_values=1,
+            options=options,
+            custom_id=f"mt_ticket_{department}"
+        )
+
+    async def callback(
+        self,
+        interaction: discord.Interaction
+    ):
+
+        await create_ticket(
+            interaction,
+            self.department,
+            self.values[0]
+        )
+
+
+class TicketTypeView(
+    discord.ui.View
+):
+
+    def __init__(
+        self,
+        department
+    ):
+
+        super().__init__(
+            timeout=None
+        )
+
+        self.add_item(
+            TicketTypeSelect(
+                department
+            )
         )
 
 
 # =========================================================
-# TICKET PANEL
+# SEND TICKET PANEL
 # =========================================================
 
-@bot.tree.command(
-    name="ticket-panel",
-    description="إرسال لوحة التذاكر"
-)
-async def ticket_panel(
-    interaction: discord.Interaction
+async def send_ticket_panel(
+    interaction,
+    department
 ):
 
     if not is_whitelisted(
@@ -3334,28 +3545,184 @@ async def ticket_panel(
     ):
 
         await interaction.response.send_message(
-            "❌ ما عندك صلاحية.",
+            "❌ ما عندك صلاحية إرسال لوحة التذاكر.",
             ephemeral=True
         )
 
         return
 
+    config = TICKET_CONFIGS[
+        department
+    ]
+
     embed = discord.Embed(
-        title="🎫 نظام تذاكر MT",
+        title=config["title"],
         description=(
-            "اختر القطاع المناسب من القائمة "
-            "لفتح تذكرة.\n\n"
-            "⚖️ Justice\n"
-            "🚓 LSPD\n"
-            "🛡️ S.W.A.T\n"
-            "🏥 PHMC"
+            f"**{config['description']}**\n\n"
+            "اختر نوع التذكرة المناسب من القائمة بالأسفل:"
         ),
         color=discord.Color.blurple()
     )
 
+    for label, value, description in config["options"]:
+
+        embed.add_field(
+            name=label,
+            value=description,
+            inline=False
+        )
+
+    embed.set_footer(
+        text="MT • Ticket System"
+    )
+
     await interaction.response.send_message(
         embed=embed,
-        view=TicketSelectView()
+        view=TicketTypeView(
+            department
+        )
+    )
+
+
+# =========================================================
+# GENERAL TICKETS
+# =========================================================
+
+@bot.tree.command(
+    name="general",
+    description="إرسال لوحة التكتات العامة والاستفسارات والطلبات"
+)
+async def general_tickets(
+    interaction: discord.Interaction
+):
+
+    await send_ticket_panel(
+        interaction,
+        "general"
+    )
+
+
+# =========================================================
+# SWAT TICKETS
+# =========================================================
+
+@bot.tree.command(
+    name="swat",
+    description="إرسال لوحة تذاكر S.W.A.T"
+)
+async def swat_tickets(
+    interaction: discord.Interaction
+):
+
+    await send_ticket_panel(
+        interaction,
+        "swat"
+    )
+
+
+# =========================================================
+# JUSTICE TICKETS
+# =========================================================
+
+@bot.tree.command(
+    name="justice",
+    description="إرسال لوحة تذاكر وزارة العدل"
+)
+async def justice_tickets(
+    interaction: discord.Interaction
+):
+
+    await send_ticket_panel(
+        interaction,
+        "justice"
+    )
+
+
+# =========================================================
+# INTERIOR TICKETS
+# =========================================================
+
+@bot.tree.command(
+    name="interior",
+    description="إرسال لوحة تذاكر وزارة الداخلية"
+)
+async def interior_tickets(
+    interaction: discord.Interaction
+):
+
+    await send_ticket_panel(
+        interaction,
+        "interior"
+    )
+
+
+# =========================================================
+# HEALTH TICKETS
+# =========================================================
+
+@bot.tree.command(
+    name="health",
+    description="إرسال لوحة تذاكر الصحة"
+)
+async def health_tickets(
+    interaction: discord.Interaction
+):
+
+    await send_ticket_panel(
+        interaction,
+        "health"
+    )
+
+
+# =========================================================
+# PING
+# =========================================================
+
+@bot.tree.command(
+    name="ping",
+    description="عرض سرعة استجابة البوت"
+)
+async def ping_command(
+    interaction: discord.Interaction
+):
+
+    latency_ms = round(
+        bot.latency * 1000
+    )
+
+    start = time.perf_counter()
+
+    await interaction.response.send_message(
+        "🏓 جاري قياس سرعة الاستجابة..."
+    )
+
+    response_ms = round(
+        (time.perf_counter() - start) * 1000
+    )
+
+    embed = discord.Embed(
+        title="🏓 Pong!",
+        description=(
+            "تم قياس سرعة استجابة البوت."
+        ),
+        color=discord.Color.green()
+    )
+
+    embed.add_field(
+        name="⚡ WebSocket",
+        value=f"`{latency_ms}ms`",
+        inline=True
+    )
+
+    embed.add_field(
+        name="📡 Response",
+        value=f"`{response_ms}ms`",
+        inline=True
+    )
+
+    await interaction.edit_original_response(
+        content=None,
+        embed=embed
     )
 
 
@@ -4328,10 +4695,38 @@ async def on_ready():
         False
     ):
 
+        # التكتات الجديدة
         bot.add_view(
-            TicketSelectView()
+            TicketTypeView(
+                "general"
+            )
         )
 
+        bot.add_view(
+            TicketTypeView(
+                "swat"
+            )
+        )
+
+        bot.add_view(
+            TicketTypeView(
+                "justice"
+            )
+        )
+
+        bot.add_view(
+            TicketTypeView(
+                "interior"
+            )
+        )
+
+        bot.add_view(
+            TicketTypeView(
+                "health"
+            )
+        )
+
+        # زر إغلاق التذاكر
         bot.add_view(
             TicketCloseView()
         )
