@@ -15,7 +15,6 @@ from discord import app_commands
 from discord.ext import commands
 from openai import AsyncOpenAI
 
-
 # =========================================================
 # SETTINGS
 # =========================================================
@@ -44,7 +43,6 @@ WHITELIST_ROLES = [
     "Bot"
 ]
 
-
 # =========================================================
 # PERFORMANCE CACHE
 # =========================================================
@@ -56,7 +54,6 @@ CACHE_TTL = 5.0
 
 TICKET_LOCKS = {}
 
-
 def cache_valid(cache, guild_id):
     item = cache.get(guild_id)
 
@@ -67,11 +64,9 @@ def cache_valid(cache, guild_id):
         time.monotonic() - item["time"]
     ) < CACHE_TTL
 
-
 def invalidate_guild_cache(guild_id):
     SETTINGS_CACHE.pop(guild_id, None)
     EXCLUDED_ROLES_CACHE.pop(guild_id, None)
-
 
 # =========================================================
 # DATABASE
@@ -88,7 +83,6 @@ def db_connect():
     db.execute("PRAGMA busy_timeout=5000")
 
     return db
-
 
 def setup_database():
 
@@ -188,11 +182,6 @@ def setup_database():
         )
     """)
 
-    # =====================================================
-    # مسؤولين التكتات
-    # كل خيار تكت له رتبة مسؤولة مستقلة
-    # =====================================================
-
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS ticket_roles (
             guild_id INTEGER NOT NULL,
@@ -254,8 +243,6 @@ def setup_database():
         )
     """)
 
-    # PERFORMANCE INDEXES
-
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_tickets_open_user
         ON tickets(guild_id, user_id, closed)
@@ -279,9 +266,7 @@ def setup_database():
     db.commit()
     db.close()
 
-
 setup_database()
-
 
 # =========================================================
 # DATABASE HELPERS
@@ -291,7 +276,6 @@ def now_utc():
     return datetime.datetime.now(
         datetime.timezone.utc
     ).isoformat()
-
 
 def get_guild_settings(guild_id):
 
@@ -382,7 +366,6 @@ def get_guild_settings(guild_id):
 
     return data
 
-
 def set_ai_settings(
     guild_id,
     enabled=None,
@@ -431,7 +414,6 @@ def set_ai_settings(
         guild_id
     )
 
-
 def set_log_channel(
     guild_id,
     setting_name,
@@ -479,7 +461,6 @@ def set_log_channel(
         guild_id
     )
 
-
 def save_security_log(
     guild_id,
     event_type,
@@ -516,7 +497,6 @@ def save_security_log(
 
     db.commit()
     db.close()
-
 
 # =========================================================
 # TICKET ROLE DATABASE
@@ -562,7 +542,6 @@ def set_ticket_role(
     db.commit()
     db.close()
 
-
 def get_ticket_role(
     guild_id,
     department,
@@ -596,7 +575,6 @@ def get_ticket_role(
         return None
 
     return row[0]
-
 
 # =========================================================
 # EXCLUDED ROLES
@@ -638,7 +616,6 @@ def get_excluded_role_ids(guild_id):
 
     return data
 
-
 def add_excluded_role(
     guild_id,
     role_id
@@ -674,7 +651,6 @@ def add_excluded_role(
 
     return added
 
-
 def remove_excluded_role(
     guild_id,
     role_id
@@ -707,7 +683,6 @@ def remove_excluded_role(
 
     return removed
 
-
 def clear_excluded_roles(
     guild_id
 ):
@@ -735,13 +710,11 @@ def clear_excluded_roles(
 
     return count
 
-
 # =========================================================
 # ROLE NORMALIZATION
 # =========================================================
 
 NORMALIZED_ROLE_CACHE = {}
-
 
 def normalize_text(text):
 
@@ -811,7 +784,6 @@ def normalize_text(text):
 
     return result
 
-
 def role_matches(
     role_name,
     expected_name
@@ -822,7 +794,6 @@ def role_matches(
         ==
         normalize_text(expected_name)
     )
-
 
 def check_role(
     member,
@@ -840,7 +811,6 @@ def check_role(
         normalize_text(role.name) == expected
         for role in member.roles
     )
-
 
 # =========================================================
 # WHITELIST
@@ -879,7 +849,6 @@ def is_whitelisted(
         for role in member.roles
     )
 
-
 # =========================================================
 # BOT
 # =========================================================
@@ -896,7 +865,6 @@ bot = commands.Bot(
     command_prefix=BOT_PREFIX,
     intents=intents
 )
-
 
 # =========================================================
 # OPENAI
@@ -918,7 +886,6 @@ AI_MODEL = os.getenv(
     "OPENAI_MODEL",
     "gpt-5.6-luna"
 )
-
 
 # =========================================================
 # AI
@@ -1029,7 +996,6 @@ SERVER_KEYWORDS = [
     "إعلان السيرفر"
 ]
 
-
 def normalize_ai_text(text):
 
     if not text:
@@ -1064,7 +1030,6 @@ def normalize_ai_text(text):
     )
 
     return text.strip().casefold()
-
 
 def is_name_question(question):
 
@@ -1113,7 +1078,6 @@ def is_name_question(question):
         for x in questions
     }
 
-
 def is_server_question(question):
 
     normalized = normalize_ai_text(
@@ -1139,14 +1103,12 @@ def is_server_question(question):
 
     return False
 
-
 def get_support_message():
 
     return (
         "الرجاء التوجه للدعم الفني للحصول على المعلومة الرسمية.\n"
         f"<#{SUPPORT_CHANNEL_ID}>"
     )
-
 
 def remove_ai_identity_leaks(answer):
 
@@ -1173,7 +1135,6 @@ def remove_ai_identity_leaks(answer):
             return "MTRP"
 
     return answer
-
 
 async def ask_ai(
     question,
@@ -1248,7 +1209,6 @@ MTRP
 
         return "⚠️ حدث خطأ مؤقت في نظام الذكاء الاصطناعي."
 
-
 # =========================================================
 # LOGGING
 # =========================================================
@@ -1274,7 +1234,6 @@ def get_log_channel(
         guild.get_channel(channel_id)
         or bot.get_channel(channel_id)
     )
-
 
 async def send_log(
     guild,
@@ -1354,7 +1313,6 @@ async def send_log(
 
         return False
 
-
 async def send_config_log(
     guild,
     title,
@@ -1381,7 +1339,6 @@ async def send_config_log(
             discord.Color.blue(),
             actor=actor
         )
-
 
 async def security_report(
     guild,
@@ -1415,7 +1372,6 @@ async def security_report(
         target,
         extra_fields
     )
-
 
 # =========================================================
 # FAST AUDIT LOG
@@ -1464,7 +1420,6 @@ async def get_audit_actor(
 
     return None
 
-
 async def get_audit_actor_fast(
     guild,
     action,
@@ -1499,7 +1454,6 @@ async def get_audit_actor_fast(
         target_id
     )
 
-
 async def get_audit_actor_multiple(
     guild,
     actions,
@@ -1518,7 +1472,6 @@ async def get_audit_actor_multiple(
             return actor
 
     return None
-
 
 # =========================================================
 # AUTO BAN
@@ -1576,7 +1529,6 @@ async def ban_unauthorized_actor(
         )
 
         return "فشل الحظر التلقائي."
-
 
 # =========================================================
 # BAN PROTECTION
@@ -1682,7 +1634,6 @@ async def on_member_ban(
         ]
     )
 
-
 # =========================================================
 # UNBAN
 # =========================================================
@@ -1708,7 +1659,6 @@ async def on_member_unban(
         actor=actor,
         target=user
     )
-
 
 # =========================================================
 # MEMBER SECURITY CHECK
@@ -1748,7 +1698,6 @@ def member_security_flags(member):
 
     return flags
 
-
 @bot.event
 async def on_member_join(
     member
@@ -1785,7 +1734,6 @@ async def on_member_join(
         target=member,
         extra_fields=extra
     )
-
 
 # =========================================================
 # MEMBER LEAVE / KICK
@@ -1855,7 +1803,6 @@ async def on_member_remove(
         security_event=True
     )
 
-
 # =========================================================
 # MESSAGE DELETE
 # =========================================================
@@ -1885,7 +1832,6 @@ async def on_message_delete(
             ("💬 المحتوى", content[:1000])
         ]
     )
-
 
 # =========================================================
 # MESSAGE EDIT
@@ -1917,7 +1863,6 @@ async def on_message_edit(
         ]
     )
 
-
 # =========================================================
 # MESSAGE SECURITY + AI
 # =========================================================
@@ -1926,7 +1871,6 @@ URL_PATTERN = re.compile(
     r"(https?://\S+|www\.\S+|discord\.gg/\S+|discord\.com/invite/\S+)",
     re.IGNORECASE
 )
-
 
 @bot.event
 async def on_message(
@@ -2040,7 +1984,6 @@ async def on_message(
         message
     )
 
-
 # =========================================================
 # ROLES
 # =========================================================
@@ -2121,7 +2064,6 @@ async def roles_command(
         embeds=embeds[:10],
         ephemeral=True
     )
-
 
 # =========================================================
 # CHANNELS
@@ -2217,7 +2159,6 @@ async def channels_command(
         ephemeral=True
     )
 
-
 # =========================================================
 # SECURITY PERMISSIONS
 # =========================================================
@@ -2246,7 +2187,6 @@ def can_manage_security(
         for role in interaction.user.roles
     )
 
-
 def has_administrator(
     interaction
 ):
@@ -2256,7 +2196,6 @@ def has_administrator(
         and
         interaction.user.guild_permissions.administrator
     )
-
 
 # =========================================================
 # EXCLUDED ROLE COMMANDS
@@ -2315,7 +2254,6 @@ async def set_excluded_role(
             ephemeral=True
         )
 
-
 @bot.tree.command(
     name="remove-excluded-role",
     description="إزالة رتبة من الرتب المستثناة"
@@ -2358,7 +2296,6 @@ async def remove_excluded_role_command(
         ephemeral=True
     )
 
-
 @bot.tree.command(
     name="clear-excluded-roles",
     description="حذف جميع الرتب المستثناة"
@@ -2386,7 +2323,6 @@ async def clear_excluded_roles_command(
         f"🗑️ تم حذف **{count}** رتبة من الاستثناءات.",
         ephemeral=True
     )
-
 
 @bot.tree.command(
     name="list-excluded-roles",
@@ -2459,7 +2395,6 @@ async def list_excluded_roles_command(
         ephemeral=True
     )
 
-
 # =========================================================
 # LOG COMMANDS
 # =========================================================
@@ -2500,7 +2435,6 @@ async def set_log_command(
         interaction.user
     )
 
-
 @bot.tree.command(
     name="set-security-log",
     description="تحديد روم سجل الحماية"
@@ -2516,7 +2450,6 @@ async def set_security_log(
         "سجل الحماية",
         channel
     )
-
 
 @bot.tree.command(
     name="set-delete-log",
@@ -2534,7 +2467,6 @@ async def set_delete_log(
         channel
     )
 
-
 @bot.tree.command(
     name="set-edit-log",
     description="تحديد روم سجل الرسائل المعدلة"
@@ -2550,7 +2482,6 @@ async def set_edit_log(
         "سجل التعديل",
         channel
     )
-
 
 @bot.tree.command(
     name="set-member-log",
@@ -2568,7 +2499,6 @@ async def set_member_log(
         channel
     )
 
-
 @bot.tree.command(
     name="set-mod-log",
     description="تحديد روم سجل الإدارة"
@@ -2584,7 +2514,6 @@ async def set_mod_log(
         "سجل الإدارة",
         channel
     )
-
 
 @bot.tree.command(
     name="set-role-log",
@@ -2602,7 +2531,6 @@ async def set_role_log(
         channel
     )
 
-
 @bot.tree.command(
     name="set-channel-log",
     description="تحديد روم سجل الرومات"
@@ -2618,7 +2546,6 @@ async def set_channel_log(
         "سجل الرومات",
         channel
     )
-
 
 # =========================================================
 # TICKET SYSTEM
@@ -2662,7 +2589,6 @@ GENERAL_TICKET_OPTIONS = [
     )
 ]
 
-
 SWAT_TICKET_OPTIONS = [
     (
         "📝 استفسار SWAT",
@@ -2680,7 +2606,6 @@ SWAT_TICKET_OPTIONS = [
         "للشكاوى المتعلقة بـ SWAT"
     )
 ]
-
 
 JUSTICE_TICKET_OPTIONS = [
     (
@@ -2705,7 +2630,6 @@ JUSTICE_TICKET_OPTIONS = [
     )
 ]
 
-
 INTERIOR_TICKET_OPTIONS = [
     (
         "📝 استفسار الداخلية",
@@ -2729,7 +2653,6 @@ INTERIOR_TICKET_OPTIONS = [
     )
 ]
 
-
 HEALTH_TICKET_OPTIONS = [
     (
         "📝 استفسار صحي",
@@ -2747,7 +2670,6 @@ HEALTH_TICKET_OPTIONS = [
         "للشكاوى المتعلقة بالصحة"
     )
 ]
-
 
 TICKET_CONFIGS = {
 
@@ -2777,7 +2699,7 @@ TICKET_CONFIGS = {
 
     "interior": {
         "title": "🏛️ تذاكر وزارة الداخلية",
-        "description": "التذاكر الخاصة بوزارة الداخلية",
+        "description": "التذاكر الخاصة بالوزارة",
         "category": "📂 تذاكر - Interior",
         "roles": [
             ROLE_INTERIOR,
@@ -2788,16 +2710,15 @@ TICKET_CONFIGS = {
 
     "health": {
         "title": "🏥 تذاكر الصحة",
-        "description": "التذاكر الخاصة بقطاع الصحة",
+        "description": "التذاكر الخاصة بقطاع PHMC",
         "category": "📂 تذاكر - PHMC",
         "roles": [ROLE_HEALTH],
         "options": HEALTH_TICKET_OPTIONS
     }
 }
 
-
 # =========================================================
-# ALL TICKET OPTIONS FOR /set-ticket-role
+# ALL TICKET OPTIONS
 # =========================================================
 
 ALL_TICKET_ROLE_OPTIONS = []
@@ -2814,7 +2735,6 @@ for _department, _config in TICKET_CONFIGS.items():
             )
         )
 
-
 # =========================================================
 # SET TICKET RESPONSIBLE ROLE
 # =========================================================
@@ -2830,8 +2750,10 @@ for _department, _config in TICKET_CONFIGS.items():
 @app_commands.choices(
     ticket_type=[
         app_commands.Choice(
-            name=label[:100],
-            value=option_key
+            name=(
+                f"{TICKET_CONFIGS[department]['title']} • {label}"
+            )[:100],
+            value=f"{department}|{option_key}"
         )
         for label, option_key, department
         in ALL_TICKET_ROLE_OPTIONS
@@ -2854,11 +2776,28 @@ async def set_ticket_role_command(
 
         return
 
+    try:
+
+        department, option_key = ticket_type.value.split(
+            "|",
+            1
+        )
+
+    except ValueError:
+
+        await interaction.response.send_message(
+            "❌ نوع التكت غير معروف.",
+            ephemeral=True
+        )
+
+        return
+
     selected = next(
         (
             item
             for item in ALL_TICKET_ROLE_OPTIONS
-            if item[1] == ticket_type.value
+            if item[1] == option_key
+            and item[2] == department
         ),
         None
     )
@@ -2926,7 +2865,6 @@ async def set_ticket_role_command(
             ("🆔 Role ID", role.id)
         ]
     )
-
 
 # =========================================================
 # TICKET CLOSE
@@ -3134,7 +3072,6 @@ class TicketCloseView(
                 f"Ticket delete error: {error}"
             )
 
-
 # =========================================================
 # FIND ROLE
 # =========================================================
@@ -3158,7 +3095,6 @@ def find_role(
 
     return None
 
-
 # =========================================================
 # GET HIGHER / EQUAL ROLES
 # =========================================================
@@ -3175,11 +3111,13 @@ def get_higher_or_equal_roles(
         if role.is_default():
             continue
 
+        if role.managed:
+            continue
+
         if role.position >= responsible_role.position:
             roles.append(role)
 
     return roles
-
 
 # =========================================================
 # CREATE TICKET
@@ -3250,10 +3188,6 @@ async def create_ticket(
 
             option_label = option_data[0]
 
-            # =================================================
-            # المسؤول المحدد لهذا النوع
-            # =================================================
-
             responsible_role = None
 
             responsible_role_id = get_ticket_role(
@@ -3268,9 +3202,8 @@ async def create_ticket(
                     responsible_role_id
                 )
 
-            # =================================================
-            # منع فتح أكثر من تكت
-            # =================================================
+                if responsible_role and responsible_role.managed:
+                    responsible_role = None
 
             db = db_connect()
             cursor = db.cursor()
@@ -3309,10 +3242,6 @@ async def create_ticket(
 
                     return
 
-            # =================================================
-            # أدوار القطاع القديمة
-            # =================================================
-
             department_roles = []
 
             for role_name in config["roles"]:
@@ -3326,10 +3255,6 @@ async def create_ticket(
                     department_roles.append(
                         role
                     )
-
-            # =================================================
-            # التصنيف
-            # =================================================
 
             category = discord.utils.get(
                 guild.categories,
@@ -3358,10 +3283,6 @@ async def create_ticket(
 
                     return
 
-            # =================================================
-            # PERMISSIONS
-            # =================================================
-
             overwrites = {
 
                 guild.default_role:
@@ -3389,11 +3310,6 @@ async def create_ticket(
                     )
                 )
 
-            # =================================================
-            # إذا فيه رتبة مسؤولة:
-            # الرتبة + كل الرتب الأعلى منها
-            # =================================================
-
             if responsible_role:
 
                 higher_roles = get_higher_or_equal_roles(
@@ -3402,6 +3318,12 @@ async def create_ticket(
                 )
 
                 for role in higher_roles:
+
+                    if (
+                        guild.me
+                        and role.position >= guild.me.top_role.position
+                    ):
+                        continue
 
                     overwrites[role] = (
                         discord.PermissionOverwrite(
@@ -3413,9 +3335,13 @@ async def create_ticket(
 
             else:
 
-                # إذا لم يتم تحديد مسؤول لهذا النوع،
-                # نستخدم أدوار القطاع الأساسية
                 for role in department_roles:
+
+                    if (
+                        guild.me
+                        and role.position >= guild.me.top_role.position
+                    ):
+                        continue
 
                     overwrites[role] = (
                         discord.PermissionOverwrite(
@@ -3424,10 +3350,6 @@ async def create_ticket(
                             read_message_history=True
                         )
                     )
-
-            # =================================================
-            # اسم التكت
-            # =================================================
 
             safe_name = re.sub(
                 r"[^a-zA-Z0-9\u0600-\u06FF_-]",
@@ -3438,10 +3360,6 @@ async def create_ticket(
             channel_name = (
                 f"ticket-{safe_name}"
             )
-
-            # =================================================
-            # إنشاء الروم
-            # =================================================
 
             try:
 
@@ -3469,10 +3387,6 @@ async def create_ticket(
                 f"{config['title']} | {option_label}"
             )
 
-            # =================================================
-            # حفظ التكت
-            # =================================================
-
             db = db_connect()
             cursor = db.cursor()
 
@@ -3499,10 +3413,6 @@ async def create_ticket(
 
             db.commit()
             db.close()
-
-            # =================================================
-            # EMBED
-            # =================================================
 
             embed = discord.Embed(
                 title="🎫 تذكرة MTRP",
@@ -3549,11 +3459,6 @@ async def create_ticket(
                 text="MTRP • Ticket System"
             )
 
-            # =================================================
-            # أول رسالة:
-            # صاحب التكت + الرتبة المسؤولة مباشرة
-            # =================================================
-
             if responsible_role:
 
                 content = (
@@ -3590,18 +3495,10 @@ async def create_ticket(
                     f"Ticket first message error: {error}"
                 )
 
-            # =================================================
-            # تأكيد لصاحب التكت
-            # =================================================
-
             await interaction.response.send_message(
                 f"✅ تم إنشاء تذكرتك: {channel.mention}",
                 ephemeral=True
             )
-
-            # =================================================
-            # LOG
-            # =================================================
 
             extra_fields = [
                 ("📂 القسم", config["title"]),
@@ -3643,7 +3540,6 @@ async def create_ticket(
             lock_key,
             None
         )
-
 
 # =========================================================
 # TICKET SELECT
@@ -3695,7 +3591,6 @@ class TicketTypeSelect(
             self.values[0]
         )
 
-
 class TicketTypeView(
     discord.ui.View
 ):
@@ -3714,7 +3609,6 @@ class TicketTypeView(
                 department
             )
         )
-
 
 # =========================================================
 # TICKET PANEL
@@ -3740,10 +3634,6 @@ async def send_ticket_panel(
     config = TICKET_CONFIGS[
         department
     ]
-
-    # =====================================================
-    # العنوان والنص مضبوطين
-    # =====================================================
 
     embed = discord.Embed(
         title="🎫 تذاكر MTRP",
@@ -3776,7 +3666,6 @@ async def send_ticket_panel(
         )
     )
 
-
 # =========================================================
 # TICKET COMMANDS
 # =========================================================
@@ -3794,7 +3683,6 @@ async def general_tickets(
         "general"
     )
 
-
 @bot.tree.command(
     name="swat",
     description="إرسال لوحة تذاكر S.W.A.T"
@@ -3807,7 +3695,6 @@ async def swat_tickets(
         interaction,
         "swat"
     )
-
 
 @bot.tree.command(
     name="justice",
@@ -3822,7 +3709,6 @@ async def justice_tickets(
         "justice"
     )
 
-
 @bot.tree.command(
     name="interior",
     description="إرسال لوحة تذاكر وزارة الداخلية"
@@ -3836,7 +3722,6 @@ async def interior_tickets(
         "interior"
     )
 
-
 @bot.tree.command(
     name="health",
     description="إرسال لوحة تذاكر الصحة"
@@ -3849,7 +3734,6 @@ async def health_tickets(
         interaction,
         "health"
     )
-
 
 # =========================================================
 # PING
@@ -3899,7 +3783,6 @@ async def ping_command(
         embed=embed,
         ephemeral=True
     )
-
 
 # =========================================================
 # DEED
@@ -4003,7 +3886,6 @@ async def create_deed(
         actor=interaction.user,
         target=citizen
     )
-
 
 # =========================================================
 # WARRANT
@@ -4121,7 +4003,6 @@ async def issue_warrant(
         target=citizen
     )
 
-
 # =========================================================
 # 911
 # =========================================================
@@ -4223,7 +4104,6 @@ async def dispatch_911(
             ("📝 التفاصيل", details)
         ]
     )
-
 
 # =========================================================
 # CRIMINAL RECORD
@@ -4346,7 +4226,6 @@ async def add_record(
         ]
     )
 
-
 @bot.tree.command(
     name="view-records",
     description="عرض السجل الجنائي"
@@ -4435,7 +4314,6 @@ async def view_records(
         embed=embed,
         ephemeral=True
     )
-
 
 # =========================================================
 # SWAT DEPLOY
@@ -4528,7 +4406,6 @@ async def swat_deploy(
             ("🚨 الخطورة", threat.value)
         ]
     )
-
 
 # =========================================================
 # MEDICAL REPORT
@@ -4635,7 +4512,6 @@ async def medical_report(
         actor=interaction.user,
         target=citizen
     )
-
 
 # =========================================================
 # AI COMMAND
@@ -4750,7 +4626,6 @@ async def ai_command(
         actor=interaction.user
     )
 
-
 # =========================================================
 # APP COMMAND ERROR
 # =========================================================
@@ -4790,9 +4665,7 @@ async def app_command_error_handler(
             f"Command error response failed: {send_error}"
         )
 
-
 bot.tree.on_error = app_command_error_handler
-
 
 # =========================================================
 # COMMAND COMPLETION LOG
@@ -4823,7 +4696,6 @@ async def on_app_command_completion(
         logging.error(
             f"Command completion log error: {error}"
         )
-
 
 # =========================================================
 # ROLE / CHANNEL SECURITY
@@ -4887,7 +4759,6 @@ async def protect_security_change(
         security_event=True
     )
 
-
 @bot.event
 async def on_guild_role_create(
     role
@@ -4901,7 +4772,6 @@ async def on_guild_role_create(
         f"تم إنشاء الرتبة `{role.name}`."
     )
 
-
 @bot.event
 async def on_guild_role_delete(
     role
@@ -4914,7 +4784,6 @@ async def on_guild_role_delete(
         discord.AuditLogAction.role_delete,
         f"تم حذف الرتبة `{role.name}`."
     )
-
 
 @bot.event
 async def on_guild_channel_create(
@@ -4932,7 +4801,6 @@ async def on_guild_channel_create(
         f"تم إنشاء الروم `{channel.name}`."
     )
 
-
 @bot.event
 async def on_guild_channel_delete(
     channel
@@ -4948,7 +4816,6 @@ async def on_guild_channel_delete(
         discord.AuditLogAction.channel_delete,
         f"تم حذف الروم `{channel.name}`."
     )
-
 
 # =========================================================
 # READY
@@ -5006,7 +4873,6 @@ async def on_ready():
     logging.info(
         f"MTRP Bot Online: {bot.user}"
     )
-
 
 # =========================================================
 # START
