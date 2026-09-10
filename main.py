@@ -82,9 +82,11 @@ def db_connect():
         DB_FILE,
         timeout=5
     )
+
     db.execute("PRAGMA journal_mode=WAL")
     db.execute("PRAGMA synchronous=NORMAL")
     db.execute("PRAGMA busy_timeout=5000")
+
     return db
 
 
@@ -186,6 +188,25 @@ def setup_database():
         )
     """)
 
+    # =====================================================
+    # مسؤولين التكتات
+    # كل خيار تكت له رتبة مسؤولة مستقلة
+    # =====================================================
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS ticket_roles (
+            guild_id INTEGER NOT NULL,
+            department TEXT NOT NULL,
+            option_key TEXT NOT NULL,
+            role_id INTEGER NOT NULL,
+            PRIMARY KEY (
+                guild_id,
+                department,
+                option_key
+            )
+        )
+    """)
+
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS deeds (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -274,7 +295,10 @@ def now_utc():
 
 def get_guild_settings(guild_id):
 
-    if cache_valid(SETTINGS_CACHE, guild_id):
+    if cache_valid(
+        SETTINGS_CACHE,
+        guild_id
+    ):
         return SETTINGS_CACHE[guild_id]["data"]
 
     db = db_connect()
@@ -365,7 +389,9 @@ def set_ai_settings(
     channel_id=None
 ):
 
-    current = get_guild_settings(guild_id)
+    current = get_guild_settings(
+        guild_id
+    )
 
     if enabled is None:
         enabled = current["ai_enabled"]
@@ -401,7 +427,9 @@ def set_ai_settings(
     db.commit()
     db.close()
 
-    invalidate_guild_cache(guild_id)
+    invalidate_guild_cache(
+        guild_id
+    )
 
 
 def set_log_channel(
@@ -421,9 +449,13 @@ def set_log_channel(
     }
 
     if setting_name not in allowed:
-        raise ValueError("Invalid log setting")
+        raise ValueError(
+            "Invalid log setting"
+        )
 
-    get_guild_settings(guild_id)
+    get_guild_settings(
+        guild_id
+    )
 
     db = db_connect()
     cursor = db.cursor()
@@ -443,7 +475,9 @@ def set_log_channel(
     db.commit()
     db.close()
 
-    invalidate_guild_cache(guild_id)
+    invalidate_guild_cache(
+        guild_id
+    )
 
 
 def save_security_log(
@@ -482,6 +516,86 @@ def save_security_log(
 
     db.commit()
     db.close()
+
+
+# =========================================================
+# TICKET ROLE DATABASE
+# =========================================================
+
+def set_ticket_role(
+    guild_id,
+    department,
+    option_key,
+    role_id
+):
+
+    db = db_connect()
+    cursor = db.cursor()
+
+    cursor.execute(
+        """
+        INSERT INTO ticket_roles
+        (
+            guild_id,
+            department,
+            option_key,
+            role_id
+        )
+        VALUES (?, ?, ?, ?)
+
+        ON CONFLICT(
+            guild_id,
+            department,
+            option_key
+        )
+        DO UPDATE SET
+            role_id = excluded.role_id
+        """,
+        (
+            guild_id,
+            department,
+            option_key,
+            role_id
+        )
+    )
+
+    db.commit()
+    db.close()
+
+
+def get_ticket_role(
+    guild_id,
+    department,
+    option_key
+):
+
+    db = db_connect()
+    cursor = db.cursor()
+
+    cursor.execute(
+        """
+        SELECT role_id
+        FROM ticket_roles
+        WHERE guild_id = ?
+        AND department = ?
+        AND option_key = ?
+        LIMIT 1
+        """,
+        (
+            guild_id,
+            department,
+            option_key
+        )
+    )
+
+    row = cursor.fetchone()
+
+    db.close()
+
+    if not row:
+        return None
+
+    return row[0]
 
 
 # =========================================================
@@ -594,7 +708,9 @@ def remove_excluded_role(
     return removed
 
 
-def clear_excluded_roles(guild_id):
+def clear_excluded_roles(
+    guild_id
+):
 
     db = db_connect()
     cursor = db.cursor()
@@ -632,14 +748,18 @@ def normalize_text(text):
     if not text:
         return ""
 
-    cached = NORMALIZED_ROLE_CACHE.get(text)
+    original = str(text)
+
+    cached = NORMALIZED_ROLE_CACHE.get(
+        original
+    )
 
     if cached is not None:
         return cached
 
     result = []
 
-    for char in text:
+    for char in original:
 
         name = unicodedata.name(
             char,
@@ -654,7 +774,9 @@ def normalize_text(text):
                 result.append(last)
                 continue
 
-        category = unicodedata.category(char)
+        category = unicodedata.category(
+            char
+        )
 
         if category.startswith("S"):
             continue
@@ -664,28 +786,30 @@ def normalize_text(text):
 
         result.append(char)
 
-    text = "".join(result)
+    result = "".join(result)
 
-    text = unicodedata.normalize(
+    result = unicodedata.normalize(
         "NFKC",
-        text
+        result
     )
 
-    text = "".join(
+    result = "".join(
         char
-        for char in text
+        for char in result
         if unicodedata.category(char) != "Mn"
     )
 
-    text = re.sub(
+    result = re.sub(
         r"\s+",
         " ",
-        text
+        result
     ).strip().casefold()
 
-    NORMALIZED_ROLE_CACHE[text] = text
+    NORMALIZED_ROLE_CACHE[
+        original
+    ] = result
 
-    return text
+    return result
 
 
 def role_matches(
@@ -785,6 +909,7 @@ OPENAI_API_KEY = os.getenv(
 ai_client = None
 
 if OPENAI_API_KEY:
+
     ai_client = AsyncOpenAI(
         api_key=OPENAI_API_KEY
     )
@@ -995,10 +1120,16 @@ def is_server_question(question):
         question
     )
 
-    if re.search(r"\bmtrp\b", normalized):
+    if re.search(
+        r"\bmtrp\b",
+        normalized
+    ):
         return True
 
-    if re.search(r"\bmt\b", normalized):
+    if re.search(
+        r"\bmt\b",
+        normalized
+    ):
         return True
 
     for keyword in SERVER_KEYWORDS:
@@ -1340,7 +1471,6 @@ async def get_audit_actor_fast(
     target_id=None
 ):
 
-    # أسرع محاولة مباشرة
     actor = await get_audit_actor(
         guild,
         action,
@@ -1350,7 +1480,6 @@ async def get_audit_actor_fast(
     if actor:
         return actor
 
-    # انتظار قصير جدًا بسبب تأخر Discord
     await asyncio.sleep(0.20)
 
     actor = await get_audit_actor(
@@ -1600,13 +1729,22 @@ def member_security_flags(member):
     ).total_seconds()
 
     if account_age < 86400:
-        flags.append("🆕 الحساب أقل من يوم")
+
+        flags.append(
+            "🆕 الحساب أقل من يوم"
+        )
 
     elif account_age < 604800:
-        flags.append("⚠️ الحساب أقل من 7 أيام")
+
+        flags.append(
+            "⚠️ الحساب أقل من 7 أيام"
+        )
 
     if member.guild_permissions.administrator:
-        flags.append("🔐 Administrator")
+
+        flags.append(
+            "🔐 Administrator"
+        )
 
     return flags
 
@@ -1630,6 +1768,7 @@ async def on_member_join(
     ]
 
     if flags:
+
         extra.append(
             (
                 "🛡️ مؤشرات الحماية",
@@ -1884,10 +2023,13 @@ async def on_message(
         )
 
         try:
+
             await message.channel.send(
                 answer
             )
+
         except Exception as error:
+
             logging.error(
                 f"AI send error: {error}"
             )
@@ -2035,15 +2177,18 @@ async def channels_command(
                 channel,
                 discord.TextChannel
             ):
+
                 icon = "💬"
 
             elif isinstance(
                 channel,
                 discord.VoiceChannel
             ):
+
                 icon = "🔊"
 
             else:
+
                 icon = "📌"
 
             lines.append(
@@ -2053,6 +2198,7 @@ async def channels_command(
         value = "\n".join(lines)
 
         if len(children) > 15:
+
             value += (
                 f"\n... و `{len(children) - 15}` روم إضافي"
             )
@@ -2128,7 +2274,9 @@ async def set_excluded_role(
     role: discord.Role
 ):
 
-    if not can_manage_security(interaction):
+    if not can_manage_security(
+        interaction
+    ):
 
         await interaction.response.send_message(
             "❌ هذا الأمر للـ Owner و COowner فقط.",
@@ -2180,7 +2328,9 @@ async def remove_excluded_role_command(
     role: discord.Role
 ):
 
-    if not can_manage_security(interaction):
+    if not can_manage_security(
+        interaction
+    ):
 
         await interaction.response.send_message(
             "❌ هذا الأمر للـ Owner و COowner فقط.",
@@ -2217,7 +2367,9 @@ async def clear_excluded_roles_command(
     interaction
 ):
 
-    if not can_manage_security(interaction):
+    if not can_manage_security(
+        interaction
+    ):
 
         await interaction.response.send_message(
             "❌ هذا الأمر للـ Owner و COowner فقط.",
@@ -2244,7 +2396,9 @@ async def list_excluded_roles_command(
     interaction
 ):
 
-    if not can_manage_security(interaction):
+    if not can_manage_security(
+        interaction
+    ):
 
         await interaction.response.send_message(
             "❌ هذا الأمر للـ Owner و COowner فقط.",
@@ -2278,10 +2432,13 @@ async def list_excluded_roles_command(
         )
 
         if role:
+
             lines.append(
                 f"**{index}.** {role.mention} — `{role.name}`"
             )
+
         else:
+
             lines.append(
                 f"**{index}.** رتبة محذوفة — `{role_id}`"
             )
@@ -2314,7 +2471,9 @@ async def set_log_command(
     channel
 ):
 
-    if not has_administrator(interaction):
+    if not has_administrator(
+        interaction
+    ):
 
         await interaction.response.send_message(
             "❌ هذا الأمر يحتاج Administrator.",
@@ -2334,34 +2493,11 @@ async def set_log_command(
         ephemeral=True
     )
 
-
-def make_log_command(
-    command_name,
-    description,
-    setting_name,
-    title
-):
-
-    async def command(
-        interaction: discord.Interaction,
-        channel: discord.TextChannel
-    ):
-        await set_log_command(
-            interaction,
-            setting_name,
-            title,
-            channel
-        )
-
-    command.__name__ = command_name
-
-    return app_commands.command(
-        name=command_name,
-        description=description
-    )(
-        app_commands.describe(
-            channel="الروم"
-        )(command)
+    await send_config_log(
+        interaction.guild,
+        f"⚙️ تغيير إعداد: {title}",
+        f"تم تعيين {title} إلى {channel.mention}.",
+        interaction.user
     )
 
 
@@ -2373,6 +2509,7 @@ async def set_security_log(
     interaction,
     channel: discord.TextChannel
 ):
+
     await set_log_command(
         interaction,
         "security_log_channel_id",
@@ -2389,6 +2526,7 @@ async def set_delete_log(
     interaction,
     channel: discord.TextChannel
 ):
+
     await set_log_command(
         interaction,
         "delete_log_channel_id",
@@ -2405,6 +2543,7 @@ async def set_edit_log(
     interaction,
     channel: discord.TextChannel
 ):
+
     await set_log_command(
         interaction,
         "edit_log_channel_id",
@@ -2421,6 +2560,7 @@ async def set_member_log(
     interaction,
     channel: discord.TextChannel
 ):
+
     await set_log_command(
         interaction,
         "member_log_channel_id",
@@ -2437,6 +2577,7 @@ async def set_mod_log(
     interaction,
     channel: discord.TextChannel
 ):
+
     await set_log_command(
         interaction,
         "mod_log_channel_id",
@@ -2453,6 +2594,7 @@ async def set_role_log(
     interaction,
     channel: discord.TextChannel
 ):
+
     await set_log_command(
         interaction,
         "role_log_channel_id",
@@ -2469,6 +2611,7 @@ async def set_channel_log(
     interaction,
     channel: discord.TextChannel
 ):
+
     await set_log_command(
         interaction,
         "channel_log_channel_id",
@@ -2511,6 +2654,11 @@ GENERAL_TICKET_OPTIONS = [
         "🛡️ الإشراف",
         "general_supervision",
         "للتواصل مع الإشراف"
+    ),
+    (
+        "🛠️ الدعم الفني",
+        "general_support",
+        "للتواصل مع الدعم الفني"
     )
 ]
 
@@ -2649,6 +2797,138 @@ TICKET_CONFIGS = {
 
 
 # =========================================================
+# ALL TICKET OPTIONS FOR /set-ticket-role
+# =========================================================
+
+ALL_TICKET_ROLE_OPTIONS = []
+
+for _department, _config in TICKET_CONFIGS.items():
+
+    for _label, _key, _description in _config["options"]:
+
+        ALL_TICKET_ROLE_OPTIONS.append(
+            (
+                _label,
+                _key,
+                _department
+            )
+        )
+
+
+# =========================================================
+# SET TICKET RESPONSIBLE ROLE
+# =========================================================
+
+@bot.tree.command(
+    name="set-ticket-role",
+    description="تحديد الرتبة المسؤولة عن نوع تكت معين"
+)
+@app_commands.describe(
+    ticket_type="نوع التكت",
+    role="الرتبة المسؤولة عن هذا النوع"
+)
+@app_commands.choices(
+    ticket_type=[
+        app_commands.Choice(
+            name=label[:100],
+            value=option_key
+        )
+        for label, option_key, department
+        in ALL_TICKET_ROLE_OPTIONS
+    ]
+)
+async def set_ticket_role_command(
+    interaction,
+    ticket_type: app_commands.Choice[str],
+    role: discord.Role
+):
+
+    if not can_manage_security(
+        interaction
+    ):
+
+        await interaction.response.send_message(
+            "❌ هذا الأمر للـ Owner و COowner فقط.",
+            ephemeral=True
+        )
+
+        return
+
+    selected = next(
+        (
+            item
+            for item in ALL_TICKET_ROLE_OPTIONS
+            if item[1] == ticket_type.value
+        ),
+        None
+    )
+
+    if not selected:
+
+        await interaction.response.send_message(
+            "❌ نوع التكت غير معروف.",
+            ephemeral=True
+        )
+
+        return
+
+    label, option_key, department = selected
+
+    if role.is_default():
+
+        await interaction.response.send_message(
+            "❌ لا يمكن تعيين رتبة @everyone كرتبة مسؤولة.",
+            ephemeral=True
+        )
+
+        return
+
+    if interaction.guild.me:
+
+        if role >= interaction.guild.me.top_role:
+
+            await interaction.response.send_message(
+                "❌ رتبة البوت يجب أن تكون أعلى من الرتبة المسؤولة حتى يتمكن من ضبط صلاحيات التكت.",
+                ephemeral=True
+            )
+
+            return
+
+    set_ticket_role(
+        interaction.guild.id,
+        department,
+        option_key,
+        role.id
+    )
+
+    await interaction.response.send_message(
+        (
+            f"✅ تم تحديد {role.mention} كرتبة مسؤولة عن "
+            f"**{label}**.\n"
+            f"📂 القسم: `{TICKET_CONFIGS[department]['title']}`\n\n"
+            "📌 عند فتح هذا النوع من التكت سيتم منشن الرتبة، "
+            "وستتمكن الرتبة والرتب الأعلى منها من مشاهدة التكت والرد فيه."
+        ),
+        ephemeral=True
+    )
+
+    await send_log(
+        interaction.guild,
+        "role_log_channel_id",
+        "🎫 تغيير مسؤول تكت",
+        f"تم تحديد {role.mention} مسؤولًا عن {label}.",
+        discord.Color.green(),
+        actor=interaction.user,
+        extra_fields=[
+            ("📂 القسم", TICKET_CONFIGS[department]["title"]),
+            ("📌 النوع", label),
+            ("🎭 الرتبة", role.mention),
+            ("🆔 Role ID", role.id)
+        ]
+    )
+
+
+# =========================================================
 # TICKET CLOSE
 # =========================================================
 
@@ -2657,6 +2937,7 @@ class TicketCloseView(
 ):
 
     def __init__(self):
+
         super().__init__(
             timeout=None
         )
@@ -2748,7 +3029,9 @@ class TicketCloseView(
                 f"Transcript error: {error}"
             )
 
-        transcript = "\n".join(lines)
+        transcript = "\n".join(
+            lines
+        )
 
         db = db_connect()
         cursor = db.cursor()
@@ -2812,7 +3095,10 @@ class TicketCloseView(
                 )
 
                 if len(transcript_bytes) > 5_000_000:
-                    transcript_bytes = transcript_bytes[:5_000_000]
+
+                    transcript_bytes = (
+                        transcript_bytes[:5_000_000]
+                    )
 
                 file = discord.File(
                     io.BytesIO(
@@ -2847,6 +3133,52 @@ class TicketCloseView(
             logging.error(
                 f"Ticket delete error: {error}"
             )
+
+
+# =========================================================
+# FIND ROLE
+# =========================================================
+
+def find_role(
+    guild,
+    role_name
+):
+
+    expected = normalize_text(
+        role_name
+    )
+
+    for role in guild.roles:
+
+        if normalize_text(
+            role.name
+        ) == expected:
+
+            return role
+
+    return None
+
+
+# =========================================================
+# GET HIGHER / EQUAL ROLES
+# =========================================================
+
+def get_higher_or_equal_roles(
+    guild,
+    responsible_role
+):
+
+    roles = []
+
+    for role in guild.roles:
+
+        if role.is_default():
+            continue
+
+        if role.position >= responsible_role.position:
+            roles.append(role)
+
+    return roles
 
 
 # =========================================================
@@ -2902,7 +3234,6 @@ async def create_ticket(
 
         return
 
-    # يمنع الضغط المتزامن الذي يفتح تذكرتين
     lock_key = (
         guild.id,
         member.id
@@ -2913,263 +3244,410 @@ async def create_ticket(
         asyncio.Lock()
     )
 
-    async with lock:
+    try:
 
-        option_label = option_data[0]
+        async with lock:
 
-        db = db_connect()
-        cursor = db.cursor()
+            option_label = option_data[0]
 
-        cursor.execute(
-            """
-            SELECT channel_id
-            FROM tickets
-            WHERE guild_id = ?
-            AND user_id = ?
-            AND closed = 0
-            LIMIT 1
-            """,
-            (
+            # =================================================
+            # المسؤول المحدد لهذا النوع
+            # =================================================
+
+            responsible_role = None
+
+            responsible_role_id = get_ticket_role(
                 guild.id,
-                member.id
-            )
-        )
-
-        existing = cursor.fetchone()
-
-        db.close()
-
-        if existing:
-
-            existing_channel = guild.get_channel(
-                existing[0]
+                department,
+                option_key
             )
 
-            if existing_channel:
+            if responsible_role_id:
 
-                await interaction.response.send_message(
-                    f"❌ عندك تذكرة مفتوحة بالفعل: {existing_channel.mention}",
-                    ephemeral=True
+                responsible_role = guild.get_role(
+                    responsible_role_id
                 )
 
-                return
+            # =================================================
+            # منع فتح أكثر من تكت
+            # =================================================
 
-        department_roles = []
+            db = db_connect()
+            cursor = db.cursor()
 
-        for role_name in config["roles"]:
-
-            role = find_role(
-                guild,
-                role_name
+            cursor.execute(
+                """
+                SELECT channel_id
+                FROM tickets
+                WHERE guild_id = ?
+                AND user_id = ?
+                AND closed = 0
+                LIMIT 1
+                """,
+                (
+                    guild.id,
+                    member.id
+                )
             )
 
-            if role:
-                department_roles.append(role)
+            existing = cursor.fetchone()
 
-        category = discord.utils.get(
-            guild.categories,
-            name=config["category"]
-        )
+            db.close()
 
-        if not category:
+            if existing:
+
+                existing_channel = guild.get_channel(
+                    existing[0]
+                )
+
+                if existing_channel:
+
+                    await interaction.response.send_message(
+                        f"❌ عندك تذكرة مفتوحة بالفعل: {existing_channel.mention}",
+                        ephemeral=True
+                    )
+
+                    return
+
+            # =================================================
+            # أدوار القطاع القديمة
+            # =================================================
+
+            department_roles = []
+
+            for role_name in config["roles"]:
+
+                role = find_role(
+                    guild,
+                    role_name
+                )
+
+                if role:
+                    department_roles.append(
+                        role
+                    )
+
+            # =================================================
+            # التصنيف
+            # =================================================
+
+            category = discord.utils.get(
+                guild.categories,
+                name=config["category"]
+            )
+
+            if not category:
+
+                try:
+
+                    category = await guild.create_category(
+                        config["category"],
+                        reason="MTRP Ticket System"
+                    )
+
+                except Exception as error:
+
+                    logging.error(
+                        f"Ticket category error: {error}"
+                    )
+
+                    await interaction.response.send_message(
+                        "❌ ما قدرت أنشئ تصنيف التذاكر.",
+                        ephemeral=True
+                    )
+
+                    return
+
+            # =================================================
+            # PERMISSIONS
+            # =================================================
+
+            overwrites = {
+
+                guild.default_role:
+                    discord.PermissionOverwrite(
+                        view_channel=False
+                    ),
+
+                member:
+                    discord.PermissionOverwrite(
+                        view_channel=True,
+                        send_messages=True,
+                        read_message_history=True
+                    )
+            }
+
+            if guild.me:
+
+                overwrites[guild.me] = (
+                    discord.PermissionOverwrite(
+                        view_channel=True,
+                        send_messages=True,
+                        manage_channels=True,
+                        read_message_history=True,
+                        manage_messages=True
+                    )
+                )
+
+            # =================================================
+            # إذا فيه رتبة مسؤولة:
+            # الرتبة + كل الرتب الأعلى منها
+            # =================================================
+
+            if responsible_role:
+
+                higher_roles = get_higher_or_equal_roles(
+                    guild,
+                    responsible_role
+                )
+
+                for role in higher_roles:
+
+                    overwrites[role] = (
+                        discord.PermissionOverwrite(
+                            view_channel=True,
+                            send_messages=True,
+                            read_message_history=True
+                        )
+                    )
+
+            else:
+
+                # إذا لم يتم تحديد مسؤول لهذا النوع،
+                # نستخدم أدوار القطاع الأساسية
+                for role in department_roles:
+
+                    overwrites[role] = (
+                        discord.PermissionOverwrite(
+                            view_channel=True,
+                            send_messages=True,
+                            read_message_history=True
+                        )
+                    )
+
+            # =================================================
+            # اسم التكت
+            # =================================================
+
+            safe_name = re.sub(
+                r"[^a-zA-Z0-9\u0600-\u06FF_-]",
+                "-",
+                member.name
+            )[:60]
+
+            channel_name = (
+                f"ticket-{safe_name}"
+            )
+
+            # =================================================
+            # إنشاء الروم
+            # =================================================
 
             try:
 
-                category = await guild.create_category(
-                    config["category"],
+                channel = await guild.create_text_channel(
+                    name=channel_name,
+                    category=category,
+                    overwrites=overwrites,
                     reason="MTRP Ticket System"
                 )
 
             except Exception as error:
 
                 logging.error(
-                    f"Ticket category error: {error}"
+                    f"Ticket channel error: {error}"
                 )
 
                 await interaction.response.send_message(
-                    "❌ ما قدرت أنشئ تصنيف التذاكر.",
+                    "❌ ما قدرت أنشئ قناة التذكرة. تأكد من صلاحيات البوت.",
                     ephemeral=True
                 )
 
                 return
 
-        overwrites = {
+            sector_name = (
+                f"{config['title']} | {option_label}"
+            )
 
-            guild.default_role:
-                discord.PermissionOverwrite(
-                    view_channel=False
-                ),
+            # =================================================
+            # حفظ التكت
+            # =================================================
 
-            member:
-                discord.PermissionOverwrite(
-                    view_channel=True,
-                    send_messages=True,
-                    read_message_history=True
-                ),
+            db = db_connect()
+            cursor = db.cursor()
 
-            guild.me:
-                discord.PermissionOverwrite(
-                    view_channel=True,
-                    send_messages=True,
-                    manage_channels=True,
-                    read_message_history=True
+            cursor.execute(
+                """
+                INSERT INTO tickets
+                (
+                    guild_id,
+                    user_id,
+                    channel_id,
+                    sector,
+                    created_at
                 )
-        }
-
-        for role in department_roles:
-
-            overwrites[role] = discord.PermissionOverwrite(
-                view_channel=True,
-                send_messages=True,
-                read_message_history=True
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    guild.id,
+                    member.id,
+                    channel.id,
+                    sector_name,
+                    now_utc()
+                )
             )
 
-        safe_name = re.sub(
-            r"[^a-zA-Z0-9\u0600-\u06FF_-]",
-            "-",
-            member.name
-        )[:60]
+            db.commit()
+            db.close()
 
-        channel_name = (
-            f"ticket-{safe_name}"
-        )
+            # =================================================
+            # EMBED
+            # =================================================
 
-        try:
-
-            channel = await guild.create_text_channel(
-                name=channel_name,
-                category=category,
-                overwrites=overwrites,
-                reason="MTRP Ticket System"
+            embed = discord.Embed(
+                title="🎫 تذكرة MTRP",
+                description=(
+                    f"مرحبًا {member.mention}\n\n"
+                    f"**القسم:** {config['title']}\n"
+                    f"**نوع الطلب:** {option_label}\n\n"
+                    "اكتب طلبك أو استفسارك بالتفصيل، "
+                    "وسيتم خدمتك من المختصين.\n\n"
+                    "🔒 عند الانتهاء استخدم زر إغلاق التذكرة."
+                ),
+                color=discord.Color.blurple()
             )
 
-        except Exception as error:
-
-            logging.error(
-                f"Ticket channel error: {error}"
+            embed.add_field(
+                name="📌 نوع التذكرة",
+                value=option_label,
+                inline=True
             )
+
+            embed.add_field(
+                name="👤 صاحب التذكرة",
+                value=member.mention,
+                inline=True
+            )
+
+            if responsible_role:
+
+                embed.add_field(
+                    name="🎭 المسؤول",
+                    value=responsible_role.mention,
+                    inline=True
+                )
+
+            else:
+
+                embed.add_field(
+                    name="🎭 المسؤول",
+                    value="⚠️ لم يتم تحديد رتبة مسؤولة لهذا النوع",
+                    inline=True
+                )
+
+            embed.set_footer(
+                text="MTRP • Ticket System"
+            )
+
+            # =================================================
+            # أول رسالة:
+            # صاحب التكت + الرتبة المسؤولة مباشرة
+            # =================================================
+
+            if responsible_role:
+
+                content = (
+                    f"{member.mention} "
+                    f"{responsible_role.mention}"
+                )
+
+                allowed_mentions = discord.AllowedMentions(
+                    users=[member],
+                    roles=[responsible_role]
+                )
+
+            else:
+
+                content = member.mention
+
+                allowed_mentions = discord.AllowedMentions(
+                    users=[member],
+                    roles=False
+                )
+
+            try:
+
+                await channel.send(
+                    content=content,
+                    embed=embed,
+                    view=TicketCloseView(),
+                    allowed_mentions=allowed_mentions
+                )
+
+            except Exception as error:
+
+                logging.error(
+                    f"Ticket first message error: {error}"
+                )
+
+            # =================================================
+            # تأكيد لصاحب التكت
+            # =================================================
 
             await interaction.response.send_message(
-                "❌ ما قدرت أنشئ قناة التذكرة. تأكد من صلاحيات البوت.",
+                f"✅ تم إنشاء تذكرتك: {channel.mention}",
                 ephemeral=True
             )
 
-            return
+            # =================================================
+            # LOG
+            # =================================================
 
-        sector_name = (
-            f"{config['title']} | {option_label}"
-        )
-
-        db = db_connect()
-        cursor = db.cursor()
-
-        cursor.execute(
-            """
-            INSERT INTO tickets
-            (
-                guild_id,
-                user_id,
-                channel_id,
-                sector,
-                created_at
-            )
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (
-                guild.id,
-                member.id,
-                channel.id,
-                sector_name,
-                now_utc()
-            )
-        )
-
-        db.commit()
-        db.close()
-
-        embed = discord.Embed(
-            title="🎫 تذكرة MTRP",
-            description=(
-                f"مرحبًا {member.mention}\n\n"
-                f"**القسم:** {config['title']}\n"
-                f"**نوع الطلب:** {option_label}\n\n"
-                "اكتب طلبك أو استفسارك بالتفصيل، "
-                "وسيتم خدمتك من المختصين.\n\n"
-                "🔒 عند الانتهاء استخدم زر إغلاق التذكرة."
-            ),
-            color=discord.Color.blurple()
-        )
-
-        embed.add_field(
-            name="📌 نوع التذكرة",
-            value=option_label,
-            inline=True
-        )
-
-        embed.add_field(
-            name="👤 صاحب التذكرة",
-            value=member.mention,
-            inline=True
-        )
-
-        embed.set_footer(
-            text="MTRP • Ticket System"
-        )
-
-        await channel.send(
-            content=member.mention,
-            embed=embed,
-            view=TicketCloseView()
-        )
-
-        await interaction.response.send_message(
-            f"✅ تم إنشاء تذكرتك: {channel.mention}",
-            ephemeral=True
-        )
-
-        await send_log(
-            guild,
-            "channel_log_channel_id",
-            "🎫 فتح تذكرة",
-            "تم فتح تذكرة جديدة.",
-            discord.Color.blue(),
-            actor=member,
-            extra_fields=[
+            extra_fields = [
                 ("📂 القسم", config["title"]),
                 ("📌 النوع", option_label),
                 ("📍 القناة", channel.mention)
             ]
-        )
 
-    TICKET_LOCKS.pop(
-        lock_key,
-        None
-    )
+            if responsible_role:
+
+                extra_fields.append(
+                    (
+                        "🎭 الرتبة المسؤولة",
+                        responsible_role.mention
+                    )
+                )
+
+            else:
+
+                extra_fields.append(
+                    (
+                        "🎭 الرتبة المسؤولة",
+                        "غير محددة"
+                    )
+                )
+
+            await send_log(
+                guild,
+                "channel_log_channel_id",
+                "🎫 فتح تذكرة",
+                "تم فتح تذكرة جديدة.",
+                discord.Color.blue(),
+                actor=member,
+                extra_fields=extra_fields
+            )
+
+    finally:
+
+        TICKET_LOCKS.pop(
+            lock_key,
+            None
+        )
 
 
 # =========================================================
 # TICKET SELECT
 # =========================================================
-
-def find_role(
-    guild,
-    role_name
-):
-
-    expected = normalize_text(
-        role_name
-    )
-
-    for role in guild.roles:
-
-        if normalize_text(
-            role.name
-        ) == expected:
-
-            return role
-
-    return None
-
 
 class TicketTypeSelect(
     discord.ui.Select
@@ -3263,6 +3741,10 @@ async def send_ticket_panel(
         department
     ]
 
+    # =====================================================
+    # العنوان والنص مضبوطين
+    # =====================================================
+
     embed = discord.Embed(
         title="🎫 تذاكر MTRP",
         description=(
@@ -3303,7 +3785,10 @@ async def send_ticket_panel(
     name="general",
     description="إرسال لوحة التكتات العامة والاستفسارات والطلبات"
 )
-async def general_tickets(interaction):
+async def general_tickets(
+    interaction
+):
+
     await send_ticket_panel(
         interaction,
         "general"
@@ -3314,7 +3799,10 @@ async def general_tickets(interaction):
     name="swat",
     description="إرسال لوحة تذاكر S.W.A.T"
 )
-async def swat_tickets(interaction):
+async def swat_tickets(
+    interaction
+):
+
     await send_ticket_panel(
         interaction,
         "swat"
@@ -3325,7 +3813,10 @@ async def swat_tickets(interaction):
     name="justice",
     description="إرسال لوحة تذاكر وزارة العدل"
 )
-async def justice_tickets(interaction):
+async def justice_tickets(
+    interaction
+):
+
     await send_ticket_panel(
         interaction,
         "justice"
@@ -3336,7 +3827,10 @@ async def justice_tickets(interaction):
     name="interior",
     description="إرسال لوحة تذاكر وزارة الداخلية"
 )
-async def interior_tickets(interaction):
+async def interior_tickets(
+    interaction
+):
+
     await send_ticket_panel(
         interaction,
         "interior"
@@ -3347,7 +3841,10 @@ async def interior_tickets(interaction):
     name="health",
     description="إرسال لوحة تذاكر الصحة"
 )
-async def health_tickets(interaction):
+async def health_tickets(
+    interaction
+):
+
     await send_ticket_panel(
         interaction,
         "health"
@@ -3497,6 +3994,16 @@ async def create_deed(
         embed=embed
     )
 
+    await send_log(
+        interaction.guild,
+        "mod_log_channel_id",
+        "📜 إنشاء سند ملكية",
+        f"تم إنشاء سند ملكية رقم `DEED-{deed_id:05d}`.",
+        discord.Color.green(),
+        actor=interaction.user,
+        target=citizen
+    )
+
 
 # =========================================================
 # WARRANT
@@ -3604,6 +4111,16 @@ async def issue_warrant(
         embed=embed
     )
 
+    await send_log(
+        interaction.guild,
+        "mod_log_channel_id",
+        "⚖️ إصدار مذكرة",
+        f"تم إصدار مذكرة `WARRANT-{warrant_id:05d}`.",
+        discord.Color.red(),
+        actor=interaction.user,
+        target=citizen
+    )
+
 
 # =========================================================
 # 911
@@ -3692,6 +4209,19 @@ async def dispatch_911(
         allowed_mentions=discord.AllowedMentions(
             everyone=True
         )
+    )
+
+    await send_log(
+        interaction.guild,
+        "mod_log_channel_id",
+        "🚨 بلاغ 911",
+        f"تم إرسال بلاغ `911-{dispatch_id:05d}`.",
+        discord.Color.red(),
+        actor=interaction.user,
+        extra_fields=[
+            ("📍 الموقع", location),
+            ("📝 التفاصيل", details)
+        ]
     )
 
 
@@ -3799,6 +4329,21 @@ async def add_record(
 
     await interaction.response.send_message(
         embed=embed
+    )
+
+    await send_log(
+        interaction.guild,
+        "mod_log_channel_id",
+        "📁 إضافة سجل جنائي",
+        f"تم إنشاء السجل `RECORD-{record_id:05d}`.",
+        discord.Color.dark_red(),
+        actor=interaction.user,
+        target=citizen,
+        extra_fields=[
+            ("⚠️ الجريمة", crime),
+            ("💰 الغرامة", fine),
+            ("⛓️ السجن", jail_time)
+        ]
     )
 
 
@@ -3971,6 +4516,19 @@ async def swat_deploy(
         )
     )
 
+    await send_log(
+        interaction.guild,
+        "mod_log_channel_id",
+        "🛡️ انتشار S.W.A.T",
+        "تم إصدار أمر انتشار S.W.A.T.",
+        discord.Color.orange(),
+        actor=interaction.user,
+        extra_fields=[
+            ("📍 المنطقة", zone),
+            ("🚨 الخطورة", threat.value)
+        ]
+    )
+
 
 # =========================================================
 # MEDICAL REPORT
@@ -4066,6 +4624,16 @@ async def medical_report(
 
     await interaction.response.send_message(
         embed=embed
+    )
+
+    await send_log(
+        interaction.guild,
+        "mod_log_channel_id",
+        "🏥 تقرير طبي",
+        f"تم إنشاء تقرير طبي `MED-{report_id:05d}`.",
+        discord.Color.green(),
+        actor=interaction.user,
+        target=citizen
     )
 
 
@@ -4172,6 +4740,15 @@ async def ai_command(
             f"✅ تم تحديد روم AI إلى {channel.mention}.",
             ephemeral=True
         )
+
+    await send_log(
+        interaction.guild,
+        "mod_log_channel_id",
+        "🤖 إعداد AI",
+        f"تم تنفيذ إعداد AI: `{action.value}`.",
+        discord.Color.blue(),
+        actor=interaction.user
+    )
 
 
 # =========================================================
