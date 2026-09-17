@@ -1,13 +1,16 @@
+import os
 import discord
 from discord.ext import commands
 
+# 1. تفعيل جميع الصلاحيات المطلوب عمل البوت معها
 intents = discord.Intents.default()
 intents.guilds = True
 intents.members = True
+intents.message_content = True  # ضروري لقراءة الأوامر في النسخ الحديثة
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# قائمة الرتب المستخرجة من الصور (بدون تكرار)
+# 2. قائمة الرتب المستخرجة من الصور (تم تنظيف التكرار)
 ROLES_DATA = [
     # Top Leadership & Special Roles
     "#",
@@ -82,7 +85,7 @@ ROLES_DATA = [
     "MT | Whitelist"
 ]
 
-# قائمة الرومات والتصنيفات المستخرجة من الصور
+# 3. قائمة التصنيفات والرومات
 CATEGORIES_AND_CHANNELS = [
     {
         "category": "welcome",
@@ -159,19 +162,23 @@ CATEGORIES_AND_CHANNELS = [
     }
 ]
 
+@bot.event
+async def on_ready():
+    print(f"Logged in as {bot.user.name} ({bot.user.id})")
+
 @bot.command()
 @commands.has_permissions(administrator=True)
 async def setup_server(ctx):
     guild = ctx.guild
     await ctx.send("⏳ جاري إنشاء الرتب والرومات...")
 
-    # 1. إنشاء الرتب
+    # إنشاء الرتب
     for role_name in ROLES_DATA:
         existing_role = discord.utils.get(guild.roles, name=role_name)
         if not existing_role:
             await guild.create_role(name=role_name)
             
-    # 2. إنشاء التصنيفات والرومات
+    # إنشاء التصنيفات والرومات
     for cat_data in CATEGORIES_AND_CHANNELS:
         category = await guild.create_category(cat_data["category"])
         for ch_data in cat_data["channels"]:
@@ -184,4 +191,10 @@ async def setup_server(ctx):
 
     await ctx.send("✅ تم إعداد السيرفر بنجاح بجميع الرتب والرومات المطلوبة!")
 
-bot.run("MTUzODgzNzI4Mjk3NzQ4ODkwNg.GA6_Mj.kAZ_53qJjs6PkFFFLt33lhZhf9WIVmN7FmyZtc")
+# قراءة التوكن مباشرة من Environment Variable المسمى TOKEN
+TOKEN = os.getenv("TOKEN")
+
+if TOKEN:
+    bot.run(TOKEN)
+else:
+    print("Error: TOKEN environment variable is not set!")
