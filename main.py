@@ -5512,6 +5512,16 @@ async def view_records(
     description="إرسال انتشار S.W.A.T"
 )
 @app_commands.describe(
+    location="الموقع / المنطقة",
+    threat="مستوى التهديد / السبب"
+)
+async def swat_deploy(
+    interaction: discord.Interaction,
+    location: str,
+    threat: str
+):
+
+@app_commands.describe(
     zone="منطقة الانتشار",
     threat="مستوى الخطورة"
 )
