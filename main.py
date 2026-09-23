@@ -5097,9 +5097,9 @@ async def create_deed(
     ]
 )
 async def issue_warrant(
-    interaction,
+    interaction: discord.Interaction,
     citizen: discord.Member,
-    warrant_type,
+    warrant_type: str,
     reason: str
 ):
 
@@ -5112,7 +5112,6 @@ async def issue_warrant(
             "❌ الأمر مخصص لقطاع Justice.",
             ephemeral=True
         )
-
         return
 
     db = db_connect()
@@ -5135,11 +5134,12 @@ async def issue_warrant(
             interaction.guild.id,
             citizen.id,
             interaction.user.id,
-            warrant_type.value,
+            warrant_type,  # ✅ تم تعديلها من warrant_type.value إلى warrant_type
             reason,
             now_utc()
         )
     )
+
 
     warrant_id = cursor.lastrowid
 
