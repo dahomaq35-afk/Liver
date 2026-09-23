@@ -5639,10 +5639,11 @@ async def medical_report(
     name="ai",
     description="إدارة نظام الذكاء الاصطناعي"
 )
-@app_commands.describe(
-    action="اختر الإجراء",
-    channel="الروم الذي يعمل فيه AI"
-)
+async def ai_command(
+    interaction: discord.Interaction,
+    action: str  # ✅ التعديل هنا: أضفنا : str
+):
+
 @app_commands.choices(
     action=[
         app_commands.Choice(
