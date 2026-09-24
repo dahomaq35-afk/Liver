@@ -1,1124 +1,840 @@
 import os
-import io
-import re
-import time
-import asyncio
-import datetime
-import logging
-import sqlite3
-import unicodedata
-
-from keepalive import keep_alive
-
 import discord
 from discord import app_commands
 from discord.ext import commands
-from openai import AsyncOpenAI
+import sqlite3
+import asyncio
+from typing import Optional
+
 
 # =========================================================
-# SETTINGS
+# CONFIG
 # =========================================================
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s"
+TOKEN = os.getenv("DISCORD_TOKEN")
+
+if not TOKEN:
+    raise RuntimeError(
+        "❌ DISCORD_TOKEN غير موجود في Environment Variables"
+    )
+
+intents = discord.Intents.default()
+intents.guilds = True
+intents.members = True
+intents.message_content = True
+
+bot = commands.Bot(
+    command_prefix="-",
+    intents=intents
 )
-
-BOT_PREFIX = "-"
-
-ROLE_JUSTICE = "𝗠𝗧 | Justice"
-ROLE_POLICE = "𝗠𝗧 | LSPD"
-ROLE_SWAT = "𝗠𝗧 | S.W.A.T"
-ROLE_HEALTH = "𝗠𝗧 | PHMC"
-ROLE_INTERIOR = "𝗠𝗧 | Interior"
-
-DB_FILE = "mt_bot.db"
-
-SUPPORT_CHANNEL_ID = 1541582061893062656
-
-WHITELIST_ROLES = [
-    "MT | CEO",
-    "MT | COowner",
-    "MT | Owner",
-    "Bot"
-]
-
-# =========================================================
-# PERFORMANCE CACHE
-# =========================================================
-
-SETTINGS_CACHE = {}
-EXCLUDED_ROLES_CACHE = {}
-
-CACHE_TTL = 5.0
-
-TICKET_LOCKS = {}
-
-
-def cache_valid(cache, guild_id):
-    item = cache.get(guild_id)
-
-    if not item:
-        return False
-
-    return (
-        time.monotonic() - item["time"]
-    ) < CACHE_TTL
-
-
-def invalidate_guild_cache(guild_id):
-    SETTINGS_CACHE.pop(guild_id, None)
-    EXCLUDED_ROLES_CACHE.pop(guild_id, None)
 
 
 # =========================================================
 # DATABASE
 # =========================================================
 
-def db_connect():
-    db = sqlite3.connect(
-        DB_FILE,
-        timeout=5
+db = sqlite3.connect("mt_bot.db")
+db.row_factory = sqlite3.Row
+
+db.execute("""
+CREATE TABLE IF NOT EXISTS ticket_setups (
+    guild_id INTEGER NOT NULL,
+    ticket_number INTEGER NOT NULL,
+    category_id INTEGER NOT NULL,
+    staff_role_id INTEGER NOT NULL,
+    PRIMARY KEY (guild_id, ticket_number)
+)
+""")
+
+db.execute("""
+CREATE TABLE IF NOT EXISTS laws (
+    guild_id INTEGER NOT NULL,
+    law_number INTEGER NOT NULL,
+    law_name TEXT NOT NULL,
+    law_text TEXT NOT NULL,
+    PRIMARY KEY (guild_id, law_number)
+)
+""")
+
+db.commit()
+
+
+# =========================================================
+# HELPERS
+# =========================================================
+
+def get_ticket_setup(guild_id: int, number: int):
+    return db.execute(
+        """
+        SELECT * FROM ticket_setups
+        WHERE guild_id = ? AND ticket_number = ?
+        """,
+        (guild_id, number)
+    ).fetchone()
+
+
+def get_law(guild_id: int, number: int):
+    return db.execute(
+        """
+        SELECT * FROM laws
+        WHERE guild_id = ? AND law_number = ?
+        """,
+        (guild_id, number)
+    ).fetchone()
+
+
+def is_admin(interaction: discord.Interaction) -> bool:
+    return (
+        interaction.user.guild_permissions.administrator
+        or interaction.user.guild_permissions.manage_guild
     )
 
-    db.execute("PRAGMA journal_mode=WAL")
-    db.execute("PRAGMA synchronous=NORMAL")
-    db.execute("PRAGMA busy_timeout=5000")
 
-    return db
+async def deny(interaction: discord.Interaction):
+    await interaction.response.send_message(
+        "❌ هذا الأمر يحتاج صلاحية **إدارة السيرفر**.",
+        ephemeral=True
+    )
 
 
-def setup_database():
+# =========================================================
+# TICKET SYSTEM
+# =========================================================
 
-    db = db_connect()
-    cursor = db.cursor()
+class TicketOpenView(discord.ui.View):
 
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS settings (
-            guild_id INTEGER PRIMARY KEY,
-            ai_enabled INTEGER DEFAULT 0,
-            ai_channel_id INTEGER DEFAULT 0
-        )
-    """)
+    def __init__(self):
+        super().__init__(timeout=None)
 
-    cursor.execute("PRAGMA table_info(settings)")
+    @discord.ui.button(
+        label="فتح تذكرة",
+        emoji="🎫",
+        style=discord.ButtonStyle.primary,
+        custom_id="mt_ticket_open"
+    )
+    async def open_ticket(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
 
-    existing_columns = {
-        row[1]
-        for row in cursor.fetchall()
-    }
+        guild = interaction.guild
 
-    new_columns = {
-        "security_log_channel_id": "INTEGER DEFAULT 0",
-        "delete_log_channel_id": "INTEGER DEFAULT 0",
-        "edit_log_channel_id": "INTEGER DEFAULT 0",
-        "member_log_channel_id": "INTEGER DEFAULT 0",
-        "mod_log_channel_id": "INTEGER DEFAULT 0",
-        "role_log_channel_id": "INTEGER DEFAULT 0",
-        "channel_log_channel_id": "INTEGER DEFAULT 0"
-    }
+        if guild is None:
+            return
 
-    for column_name, column_type in new_columns.items():
+        setups = db.execute(
+            """
+            SELECT * FROM ticket_setups
+            WHERE guild_id = ?
+            ORDER BY ticket_number ASC
+            """,
+            (guild.id,)
+        ).fetchall()
 
-        if column_name not in existing_columns:
+        if not setups:
+            await interaction.response.send_message(
+                "❌ لم يتم تسطيب أي نوع من التذاكر.",
+                ephemeral=True
+            )
+            return
 
-            cursor.execute(
-                f"""
-                ALTER TABLE settings
-                ADD COLUMN {column_name} {column_type}
-                """
+        if len(setups) == 1:
+            await create_ticket(
+                interaction,
+                setups[0]["ticket_number"]
+            )
+            return
+
+        options = []
+
+        for row in setups[:25]:
+            options.append(
+                discord.SelectOption(
+                    label=f"{row['ticket_number']} - تذكرة",
+                    value=str(row["ticket_number"]),
+                    emoji="🎫"
+                )
             )
 
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS excluded_roles (
-            guild_id INTEGER NOT NULL,
-            role_id INTEGER NOT NULL,
-            PRIMARY KEY (guild_id, role_id)
-        )
-    """)
+        view = TicketTypeView(options)
 
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS criminal_records (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            guild_id INTEGER NOT NULL,
-            citizen_id INTEGER NOT NULL,
-            officer_id INTEGER NOT NULL,
-            crime TEXT NOT NULL,
-            fine INTEGER DEFAULT 0,
-            jail_time TEXT,
-            created_at TEXT NOT NULL
+        await interaction.response.send_message(
+            "🎫 **اختر نوع التذكرة التي تريد فتحها:**",
+            view=view,
+            ephemeral=True
         )
-    """)
 
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS warnings (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            guild_id INTEGER NOT NULL,
-            user_id INTEGER NOT NULL,
-            moderator_id INTEGER NOT NULL,
-            reason TEXT NOT NULL,
-            created_at TEXT NOT NULL
+
+class TicketTypeView(discord.ui.View):
+
+    def __init__(self, options):
+        super().__init__(timeout=120)
+
+        select = discord.ui.Select(
+            placeholder="اختر نوع التذكرة",
+            options=options,
+            custom_id="mt_ticket_type_select"
         )
-    """)
 
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS security_logs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            guild_id INTEGER NOT NULL,
-            event_type TEXT NOT NULL,
-            actor_id INTEGER,
-            target_id INTEGER,
-            details TEXT,
-            created_at TEXT NOT NULL
-        )
-    """)
+        async def callback(interaction: discord.Interaction):
 
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS tickets (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            guild_id INTEGER NOT NULL,
-            user_id INTEGER NOT NULL,
-            channel_id INTEGER NOT NULL,
-            sector TEXT NOT NULL,
-            claimed_by INTEGER DEFAULT 0,
-            created_at TEXT NOT NULL,
-            closed INTEGER DEFAULT 0
-        )
-    """)
+            number = int(select.values[0])
 
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS ticket_roles (
-            guild_id INTEGER NOT NULL,
-            department TEXT NOT NULL,
-            option_key TEXT NOT NULL,
-            role_id INTEGER NOT NULL,
-            PRIMARY KEY (
-                guild_id,
-                department,
-                option_key
+            await create_ticket(
+                interaction,
+                number
             )
+
+        select.callback = callback
+        self.add_item(select)
+
+
+async def create_ticket(
+    interaction: discord.Interaction,
+    ticket_number: int
+):
+
+    guild = interaction.guild
+
+    if guild is None:
+        return
+
+    setup = get_ticket_setup(
+        guild.id,
+        ticket_number
+    )
+
+    if not setup:
+        await interaction.response.send_message(
+            "❌ نوع التذكرة غير موجود.",
+            ephemeral=True
         )
-    """)
+        return
 
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS deeds (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            guild_id INTEGER NOT NULL,
-            citizen_id INTEGER NOT NULL,
-            officer_id INTEGER NOT NULL,
-            property_name TEXT NOT NULL,
-            details TEXT,
-            created_at TEXT NOT NULL
+    category = guild.get_channel(
+        setup["category_id"]
+    )
+
+    role = guild.get_role(
+        setup["staff_role_id"]
+    )
+
+    if not isinstance(category, discord.CategoryChannel):
+        await interaction.response.send_message(
+            "❌ الكاتيجوري المحددة للتذكرة غير موجودة.",
+            ephemeral=True
         )
-    """)
+        return
 
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS warrants (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            guild_id INTEGER NOT NULL,
-            citizen_id INTEGER NOT NULL,
-            officer_id INTEGER NOT NULL,
-            warrant_type TEXT NOT NULL,
-            reason TEXT NOT NULL,
-            created_at TEXT NOT NULL
+    existing = discord.utils.get(
+        category.channels,
+        name=f"ticket-{interaction.user.id}"
+    )
+
+    if existing:
+        await interaction.response.send_message(
+            f"❌ لديك تذكرة مفتوحة بالفعل: {existing.mention}",
+            ephemeral=True
         )
-    """)
+        return
 
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS dispatches (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            guild_id INTEGER NOT NULL,
-            officer_id INTEGER NOT NULL,
-            location TEXT NOT NULL,
-            details TEXT NOT NULL,
-            created_at TEXT NOT NULL
+    overwrites = {
+        guild.default_role: discord.PermissionOverwrite(
+            view_channel=False
+        ),
+
+        interaction.user: discord.PermissionOverwrite(
+            view_channel=True,
+            send_messages=True,
+            read_message_history=True
+        ),
+
+        guild.me: discord.PermissionOverwrite(
+            view_channel=True,
+            send_messages=True,
+            manage_channels=True,
+            read_message_history=True
         )
-    """)
+    }
 
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS medical_reports (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            guild_id INTEGER NOT NULL,
-            citizen_id INTEGER NOT NULL,
-            medic_id INTEGER NOT NULL,
-            diagnosis TEXT NOT NULL,
-            treatment TEXT NOT NULL,
-            created_at TEXT NOT NULL
+    if role:
+        overwrites[role] = discord.PermissionOverwrite(
+            view_channel=True,
+            send_messages=True,
+            read_message_history=True
         )
-    """)
 
-    # =====================================================
-    # RULES SYSTEM
-    # =====================================================
+    channel = await guild.create_text_channel(
+        name=f"ticket-{interaction.user.id}",
+        category=category,
+        overwrites=overwrites,
+        reason=f"Ticket #{ticket_number}"
+    )
 
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS rules (
-            guild_id INTEGER NOT NULL,
-            rule_id INTEGER NOT NULL,
-            name TEXT NOT NULL,
-            content TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            PRIMARY KEY (guild_id, rule_id)
+    embed = discord.Embed(
+        title="🎫 تذكرة جديدة",
+        description=(
+            f"مرحبًا {interaction.user.mention}\n\n"
+            "تم فتح تذكرتك بنجاح.\n"
+            "سيقوم فريق الإدارة بالرد عليك قريبًا."
+        ),
+        color=discord.Color.blurple()
+    )
+
+    embed.add_field(
+        name="📁 نوع التذكرة",
+        value=f"التذكرة رقم **{ticket_number}**",
+        inline=False
+    )
+
+    embed.set_footer(
+        text=f"فتحت بواسطة {interaction.user}"
+    )
+
+    await channel.send(
+        content=(
+            f"{interaction.user.mention}"
+            + (f" {role.mention}" if role else "")
+        ),
+        embed=embed,
+        view=TicketCloseView()
+    )
+
+    await interaction.response.send_message(
+        f"✅ تم فتح التذكرة: {channel.mention}",
+        ephemeral=True
+    )
+
+
+class TicketCloseView(discord.ui.View):
+
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(
+        label="إغلاق التذكرة",
+        emoji="🔒",
+        style=discord.ButtonStyle.danger,
+        custom_id="mt_ticket_close"
+    )
+    async def close_ticket(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+
+        if not (
+            interaction.user.guild_permissions.manage_channels
+            or interaction.user.guild_permissions.administrator
+        ):
+            await interaction.response.send_message(
+                "❌ لا تملك صلاحية إغلاق التذكرة.",
+                ephemeral=True
+            )
+            return
+
+        await interaction.response.send_message(
+            "🔒 سيتم إغلاق التذكرة خلال 5 ثوانٍ.",
+            ephemeral=False
         )
-    """)
 
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS rules_settings (
-            guild_id INTEGER PRIMARY KEY,
-            embed_enabled INTEGER DEFAULT 0,
-            target_channel_id INTEGER DEFAULT 0,
-            target_message_id INTEGER DEFAULT 0
+        await asyncio.sleep(5)
+
+        try:
+            await interaction.channel.delete(
+                reason=f"Ticket closed by {interaction.user}"
+            )
+        except Exception:
+            pass
+
+
+# =========================================================
+# /setup-ticket
+# =========================================================
+
+@bot.tree.command(
+    name="setup-ticket",
+    description="تسطيب نوع من أنواع التذاكر من 1 إلى 30"
+)
+@app_commands.describe(
+    number="رقم التذكرة من 1 إلى 30",
+    category="الكاتيجوري التي سيتم إنشاء التذاكر داخلها",
+    staff_role="رتبة الدعم التي تستطيع رؤية التذاكر"
+)
+async def setup_ticket(
+    interaction: discord.Interaction,
+    number: app_commands.Range[int, 1, 30],
+    category: discord.CategoryChannel,
+    staff_role: discord.Role
+):
+
+    if not is_admin(interaction):
+        await deny(interaction)
+        return
+
+    db.execute(
+        """
+        INSERT INTO ticket_setups
+        (guild_id, ticket_number, category_id, staff_role_id)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(guild_id, ticket_number)
+        DO UPDATE SET
+            category_id = excluded.category_id,
+            staff_role_id = excluded.staff_role_id
+        """,
+        (
+            interaction.guild.id,
+            number,
+            category.id,
+            staff_role.id
         )
-    """)
-
-    cursor.execute("""
-        CREATE INDEX IF NOT EXISTS idx_rules_guild
-        ON rules(guild_id, rule_id)
-    """)
-
-    cursor.execute("""
-        CREATE INDEX IF NOT EXISTS idx_tickets_open_user
-        ON tickets(guild_id, user_id, closed)
-    """)
-
-    cursor.execute("""
-        CREATE INDEX IF NOT EXISTS idx_tickets_channel
-        ON tickets(channel_id, closed)
-    """)
-
-    cursor.execute("""
-        CREATE INDEX IF NOT EXISTS idx_security_guild
-        ON security_logs(guild_id, created_at)
-    """)
-
-    cursor.execute("""
-        CREATE INDEX IF NOT EXISTS idx_records_citizen
-        ON criminal_records(guild_id, citizen_id)
-    """)
+    )
 
     db.commit()
-    db.close()
 
-
-setup_database()
-
-
-# =========================================================
-# DATABASE HELPERS
-# =========================================================
-
-def now_utc():
-    return datetime.datetime.now(
-        datetime.timezone.utc
-    ).isoformat()
-
-
-def get_guild_settings(guild_id):
-
-    if cache_valid(
-        SETTINGS_CACHE,
-        guild_id
-    ):
-        return SETTINGS_CACHE[guild_id]["data"]
-
-    db = db_connect()
-    cursor = db.cursor()
-
-    cursor.execute(
-        """
-        SELECT
-            ai_enabled,
-            ai_channel_id,
-            security_log_channel_id,
-            delete_log_channel_id,
-            edit_log_channel_id,
-            member_log_channel_id,
-            mod_log_channel_id,
-            role_log_channel_id,
-            channel_log_channel_id
-        FROM settings
-        WHERE guild_id = ?
-        """,
-        (guild_id,)
+    await interaction.response.send_message(
+        "✅ **تم تسطيب التذكرة بنجاح**\n\n"
+        f"🎫 رقم التذكرة: **{number}**\n"
+        f"📁 الكاتيجوري: {category.mention}\n"
+        f"👤 رتبة الدعم: {staff_role.mention}",
+        ephemeral=True
     )
 
-    row = cursor.fetchone()
 
-    if not row:
+# =========================================================
+# /ticket-panel
+# =========================================================
 
-        cursor.execute(
-            """
-            INSERT INTO settings (
-                guild_id,
-                ai_enabled,
-                ai_channel_id,
-                security_log_channel_id,
-                delete_log_channel_id,
-                edit_log_channel_id,
-                member_log_channel_id,
-                mod_log_channel_id,
-                role_log_channel_id,
-                channel_log_channel_id
+@bot.tree.command(
+    name="ticket-panel",
+    description="إرسال بانل فتح التذاكر"
+)
+@app_commands.describe(
+    channel="الروم الذي سيتم إرسال البانل فيه",
+    title="عنوان البانل",
+    description="وصف البانل"
+)
+async def ticket_panel(
+    interaction: discord.Interaction,
+    channel: discord.TextChannel,
+    title: str = "🎫 نظام التذاكر",
+    description: str = "اضغط على الزر بالأسفل لفتح تذكرة."
+):
+
+    if not is_admin(interaction):
+        await deny(interaction)
+        return
+
+    setups = db.execute(
+        """
+        SELECT * FROM ticket_setups
+        WHERE guild_id = ?
+        ORDER BY ticket_number
+        """,
+        (interaction.guild.id,)
+    ).fetchall()
+
+    if not setups:
+        await interaction.response.send_message(
+            "❌ يجب تسطيب تذكرة واحدة على الأقل باستخدام `/setup-ticket`.",
+            ephemeral=True
+        )
+        return
+
+    embed = discord.Embed(
+        title=title,
+        description=description,
+        color=discord.Color.blurple()
+    )
+
+    embed.add_field(
+        name="🎫 فتح تذكرة",
+        value="اضغط على الزر بالأسفل للبدء.",
+        inline=False
+    )
+
+    embed.set_footer(
+        text=f"{interaction.guild.name} • نظام التذاكر"
+    )
+
+    await channel.send(
+        embed=embed,
+        view=TicketOpenView()
+    )
+
+    await interaction.response.send_message(
+        f"✅ تم إرسال بانل التذاكر في {channel.mention}",
+        ephemeral=True
+    )
+
+
+# =========================================================
+# LAWS SYSTEM
+# =========================================================
+
+@bot.tree.command(
+    name="law",
+    description="إنشاء أو تعديل قانون من 1 إلى 30"
+)
+@app_commands.describe(
+    number="رقم القانون من 1 إلى 30",
+    name="اسم القانون الذي سيظهر في المنيو",
+    text="النص الذي سيظهر عند الضغط على القانون"
+)
+async def law(
+    interaction: discord.Interaction,
+    number: app_commands.Range[int, 1, 30],
+    name: str,
+    text: str
+):
+
+    if not is_admin(interaction):
+        await deny(interaction)
+        return
+
+    db.execute(
+        """
+        INSERT INTO laws
+        (guild_id, law_number, law_name, law_text)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(guild_id, law_number)
+        DO UPDATE SET
+            law_name = excluded.law_name,
+            law_text = excluded.law_text
+        """,
+        (
+            interaction.guild.id,
+            number,
+            name,
+            text
+        )
+    )
+
+    db.commit()
+
+    await interaction.response.send_message(
+        "✅ تم حفظ القانون.\n\n"
+        f"🔢 الرقم: **{number}**\n"
+        f"📌 الاسم: **{name}**\n"
+        f"📖 النص:\n{text}",
+        ephemeral=True
+    )
+
+
+# =========================================================
+# LAW SELECT MENU
+# =========================================================
+
+class LawSelect(discord.ui.Select):
+
+    def __init__(self, laws):
+
+        options = []
+
+        for row in laws:
+            options.append(
+                discord.SelectOption(
+                    label=row["law_name"][:100],
+                    description=f"القانون رقم {row['law_number']}",
+                    value=str(row["law_number"]),
+                    emoji="📜"
+                )
             )
-            VALUES (?, 0, 0, 0, 0, 0, 0, 0, 0, 0)
-            """,
-            (guild_id,)
+
+        super().__init__(
+            placeholder="📜 اختر القانون",
+            options=options,
+            custom_id="mt_laws_select"
         )
 
-        db.commit()
+    async def callback(
+        self,
+        interaction: discord.Interaction
+    ):
 
-        data = {
-            "ai_enabled": False,
-            "ai_channel_id": 0,
-            "security_log_channel_id": 0,
-            "delete_log_channel_id": 0,
-            "edit_log_channel_id": 0,
-            "member_log_channel_id": 0,
-            "mod_log_channel_id": 0,
-            "role_log_channel_id": 0,
-            "channel_log_channel_id": 0
-        }
+        number = int(self.values[0])
+
+        law_row = get_law(
+            interaction.guild.id,
+            number
+        )
+
+        if not law_row:
+            await interaction.response.send_message(
+                "❌ هذا القانون غير موجود.",
+                ephemeral=True
+            )
+            return
+
+        embed = discord.Embed(
+            title=f"📜 {law_row['law_name']}",
+            description=law_row["law_text"],
+            color=discord.Color.blurple()
+        )
+
+        embed.set_footer(
+            text=f"القانون رقم {number}"
+        )
+
+        await interaction.response.send_message(
+            embed=embed,
+            ephemeral=True
+        )
+
+
+class LawsView(discord.ui.View):
+
+    def __init__(self, laws):
+        super().__init__(timeout=None)
+        self.add_item(LawSelect(laws))
+
+
+# =========================================================
+# /send-laws
+# =========================================================
+
+@bot.tree.command(
+    name="send-laws",
+    description="إرسال منيو القوانين"
+)
+@app_commands.describe(
+    channel="الروم الذي سيتم إرسال القوانين فيه",
+    message="الرسالة التي ستظهر فوق المنيو",
+    embed="هل تريد عرض الرسالة داخل Embed؟"
+)
+async def send_laws(
+    interaction: discord.Interaction,
+    channel: discord.TextChannel,
+    message: str,
+    embed: bool = True
+):
+
+    if not is_admin(interaction):
+        await deny(interaction)
+        return
+
+    laws = db.execute(
+        """
+        SELECT * FROM laws
+        WHERE guild_id = ?
+        ORDER BY law_number
+        """,
+        (interaction.guild.id,)
+    ).fetchall()
+
+    if not laws:
+        await interaction.response.send_message(
+            "❌ لم تقم بإنشاء أي قانون حتى الآن.\n"
+            "استخدم `/law` أولًا.",
+            ephemeral=True
+        )
+        return
+
+    first = laws[:15]
+    second = laws[15:30]
+
+    if embed:
+
+        panel_embed = discord.Embed(
+            title="📜 القوانين",
+            description=message,
+            color=discord.Color.blurple()
+        )
+
+        panel_embed.set_footer(
+            text=f"{interaction.guild.name} • نظام القوانين"
+        )
+
+        await channel.send(
+            embed=panel_embed
+        )
 
     else:
 
-        data = {
-            "ai_enabled": bool(row[0]),
-            "ai_channel_id": row[1] or 0,
-            "security_log_channel_id": row[2] or 0,
-            "delete_log_channel_id": row[3] or 0,
-            "edit_log_channel_id": row[4] or 0,
-            "member_log_channel_id": row[5] or 0,
-            "mod_log_channel_id": row[6] or 0,
-            "role_log_channel_id": row[7] or 0,
-            "channel_log_channel_id": row[8] or 0
-        }
+        await channel.send(
+            message
+        )
 
-    db.close()
+    if first:
 
-    SETTINGS_CACHE[guild_id] = {
-        "time": time.monotonic(),
-        "data": data
-    }
+        view1 = LawsView(first)
 
-    return data
+        await channel.send(
+            "📜 **القوانين 1 - 15**",
+            view=view1
+        )
+
+    if second:
+
+        view2 = LawsView(second)
+
+        await channel.send(
+            "📜 **القوانين 16 - 30**",
+            view=view2
+        )
+
+    await interaction.response.send_message(
+        f"✅ تم إرسال منيو القوانين في {channel.mention}",
+        ephemeral=True
+    )
 
 
-def set_ai_settings(
-    guild_id,
-    enabled=None,
-    channel_id=None
+# =========================================================
+# /laws-list
+# =========================================================
+
+@bot.tree.command(
+    name="laws-list",
+    description="عرض القوانين التي تم إعدادها"
+)
+async def laws_list(
+    interaction: discord.Interaction
 ):
 
-    current = get_guild_settings(
-        guild_id
-    )
-
-    if enabled is None:
-        enabled = current["ai_enabled"]
-
-    if channel_id is None:
-        channel_id = current["ai_channel_id"]
-
-    db = db_connect()
-    cursor = db.cursor()
-
-    cursor.execute(
-        """
-        INSERT INTO settings
-        (
-            guild_id,
-            ai_enabled,
-            ai_channel_id
-        )
-        VALUES (?, ?, ?)
-
-        ON CONFLICT(guild_id)
-        DO UPDATE SET
-            ai_enabled = excluded.ai_enabled,
-            ai_channel_id = excluded.ai_channel_id
-        """,
-        (
-            guild_id,
-            int(enabled),
-            int(channel_id)
-        )
-    )
-
-    db.commit()
-    db.close()
-
-    invalidate_guild_cache(
-        guild_id
-    )
-
-
-def set_log_channel(
-    guild_id,
-    setting_name,
-    channel_id
-):
-
-    allowed = {
-        "security_log_channel_id",
-        "delete_log_channel_id",
-        "edit_log_channel_id",
-        "member_log_channel_id",
-        "mod_log_channel_id",
-        "role_log_channel_id",
-        "channel_log_channel_id"
-    }
-
-    if setting_name not in allowed:
-        raise ValueError(
-            "Invalid log setting"
-        )
-
-    get_guild_settings(
-        guild_id
-    )
-
-    db = db_connect()
-    cursor = db.cursor()
-
-    cursor.execute(
-        f"""
-        UPDATE settings
-        SET {setting_name} = ?
-        WHERE guild_id = ?
-        """,
-        (
-            channel_id,
-            guild_id
-        )
-    )
-
-    db.commit()
-    db.close()
-
-    invalidate_guild_cache(
-        guild_id
-    )
-
-
-def save_security_log(
-    guild_id,
-    event_type,
-    actor_id=None,
-    target_id=None,
-    details=""
-):
-
-    db = db_connect()
-    cursor = db.cursor()
-
-    cursor.execute(
-        """
-        INSERT INTO security_logs
-        (
-            guild_id,
-            event_type,
-            actor_id,
-            target_id,
-            details,
-            created_at
-        )
-        VALUES (?, ?, ?, ?, ?, ?)
-        """,
-        (
-            guild_id,
-            event_type,
-            actor_id,
-            target_id,
-            details,
-            now_utc()
-        )
-    )
-
-    db.commit()
-    db.close()
-# =========================================================
-# OPENAI AI LOGIC
-# =========================================================
-
-ai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-async def ask_openai_chat(system_prompt: str, user_prompt: str) -> str:
-    if not os.getenv("OPENAI_API_KEY"):
-        return "⚠️ مفتاح OpenAI غير مفعّل في بيئة التشغيل."
-
-    try:
-        response = await ai_client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            max_tokens=600,
-            temperature=0.7
-        )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        logging.error(f"OpenAI Error: {e}")
-        return "⚠️ حدث خطأ أثناء الاتصال بالذكاء الاصطناعي."
-
-
-# =========================================================
-# LOGGING SYSTEM HELPERS
-# =========================================================
-
-async def send_log_embed(guild: discord.Guild, setting_key: str, embed: discord.Embed):
-    settings = get_guild_settings(guild.id)
-    channel_id = settings.get(setting_key)
-    if not channel_id:
+    if not is_admin(interaction):
+        await deny(interaction)
         return
 
-    channel = guild.get_channel(channel_id)
-    if channel and channel.permissions_for(guild.me).send_messages:
-        try:
-            await channel.send(embed=embed)
-        except Exception as e:
-            logging.error(f"Failed to send log to channel {channel_id}: {e}")
+    laws = db.execute(
+        """
+        SELECT * FROM laws
+        WHERE guild_id = ?
+        ORDER BY law_number
+        """,
+        (interaction.guild.id,)
+    ).fetchall()
+
+    if not laws:
+        await interaction.response.send_message(
+            "❌ لا توجد قوانين محفوظة.",
+            ephemeral=True
+        )
+        return
+
+    text = ""
+
+    for row in laws:
+        text += (
+            f"**{row['law_number']}.** "
+            f"{row['law_name']}\n"
+        )
+
+    embed = discord.Embed(
+        title="📜 القوانين المحفوظة",
+        description=text[:4000],
+        color=discord.Color.blurple()
+    )
+
+    await interaction.response.send_message(
+        embed=embed,
+        ephemeral=True
+    )
 
 
 # =========================================================
-# DISCORD BOT SETUP
+# /ticket-list
 # =========================================================
 
-intents = discord.Intents.default()
-intents.message_content = True
-intents.members = True
-intents.guilds = True
-intents.moderation = True
+@bot.tree.command(
+    name="ticket-list",
+    description="عرض أنواع التذاكر التي تم تسطيبها"
+)
+async def ticket_list(
+    interaction: discord.Interaction
+):
 
-bot = commands.Bot(command_prefix=BOT_PREFIX, intents=intents)
+    if not is_admin(interaction):
+        await deny(interaction)
+        return
 
+    setups = db.execute(
+        """
+        SELECT * FROM ticket_setups
+        WHERE guild_id = ?
+        ORDER BY ticket_number
+        """,
+        (interaction.guild.id,)
+    ).fetchall()
+
+    if not setups:
+        await interaction.response.send_message(
+            "❌ لا توجد تذاكر مسطبة.",
+            ephemeral=True
+        )
+        return
+
+    text = ""
+
+    for row in setups:
+
+        category = interaction.guild.get_channel(
+            row["category_id"]
+        )
+
+        role = interaction.guild.get_role(
+            row["staff_role_id"]
+        )
+
+        category_text = (
+            category.mention
+            if category
+            else "غير موجودة"
+        )
+
+        role_text = (
+            role.mention
+            if role
+            else "غير موجودة"
+        )
+
+        text += (
+            f"🎫 **{row['ticket_number']}**\n"
+            f"📁 {category_text}\n"
+            f"👤 {role_text}\n\n"
+        )
+
+    embed = discord.Embed(
+        title="🎫 أنواع التذاكر",
+        description=text[:4000],
+        color=discord.Color.blurple()
+    )
+
+    await interaction.response.send_message(
+        embed=embed,
+        ephemeral=True
+    )
+
+
+# =========================================================
+# READY
+# =========================================================
 
 @bot.event
 async def on_ready():
-    logging.info(f"Logged in as {bot.user} (ID: {bot.user.id})")
+
+    bot.add_view(TicketOpenView())
+    bot.add_view(TicketCloseView())
+
     try:
         synced = await bot.tree.sync()
-        logging.info(f"Synced {len(synced)} slash commands.")
+
+        print(
+            f"Logged in as {bot.user}"
+        )
+
+        print(
+            f"Synced {len(synced)} slash commands."
+        )
+
     except Exception as e:
-        logging.error(f"Failed to sync slash commands: {e}")
-
-
-# =========================================================
-# ADVANCED AUDIT & LOGGING EVENTS
-# =========================================================
-
-@bot.event
-async def on_message_delete(message: discord.Message):
-    if not message.guild or message.author.bot:
-        return
-
-    embed = discord.Embed(
-        title="🗑️ تم حذف رسالة",
-        color=discord.Color.red(),
-        timestamp=datetime.datetime.now(datetime.timezone.utc)
-    )
-    embed.add_field(name="المرسل:", value=f"{message.author.mention} (`{message.author.id}`)", inline=True)
-    embed.add_field(name="القناة:", value=message.channel.mention, inline=True)
-    embed.add_field(name="المحتوى:", value=message.content or "*محتوى فارغ أو مرفق*", inline=False)
-
-    await send_log_embed(message.guild, "delete_log_channel_id", embed)
-
-
-@bot.event
-async def on_message_edit(before: discord.Message, after: discord.Message):
-    if not before.guild or before.author.bot or before.content == after.content:
-        return
-
-    embed = discord.Embed(
-        title="✏️ تم تعديل رسالة",
-        color=discord.Color.gold(),
-        timestamp=datetime.datetime.now(datetime.timezone.utc)
-    )
-    embed.add_field(name="المرسل:", value=f"{before.author.mention} (`{before.author.id}`)", inline=True)
-    embed.add_field(name="القناة:", value=before.channel.mention, inline=True)
-    embed.add_field(name="قبل:", value=before.content or "*فارغ*", inline=False)
-    embed.add_field(name="بعد:", value=after.content or "*فارغ*", inline=False)
-
-    await send_log_embed(before.guild, "edit_log_channel_id", embed)
-
-
-@bot.event
-async def on_member_join(member: discord.Member):
-    embed = discord.Embed(
-        title="📥 دخول عضو جديد",
-        description=f"مرحباً بك {member.mention} في **{member.guild.name}**!",
-        color=discord.Color.green(),
-        timestamp=datetime.datetime.now(datetime.timezone.utc)
-    )
-    embed.set_thumbnail(url=member.display_avatar.url)
-    embed.add_field(name="معرف العضو:", value=f"`{member.id}`", inline=True)
-    embed.add_field(name="تاريخ إنشاء الحساب:", value=f"<t:{int(member.created_at.timestamp())}:R>", inline=True)
-
-    await send_log_embed(member.guild, "member_log_channel_id", embed)
-
-
-@bot.event
-async def on_member_remove(member: discord.Member):
-    embed = discord.Embed(
-        title="📤 خروج عضو",
-        description=f"غادر العضو {member.mention} السيرفر.",
-        color=discord.Color.dark_grey(),
-        timestamp=datetime.datetime.now(datetime.timezone.utc)
-    )
-    embed.set_thumbnail(url=member.display_avatar.url)
-    embed.add_field(name="معرف العضو:", value=f"`{member.id}`", inline=True)
-
-    await send_log_embed(member.guild, "member_log_channel_id", embed)
-
-
-@bot.event
-async def on_guild_channel_create(channel: discord.abc.GuildChannel):
-    embed = discord.Embed(
-        title="➕ إنشاء قناة جديدة",
-        color=discord.Color.blue(),
-        timestamp=datetime.datetime.now(datetime.timezone.utc)
-    )
-    embed.add_field(name="اسم القناة:", value=channel.name, inline=True)
-    embed.add_field(name="النوع:", value=str(channel.type), inline=True)
-    embed.add_field(name="المعرف:", value=f"`{channel.id}`", inline=False)
-
-    await send_log_embed(channel.guild, "channel_log_channel_id", embed)
-
-
-@bot.event
-async def on_guild_channel_delete(channel: discord.abc.GuildChannel):
-    embed = discord.Embed(
-        title="➖ حذف قناة",
-        color=discord.Color.dark_red(),
-        timestamp=datetime.datetime.now(datetime.timezone.utc)
-    )
-    embed.add_field(name="اسم القناة:", value=channel.name, inline=True)
-    embed.add_field(name="المعرف:", value=f"`{channel.id}`", inline=False)
-
-    await send_log_embed(channel.guild, "channel_log_channel_id", embed)
-
-
-# =========================================================
-# AI LISTENER EVENT
-# =========================================================
-
-@bot.event
-async def on_message(message: discord.Message):
-    if message.author.bot or not message.guild:
-        await bot.process_commands(message)
-        return
-
-    settings = get_guild_settings(message.guild.id)
-
-    if settings["ai_enabled"] and message.channel.id == settings["ai_channel_id"]:
-        system_prompt = (
-            "أنت مساعد ذكاء اصطناعي رائع وخبير لسيرفر Roleplay في لعبة GTA V (Mystery Town). "
-            "أجب بشكل وافي ومفيد وباللغة العربية مع لمسة احترافية."
+        print(
+            f"Slash command sync error: {e}"
         )
 
-        async with message.channel.typing():
-            reply = await ask_openai_chat(system_prompt, message.content)
-            await message.reply(reply, mention_author=False)
-
-    await bot.process_commands(message)
-
 
 # =========================================================
-# TICKET SYSTEM & VIEWS
+# RUN
 # =========================================================
 
-class TicketControlView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
-
-    @discord.ui.button(label="إغلاق التذكرة", style=discord.ButtonStyle.danger, custom_id="btn_close_ticket", emoji="🔒")
-    async def close_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
-        db = db_connect()
-        cursor = db.cursor()
-        cursor.execute("SELECT id, user_id FROM tickets WHERE channel_id = ? AND closed = 0", (interaction.channel.id,))
-        row = cursor.fetchone()
-
-        if not row:
-            await interaction.response.send_message("❌ هذه القناة ليست تذكرة نشطة.", ephemeral=True)
-            db.close()
-            return
-
-        ticket_id, owner_id = row
-        cursor.execute("UPDATE tickets SET closed = 1 WHERE id = ?", (ticket_id,))
-        db.commit()
-        db.close()
-
-        await interaction.response.send_message("🔒 جاري إغلاق التذكرة وأرشفة المحادثة...")
-        await asyncio.sleep(3)
-        await interaction.channel.delete(reason=f"Ticket closed by {interaction.user}")
-
-    @discord.ui.button(label="استلام التذكرة", style=discord.ButtonStyle.success, custom_id="btn_claim_ticket", emoji="🖐️")
-    async def claim_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
-        db = db_connect()
-        cursor = db.cursor()
-        cursor.execute("SELECT id, claimed_by FROM tickets WHERE channel_id = ? AND closed = 0", (interaction.channel.id,))
-        row = cursor.fetchone()
-
-        if not row:
-            await interaction.response.send_message("❌ هذه القناة ليست تذكرة نشطة.", ephemeral=True)
-            db.close()
-            return
-
-        ticket_id, claimed_by = row
-        if claimed_by != 0:
-            await interaction.response.send_message(f"⚠️ التذكرة مستلمة بالفعل بواسطة <@{claimed_by}>.", ephemeral=True)
-            db.close()
-            return
-
-        cursor.execute("UPDATE tickets SET claimed_by = ? WHERE id = ?", (interaction.user.id, ticket_id))
-        db.commit()
-        db.close()
-
-        embed = discord.Embed(
-            description=f"✅ تم استلام التذكرة بواسطة {interaction.user.mention}.",
-            color=discord.Color.green()
-        )
-        await interaction.response.send_message(embed=embed)
-
-
-class TicketLaunchView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
-
-    @discord.ui.select(
-        placeholder="اختر القسم المناسب لفتح تذكرة...",
-        custom_id="select_ticket_dept",
-        options=[
-            discord.SelectOption(label="الدعم الفني والشكاوى", value="support", description="مساعدة عامة أو تقديم شكوى", emoji="🛠️"),
-            discord.SelectOption(label="وزارة العدل", value="justice", description="القضايا والمحاكمات والتوثيق", emoji="⚖️"),
-            discord.SelectOption(label="الشرطة LSPD", value="police", description="البلاغات والخدمات العسكرية", emoji="🚔"),
-            discord.SelectOption(label="الوزارة الصحية PHMC", value="health", description="التقارير والخدمات الطبية", emoji="🚑"),
-        ]
-    )
-    async def select_dept(self, interaction: discord.Interaction, select: discord.ui.Select):
-        dept = select.values[0]
-        guild = interaction.guild
-
-        # Create lock for race condition prevention
-        if interaction.user.id not in TICKET_LOCKS:
-            TICKET_LOCKS[interaction.user.id] = asyncio.Lock()
-
-        async with TICKET_LOCKS[interaction.user.id]:
-            db = db_connect()
-            cursor = db.cursor()
-            cursor.execute("SELECT id FROM tickets WHERE guild_id = ? AND user_id = ? AND closed = 0", (guild.id, interaction.user.id))
-            if cursor.fetchone():
-                await interaction.response.send_message("❌ لديك تذكرة مفتوحة بالفعل! يرجى إغلاقها قبل فتح جديدة.", ephemeral=True)
-                db.close()
-                return
-
-            overwrites = {
-                guild.default_role: discord.PermissionOverwrite(read_messages=False),
-                interaction.user: discord.PermissionOverwrite(read_messages=True, send_messages=True, attach_files=True),
-                guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True, manage_channels=True)
-            }
-
-            channel_name = f"ticket-{dept}-{interaction.user.name}"
-            category = discord.utils.get(guild.categories, name="TICKETS")
-            
-            ticket_chan = await guild.create_text_channel(
-                name=channel_name,
-                category=category,
-                overwrites=overwrites,
-                reason="فتح تذكرة جديدة"
-            )
-
-            cursor.execute(
-                "INSERT INTO tickets (guild_id, user_id, channel_id, sector, created_at) VALUES (?, ?, ?, ?, ?)",
-                (guild.id, interaction.user.id, ticket_chan.id, dept, now_utc())
-            )
-            db.commit()
-            db.close()
-
-            embed = discord.Embed(
-                title=f"🎫 تذكرة جديدة - قسم {dept.upper()}",
-                description=f"أهلاً بك {interaction.user.mention}، يرجى كتابة تفاصيل طلبك وسيتم الرد عليك من قبل الفريق المختص في أقرب وقت.",
-                color=discord.Color.blue()
-            )
-            await ticket_chan.send(content=interaction.user.mention, embed=embed, view=TicketControlView())
-            await interaction.response.send_message(f"✅ تم فتح تذكرتك بنجاح: {ticket_chan.mention}", ephemeral=True)
-# =========================================================
-# SLASH COMMANDS: ADMIN & LOG SETUP
-# =========================================================
-
-@bot.tree.command(name="setup_tickets", description="إرسال لوحة فتح التذاكر في القناة الحالية")
-@app_commands.checks.has_permissions(administrator=True)
-async def setup_tickets(interaction: discord.Interaction):
-    embed = discord.Embed(
-        title="🎫 مركز الدعم الفني والخدمات | Mystery Town",
-        description=(
-            "أهلاً بك في نظام التذاكر الخاص بالسيرفر.\n\n"
-            "يرجى اختيار القسم المناسب لموضوعك من القائمة أدناه لفتح تذكرة وسيتم التعامل مع طلبك بسرعة."
-        ),
-        color=discord.Color.blue()
-    )
-    embed.set_footer(text="Mystery Town Roleplay • جميع الحقوق محفوظة")
-    await interaction.channel.send(embed=embed, view=TicketLaunchView())
-    await interaction.response.send_message("✅ تم إرسال لوحة التذاكر بنجاح.", ephemeral=True)
-
-
-@bot.tree.command(name="set_log", description="تحديد قناة لسجل معين من سجلات البوت")
-@app_commands.describe(
-    log_type="نوع السجل المراد ضبطه",
-    channel="القناة المخصصة لإرسال السجلات"
-)
-@app_commands.choices(log_type=[
-    app_commands.Choice(name="سجل الأمان والحماية (Security Log)", value="security_log_channel_id"),
-    app_commands.Choice(name="سجل حذف الرسائل (Delete Log)", value="delete_log_channel_id"),
-    app_commands.Choice(name="سجل تعديل الرسائل (Edit Log)", value="edit_log_channel_id"),
-    app_commands.Choice(name="سجل الأعضاء (Member Join/Leave Log)", value="member_log_channel_id"),
-    app_commands.Choice(name="سجل الرقابة والإشراف (Mod Log)", value="mod_log_channel_id"),
-    app_commands.Choice(name="سجل الرتب (Role Log)", value="role_log_channel_id"),
-    app_commands.Choice(name="سجل القنوات (Channel Log)", value="channel_log_channel_id")
-])
-@app_commands.checks.has_permissions(administrator=True)
-async def set_log(interaction: discord.Interaction, log_type: str, channel: discord.TextChannel):
-    set_log_channel(interaction.guild_id, log_type, channel.id)
-    await interaction.response.send_message(f"✅ تم ضبط قناة السجل لـ **{log_type}** على القناة: {channel.mention}", ephemeral=True)
-
-
-@bot.tree.command(name="set_ai_channel", description="تفعيل أو تعطيل الذكاء الاصطناعي وتحديد القناة الخاصة به")
-@app_commands.describe(enabled="تفعيل أو تعطيل الميزة", channel="القناة المخصصة للذكاء الاصطناعي")
-@app_commands.checks.has_permissions(administrator=True)
-async def set_ai_channel(interaction: discord.Interaction, enabled: bool, channel: discord.TextChannel):
-    set_ai_settings(interaction.guild_id, enabled=enabled, channel_id=channel.id)
-    status_str = "تفعيل" if enabled else "تعطيل"
-    await interaction.response.send_message(f"✅ تم **{status_str}** الذكاء الاصطناعي وتحديد القناة: {channel.mention}", ephemeral=True)
-
-
-# =========================================================
-# SLASH COMMANDS: RULES SYSTEM
-# =========================================================
-
-@bot.tree.command(name="add_rule", description="إضافة قانون جديد إلى القوانين")
-@app_commands.describe(rule_id="رقم القانون", name="عنوان القانون", content="محتوى التفاصيل")
-@app_commands.checks.has_permissions(administrator=True)
-async def add_rule(interaction: discord.Interaction, rule_id: int, name: str, content: str):
-    db = db_connect()
-    cursor = db.cursor()
-    cursor.execute(
-        """
-        INSERT INTO rules (guild_id, rule_id, name, content, created_at)
-        VALUES (?, ?, ?, ?, ?)
-        ON CONFLICT(guild_id, rule_id) DO UPDATE SET name=excluded.name, content=excluded.content
-        """,
-        (interaction.guild_id, rule_id, name, content, now_utc())
-    )
-    db.commit()
-    db.close()
-    await interaction.response.send_message(f"✅ تم إضافة/تحديث القانون رقم **#{rule_id}** بنجاح.", ephemeral=True)
-
-
-@bot.tree.command(name="show_rules", description="عرض جميع قوانين السيرفر المسجلة")
-async def show_rules(interaction: discord.Interaction):
-    db = db_connect()
-    cursor = db.cursor()
-    cursor.execute("SELECT rule_id, name, content FROM rules WHERE guild_id = ? ORDER BY rule_id ASC", (interaction.guild_id,))
-    rows = cursor.fetchall()
-    db.close()
-
-    if not rows:
-        await interaction.response.send_message("❌ لا توجد قوانين مسجلة في هذا السيرفر حالياً.", ephemeral=True)
-        return
-
-    embed = discord.Embed(
-        title="📜 قوانين السيرفر الرسمية | Mystery Town",
-        color=discord.Color.gold(),
-        timestamp=datetime.datetime.now(datetime.timezone.utc)
-    )
-
-    for r_id, r_name, r_content in rows:
-        embed.add_field(name=f"القانون #{r_id}: {r_name}", value=r_content, inline=False)
-
-    await interaction.response.send_message(embed=embed)
-
-
-# =========================================================
-# SLASH COMMANDS: POLICE & CRIMINAL RECORDS
-# =========================================================
-
-@bot.tree.command(name="add_record", description="إضافة سابقة جنائية لمواطن (خاص بالشرطة)")
-@app_commands.describe(citizen="المواطن المستهدف", crime="الجريمة المرتكبة", fine="الغرامة المالية", jail_time="مدة السجن")
-async def add_record(interaction: discord.Interaction, citizen: discord.Member, crime: str, fine: int = 0, jail_time: str = "0"):
-    db = db_connect()
-    cursor = db.cursor()
-    cursor.execute(
-        """
-        INSERT INTO criminal_records (guild_id, citizen_id, officer_id, crime, fine, jail_time, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        """,
-        (interaction.guild_id, citizen.id, interaction.user.id, crime, fine, jail_time, now_utc())
-    )
-    db.commit()
-    db.close()
-
-    embed = discord.Embed(
-        title="🚨 تسجيل سابقة جنائية جديدة",
-        color=discord.Color.dark_red(),
-        timestamp=datetime.datetime.now(datetime.timezone.utc)
-    )
-    embed.add_field(name="المواطن:", value=citizen.mention, inline=True)
-    embed.add_field(name="الضابط:", value=interaction.user.mention, inline=True)
-    embed.add_field(name="الجريمة:", value=crime, inline=False)
-    embed.add_field(name="الغرامة:", value=f"${fine:,}", inline=True)
-    embed.add_field(name="مدة السجن:", value=jail_time, inline=True)
-
-    await interaction.response.send_message(embed=embed)
-
-
-@bot.tree.command(name="check_records", description="الاستعلام عن السجلات الجنائية لمواطن")
-@app_commands.describe(citizen="المواطن المراد البحث عنه")
-async def check_records(interaction: discord.Interaction, citizen: discord.Member):
-    db = db_connect()
-    cursor = db.cursor()
-    cursor.execute(
-        "SELECT id, officer_id, crime, fine, jail_time, created_at FROM criminal_records WHERE guild_id = ? AND citizen_id = ? ORDER BY id DESC",
-        (interaction.guild_id, citizen.id)
-    )
-    rows = cursor.fetchall()
-    db.close()
-
-    if not rows:
-        await interaction.response.send_message(f"✅ المواطن {citizen.mention} لا يملك أي سوابق جنائية مسجلة.", ephemeral=True)
-        return
-
-    embed = discord.Embed(
-        title=f"📋 السجل الجنائي للمواطن: {citizen.display_name}",
-        color=discord.Color.orange()
-    )
-
-    for r_id, off_id, crime, fine, jail, created in rows[:10]:
-        embed.add_field(
-            name=f"قضية #{r_id} - {created[:10]}",
-            value=f"**الجريمة:** {crime}\n**الغرامة:** ${fine:,}\n**السجن:** {jail}\n**المحرر:** <@{off_id}>",
-            inline=False
-        )
-
-    await interaction.response.send_message(embed=embed)
-
-
-# =========================================================
-# SLASH COMMANDS: HEALTH & MEDICAL REPORTS
-# =========================================================
-
-@bot.tree.command(name="add_medical_report", description="إضافة تقرير طبي لمواطن (خاص بالصحة PHMC)")
-@app_commands.describe(citizen="المواطن المرضي/المصاب", diagnosis="التشخيص الطبي", treatment="العلاج والوصفة")
-async def add_medical_report(interaction: discord.Interaction, citizen: discord.Member, diagnosis: str, treatment: str):
-    db = db_connect()
-    cursor = db.cursor()
-    cursor.execute(
-        """
-        INSERT INTO medical_reports (guild_id, citizen_id, medic_id, diagnosis, treatment, created_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-        """,
-        (interaction.guild_id, citizen.id, interaction.user.id, diagnosis, treatment, now_utc())
-    )
-    db.commit()
-    db.close()
-
-    embed = discord.Embed(
-        title="🚑 تقرير طبي جديد | PHMC",
-        color=discord.Color.red(),
-        timestamp=datetime.datetime.now(datetime.timezone.utc)
-    )
-    embed.add_field(name="المريض:", value=citizen.mention, inline=True)
-    embed.add_field(name="الطبيب:", value=interaction.user.mention, inline=True)
-    embed.add_field(name="التشخيص:", value=diagnosis, inline=False)
-    embed.add_field(name="العلاج:", value=treatment, inline=False)
-
-    await interaction.response.send_message(embed=embed)
-
-
-# =========================================================
-# SLASH COMMANDS: JUSTICE & DEEDS / WARRANTS
-# =========================================================
-
-@bot.tree.command(name="issue_warrant", description="إصدار مذكرة اعتقال/تفتيش قضائية (وزارة العدل)")
-@app_commands.describe(citizen="المستهدف بالمذكرة", warrant_type="نوع المذكرة (اعتقال/تفتيش)", reason="السبب والمسوغ القانوني")
-async def issue_warrant(interaction: discord.Interaction, citizen: discord.Member, warrant_type: str, reason: str):
-    db = db_connect()
-    cursor = db.cursor()
-    cursor.execute(
-        """
-        INSERT INTO warrants (guild_id, citizen_id, officer_id, warrant_type, reason, created_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-        """,
-        (interaction.guild_id, citizen.id, interaction.user.id, warrant_type, reason, now_utc())
-    )
-    db.commit()
-    db.close()
-
-    embed = discord.Embed(
-        title="⚖️ مذكرة قضائية رسمية | Ministry of Justice",
-        color=discord.Color.purple(),
-        timestamp=datetime.datetime.now(datetime.timezone.utc)
-    )
-    embed.add_field(name="المستهدف:", value=citizen.mention, inline=True)
-    embed.add_field(name="نوع المذكرة:", value=warrant_type, inline=True)
-    embed.add_field(name="القاضي/المسؤول:", value=interaction.user.mention, inline=False)
-    embed.add_field(name="الأسباب والمسوغات:", value=reason, inline=False)
-
-    await interaction.response.send_message(embed=embed)
-
-
-# =========================================================
-# ERROR HANDLING
-# =========================================================
-
-@bot.tree.error
-async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
-    if isinstance(error, app_commands.MissingPermissions):
-        await interaction.response.send_message("❌ ليس لديك الصلاحيات الكافية لاستخدام هذا الأمر.", ephemeral=True)
-    else:
-        logging.error(f"Command Error: {error}")
-        if not interaction.response.is_done():
-            await interaction.response.send_message("⚠️ حدث خطأ أثناء تنفيذ الأمر.", ephemeral=True)
-
-
-# =========================================================
-# KEEPALIVE SERVER (FLASK)
-# =========================================================
-from flask import Flask
-from threading import Thread
-
-app = Flask('')
-
-@app.route('/')
-def home():
-    return "Bot is alive and running!"
-
-def run_flask():
-    # تشغيل سيرفر Flask على المنفذ 8080 أو المنفذ المحدد من البيئة
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host='0.0.0.0', port=port)
-
-def keep_alive():
-    """دالة تشغيل السيرفر في Thread منفصل لضمان عدم توقف البوت"""
-    t = Thread(target=run_flask)
-    t.daemon = True
-    t.start()
-
-
-# =========================================================
-# BOT RUNNER WITH KEEPALIVE
-# =========================================================
-
-if __name__ == "__main__":
-    # 1. تشغيل سيرفر الإبقاء حياً (Flask)
-    keep_alive()
-    
-    # 2. قراءة التوكن من متغيرات البيئة
-    TOKEN = os.getenv("DISCORD_TOKEN")
-    
-    if not TOKEN:
-        logging.error("❌ لم يتم العثور على رمز DISCORD_TOKEN في متغيرات البيئة!")
-    else:
-        try:
-            bot.run(TOKEN)
-        except Exception as e:
-            logging.error(f"❌ حدث خطأ أثناء تشغيل البوت: {e}")
+bot.run(TOKEN)
