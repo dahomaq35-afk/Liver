@@ -1081,13 +1081,44 @@ async def on_app_command_error(interaction: discord.Interaction, error: app_comm
 
 
 # =========================================================
+# KEEPALIVE SERVER (FLASK)
+# =========================================================
+from flask import Flask
+from threading import Thread
+
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Bot is alive and running!"
+
+def run_flask():
+    # تشغيل سيرفر Flask على المنفذ 8080 أو المنفذ المحدد من البيئة
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
+
+def keep_alive():
+    """دالة تشغيل السيرفر في Thread منفصل لضمان عدم توقف البوت"""
+    t = Thread(target=run_flask)
+    t.daemon = True
+    t.start()
+
+
+# =========================================================
 # BOT RUNNER WITH KEEPALIVE
 # =========================================================
 
 if __name__ == "__main__":
+    # 1. تشغيل سيرفر الإبقاء حياً (Flask)
     keep_alive()
+    
+    # 2. قراءة التوكن من متغيرات البيئة
     TOKEN = os.getenv("DISCORD_TOKEN")
+    
     if not TOKEN:
         logging.error("❌ لم يتم العثور على رمز DISCORD_TOKEN في متغيرات البيئة!")
     else:
-        bot.run(TOKEN)
+        try:
+            bot.run(TOKEN)
+        except Exception as e:
+            logging.error(f"❌ حدث خطأ أثناء تشغيل البوت: {e}")
