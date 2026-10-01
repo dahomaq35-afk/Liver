@@ -36,8 +36,14 @@ def home():
     return "MT Ticket System is Online!"
 
 
+@app.route("/health")
+def health():
+    return "OK"
+
+
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
+
     app.run(
         host="0.0.0.0",
         port=port
@@ -55,15 +61,23 @@ Thread(
 # =========================================================
 
 def get_db():
+
     conn = sqlite3.connect(DB_FILE)
+
     conn.row_factory = sqlite3.Row
+
     return conn
 
 
 def init_database():
 
     conn = get_db()
+
     cur = conn.cursor()
+
+    # -----------------------------------------------------
+    # TICKET SETUPS
+    # -----------------------------------------------------
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS ticket_setups (
@@ -77,9 +91,44 @@ def init_database():
         )
     """)
 
+    # -----------------------------------------------------
+    # OPEN TICKETS
+    # -----------------------------------------------------
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS open_tickets (
+            channel_id INTEGER PRIMARY KEY,
+            guild_id INTEGER NOT NULL,
+            owner_id INTEGER NOT NULL,
+            ticket_number INTEGER NOT NULL,
+            claimer_id INTEGER
+        )
+    """)
+
+    # -----------------------------------------------------
+    # PANEL CONFIGS
+    # -----------------------------------------------------
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS panel_configs (
+            panel_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            guild_id INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT NOT NULL,
+            image_url TEXT,
+            footer TEXT,
+            ticket_message TEXT NOT NULL,
+            method TEXT NOT NULL
+        )
+    """)
+
     conn.commit()
     conn.close()
 
+
+# =========================================================
+# TICKET DATABASE
+# =========================================================
 
 def save_ticket(
     guild_id,
@@ -91,9 +140,8 @@ def save_ticket(
 ):
 
     conn = get_db()
-    cur = conn.cursor()
 
-    cur.execute("""
+    conn.execute("""
         INSERT OR REPLACE INTO ticket_setups (
             guild_id,
             ticket_number,
@@ -116,12 +164,14 @@ def save_ticket(
     conn.close()
 
 
-def get_ticket(guild_id, ticket_number):
+def get_ticket(
+    guild_id,
+    ticket_number
+):
 
     conn = get_db()
-    cur = conn.cursor()
 
-    cur.execute("""
+    row = conn.execute("""
         SELECT *
         FROM ticket_setups
         WHERE guild_id = ?
@@ -129,30 +179,224 @@ def get_ticket(guild_id, ticket_number):
     """, (
         guild_id,
         ticket_number
-    ))
-
-    row = cur.fetchone()
+    )).fetchone()
 
     conn.close()
 
     return row
 
 
-def get_all_tickets(guild_id):
+def get_all_tickets(
+    guild_id
+):
 
     conn = get_db()
-    cur = conn.cursor()
 
-    cur.execute("""
+    rows = conn.execute("""
         SELECT *
         FROM ticket_setups
         WHERE guild_id = ?
         ORDER BY ticket_number ASC
     """, (
         guild_id,
+    )).fetchall()
+
+    conn.close()
+
+    return rows
+
+
+# =========================================================
+# OPEN TICKET DATABASE
+# =========================================================
+
+def save_open_ticket(
+    channel_id,
+    guild_id,
+    owner_id,
+    ticket_number
+):
+
+    conn = get_db()
+
+    conn.execute("""
+        INSERT OR REPLACE INTO open_tickets (
+            channel_id,
+            guild_id,
+            owner_id,
+            ticket_number,
+            claimer_id
+        )
+        VALUES (?, ?, ?, ?, NULL)
+    """, (
+        channel_id,
+        guild_id,
+        owner_id,
+        ticket_number
     ))
 
-    rows = cur.fetchall()
+    conn.commit()
+    conn.close()
+
+
+def get_open_ticket(
+    channel_id
+):
+
+    conn = get_db()
+
+    row = conn.execute("""
+        SELECT *
+        FROM open_tickets
+        WHERE channel_id = ?
+    """, (
+        channel_id,
+    )).fetchone()
+
+    conn.close()
+
+    return row
+
+
+def set_ticket_claimer(
+    channel_id,
+    claimer_id
+):
+
+    conn = get_db()
+
+    conn.execute("""
+        UPDATE open_tickets
+        SET claimer_id = ?
+        WHERE channel_id = ?
+    """, (
+        claimer_id,
+        channel_id
+    ))
+
+    conn.commit()
+    conn.close()
+
+
+def delete_open_ticket(
+    channel_id
+):
+
+    conn = get_db()
+
+    conn.execute("""
+        DELETE FROM open_tickets
+        WHERE channel_id = ?
+    """, (
+        channel_id,
+    ))
+
+    conn.commit()
+    conn.close()
+
+
+def find_open_ticket(
+    guild,
+    user_id
+):
+
+    conn = get_db()
+
+    row = conn.execute("""
+        SELECT *
+        FROM open_tickets
+        WHERE guild_id = ?
+        AND owner_id = ?
+        LIMIT 1
+    """, (
+        guild.id,
+        user_id
+    )).fetchone()
+
+    conn.close()
+
+    if not row:
+        return None
+
+    return guild.get_channel(
+        row["channel_id"]
+    )
+
+
+# =========================================================
+# PANEL DATABASE
+# =========================================================
+
+def save_panel(
+    guild_id,
+    title,
+    description,
+    image_url,
+    footer,
+    ticket_message,
+    method
+):
+
+    conn = get_db()
+
+    cur = conn.cursor()
+
+    cur.execute("""
+        INSERT INTO panel_configs (
+            guild_id,
+            title,
+            description,
+            image_url,
+            footer,
+            ticket_message,
+            method
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (
+        guild_id,
+        title,
+        description,
+        image_url,
+        footer,
+        ticket_message,
+        method
+    ))
+
+    panel_id = cur.lastrowid
+
+    conn.commit()
+    conn.close()
+
+    return panel_id
+
+
+def get_panel(
+    panel_id
+):
+
+    conn = get_db()
+
+    row = conn.execute("""
+        SELECT *
+        FROM panel_configs
+        WHERE panel_id = ?
+    """, (
+        panel_id,
+    )).fetchone()
+
+    conn.close()
+
+    return row
+
+
+def get_all_panels():
+
+    conn = get_db()
+
+    rows = conn.execute("""
+        SELECT *
+        FROM panel_configs
+    """).fetchall()
 
     conn.close()
 
@@ -163,7 +407,9 @@ def get_all_tickets(guild_id):
 # HELPERS
 # =========================================================
 
-def clean_channel_name(name):
+def clean_channel_name(
+    name
+):
 
     name = name.lower()
 
@@ -193,43 +439,99 @@ def clean_channel_name(name):
     return name[:70]
 
 
-def find_open_ticket(guild, user_id):
+def valid_image_url(
+    url
+):
 
-    for channel in guild.text_channels:
+    if not url:
+        return True
 
-        if not channel.topic:
-            continue
+    return (
+        url.startswith("https://")
+        or
+        url.startswith("http://")
+    )
 
-        if f"ticket_owner:{user_id}" in channel.topic:
-            return channel
 
-    return None
+def is_admin(
+    member
+):
+
+    return (
+        isinstance(member, discord.Member)
+        and member.guild_permissions.administrator
+    )
 
 
 # =========================================================
 # BOT
 # =========================================================
 
-class MTBot(commands.Bot):
+class MTBot(
+    commands.Bot
+):
 
-    async def setup_hook(self):
+    async def setup_hook(
+        self
+    ):
 
         init_database()
 
-        self.add_view(
-            TicketOpenPersistentView()
-        )
+        # -------------------------------------------------
+        # Persistent ticket controls
+        # -------------------------------------------------
 
         self.add_view(
-            TicketClosePersistentView()
+            TicketControlsView()
         )
+
+        # -------------------------------------------------
+        # Restore saved panels
+        # -------------------------------------------------
+
+        panels = get_all_panels()
+
+        for panel in panels:
+
+            tickets = get_all_tickets(
+                panel["guild_id"]
+            )
+
+            if not tickets:
+                continue
+
+            if panel["method"] == "menu":
+
+                self.add_view(
+                    TicketMenuPanelView(
+                        tickets,
+                        panel["panel_id"]
+                    )
+                )
+
+            else:
+
+                self.add_view(
+                    TicketButtonsPanelView(
+                        tickets,
+                        panel["panel_id"]
+                    )
+                )
+
+        # -------------------------------------------------
+        # Sync commands
+        # -------------------------------------------------
 
         try:
+
             synced = await self.tree.sync()
+
             print(
                 f"Synced {len(synced)} slash commands."
             )
+
         except Exception as e:
+
             print(
                 "Slash sync error:",
                 e
@@ -237,6 +539,7 @@ class MTBot(commands.Bot):
 
 
 intents = discord.Intents.default()
+
 intents.guilds = True
 intents.members = True
 
@@ -254,7 +557,9 @@ class TicketNumbersSelect(
     discord.ui.Select
 ):
 
-    def __init__(self):
+    def __init__(
+        self
+    ):
 
         options = []
 
@@ -280,7 +585,7 @@ class TicketNumbersSelect(
 
     async def callback(
         self,
-        interaction: discord.Interaction
+        interaction
     ):
 
         numbers = sorted(
@@ -311,7 +616,9 @@ class StartTicketSetupButton(
     discord.ui.Button
 ):
 
-    def __init__(self):
+    def __init__(
+        self
+    ):
 
         super().__init__(
             label="متابعة",
@@ -321,7 +628,7 @@ class StartTicketSetupButton(
 
     async def callback(
         self,
-        interaction: discord.Interaction
+        interaction
     ):
 
         if not self.view.selected_numbers:
@@ -330,6 +637,7 @@ class StartTicketSetupButton(
                 "❌ اختر تذكرة واحدة على الأقل.",
                 ephemeral=True
             )
+
             return
 
         session = TicketSetupSession(
@@ -347,7 +655,9 @@ class CancelButton(
     discord.ui.Button
 ):
 
-    def __init__(self):
+    def __init__(
+        self
+    ):
 
         super().__init__(
             label="إلغاء",
@@ -357,7 +667,7 @@ class CancelButton(
 
     async def callback(
         self,
-        interaction: discord.Interaction
+        interaction
     ):
 
         await interaction.response.edit_message(
@@ -371,7 +681,9 @@ class TicketNumbersView(
     discord.ui.View
 ):
 
-    def __init__(self):
+    def __init__(
+        self
+    ):
 
         super().__init__(
             timeout=600
@@ -443,7 +755,7 @@ class TicketNameModal(
 
     async def on_submit(
         self,
-        interaction: discord.Interaction
+        interaction
     ):
 
         number = self.session.numbers[
@@ -498,7 +810,7 @@ class CategorySelect(
 
     async def callback(
         self,
-        interaction: discord.Interaction
+        interaction
     ):
 
         number = self.session.numbers[
@@ -585,7 +897,7 @@ class StaffRoleSelect(
 
     async def callback(
         self,
-        interaction: discord.Interaction
+        interaction
     ):
 
         number = self.session.numbers[
@@ -675,7 +987,7 @@ class LogChannelSelect(
 
     async def callback(
         self,
-        interaction: discord.Interaction
+        interaction
     ):
 
         number = self.session.numbers[
@@ -771,8 +1083,7 @@ async def finish_ticket_setup(
         await interaction.response.send_message(
             (
                 f"✅ تم حفظ التذكرة رقم **{number}**.\n\n"
-                f"ننتقل الآن للتذكرة رقم "
-                f"**{next_number}**."
+                f"ننتقل الآن للتذكرة رقم **{next_number}**."
             ),
             ephemeral=True
         )
@@ -811,20 +1122,14 @@ async def finish_ticket_setup(
     administrator=True
 )
 async def ticket_setup(
-    interaction: discord.Interaction
+    interaction
 ):
 
     embed = discord.Embed(
         title="🎫 إعداد التذاكر",
         description=(
             "اختر أرقام التذاكر التي تريد إعدادها.\n\n"
-            "يمكنك اختيار أكثر من رقم بنفس الوقت، "
-            "مثال:\n\n"
-            "🎫 رقم 2\n"
-            "🎫 رقم 5\n"
-            "🎫 رقم 7\n\n"
-            "ثم سيتم إعداد كل تذكرة "
-            "واحدة وراء الثانية."
+            "يمكنك اختيار أكثر من رقم بنفس الوقت."
         ),
         color=discord.Color.blue()
     )
@@ -837,22 +1142,26 @@ async def ticket_setup(
 
 
 # =========================================================
-# PANEL METHOD SELECT
+# PANEL METHOD
 # =========================================================
 
 class PanelMethodSelect(
     discord.ui.Select
 ):
 
-    def __init__(self):
+    def __init__(
+        self
+    ):
 
         options = [
+
             discord.SelectOption(
                 label="منيو",
                 value="menu",
                 description="فتح التذكرة عن طريق قائمة",
                 emoji="📋"
             ),
+
             discord.SelectOption(
                 label="أزرار",
                 value="buttons",
@@ -870,7 +1179,7 @@ class PanelMethodSelect(
 
     async def callback(
         self,
-        interaction: discord.Interaction
+        interaction
     ):
 
         method = self.values[0]
@@ -884,7 +1193,9 @@ class PanelMethodView(
     discord.ui.View
 ):
 
-    def __init__(self):
+    def __init__(
+        self
+    ):
 
         super().__init__(
             timeout=300
@@ -943,25 +1254,23 @@ class TicketPanelModal(
             max_length=2048
         )
 
-        self.add_item(
-            self.embed_title
+        self.ticket_message = discord.ui.TextInput(
+            label="الكلام داخل التكت",
+            placeholder="اكتب الكلام الذي يظهر عند فتح التذكرة...",
+            style=discord.TextStyle.paragraph,
+            required=False,
+            max_length=2000
         )
 
-        self.add_item(
-            self.embed_description
-        )
-
-        self.add_item(
-            self.embed_image
-        )
-
-        self.add_item(
-            self.embed_footer
-        )
+        self.add_item(self.embed_title)
+        self.add_item(self.embed_description)
+        self.add_item(self.embed_image)
+        self.add_item(self.embed_footer)
+        self.add_item(self.ticket_message)
 
     async def on_submit(
         self,
-        interaction: discord.Interaction
+        interaction
     ):
 
         tickets = get_all_tickets(
@@ -977,32 +1286,53 @@ class TicketPanelModal(
 
             return
 
-        embed = discord.Embed(
-            title=str(
-                self.embed_title.value
-            ),
-            description=str(
-                self.embed_description.value
-            ),
-            color=discord.Color.blue()
-        )
-
         image = str(
             self.embed_image.value
         ).strip()
 
-        footer = str(
-            self.embed_footer.value
-        ).strip()
+        if image and not valid_image_url(image):
+
+            await interaction.response.send_message(
+                "❌ رابط الصورة غير صحيح. يجب أن يبدأ بـ `https://` أو `http://`.",
+                ephemeral=True
+            )
+
+            return
+
+        panel_id = save_panel(
+            guild_id=interaction.guild.id,
+            title=str(self.embed_title.value),
+            description=str(self.embed_description.value),
+            image_url=image,
+            footer=str(self.embed_footer.value).strip(),
+            ticket_message=(
+                str(self.ticket_message.value).strip()
+                or
+                "مرحبًا {user}، تم فتح التذكرة بنجاح.\n"
+                "يرجى كتابة طلبك وانتظار فريق الدعم."
+            ),
+            method=self.method
+        )
+
+        embed = discord.Embed(
+            title=str(self.embed_title.value),
+            description=str(self.embed_description.value),
+            color=discord.Color.blue()
+        )
+
+        # -------------------------------------------------
+        # الصورة الصغيرة على اليمين
+        # -------------------------------------------------
 
         if image:
 
-            try:
-                embed.set_image(
-                    url=image
-                )
-            except Exception:
-                pass
+            embed.set_thumbnail(
+                url=image
+            )
+
+        footer = str(
+            self.embed_footer.value
+        ).strip()
 
         if footer:
 
@@ -1010,16 +1340,42 @@ class TicketPanelModal(
                 text=footer
             )
 
+        if interaction.guild.icon:
+
+            embed.set_author(
+                name=interaction.guild.name,
+                icon_url=interaction.guild.icon.url
+            )
+
+        else:
+
+            embed.set_author(
+                name=interaction.guild.name
+            )
+
+        embed.add_field(
+            name="طريقة فتح التذكرة",
+            value=(
+                "📋 اختر نوع التذكرة من القائمة بالأسفل."
+                if self.method == "menu"
+                else
+                "🔘 اضغط على الزر الخاص بنوع التذكرة."
+            ),
+            inline=False
+        )
+
         if self.method == "menu":
 
             view = TicketMenuPanelView(
-                tickets
+                tickets,
+                panel_id
             )
 
         else:
 
             view = TicketButtonsPanelView(
-                tickets
+                tickets,
+                panel_id
             )
 
         await interaction.channel.send(
@@ -1030,11 +1386,16 @@ class TicketPanelModal(
         method_name = (
             "📋 منيو"
             if self.method == "menu"
-            else "🔘 أزرار"
+            else
+            "🔘 أزرار"
         )
 
         await interaction.response.send_message(
-            f"✅ تم إرسال بانل التذاكر بطريقة **{method_name}**.",
+            (
+                "✅ تم إرسال بانل التذاكر.\n"
+                f"طريقة الفتح: **{method_name}**\n"
+                "🖼️ الصورة تم وضعها بشكل صغير على اليمين."
+            ),
             ephemeral=True
         )
 
@@ -1051,7 +1412,7 @@ class TicketPanelModal(
     administrator=True
 )
 async def ticket_panel(
-    interaction: discord.Interaction
+    interaction
 ):
 
     guild = interaction.guild
@@ -1079,7 +1440,7 @@ async def ticket_panel(
 
 
 # =========================================================
-# MENU PANEL
+# TICKET MENU PANEL
 # =========================================================
 
 class TicketMenuSelect(
@@ -1088,8 +1449,11 @@ class TicketMenuSelect(
 
     def __init__(
         self,
-        tickets
+        tickets,
+        panel_id
     ):
+
+        self.panel_id = panel_id
 
         options = []
 
@@ -1098,9 +1462,7 @@ class TicketMenuSelect(
             options.append(
                 discord.SelectOption(
                     label=ticket["ticket_name"][:100],
-                    value=str(
-                        ticket["ticket_number"]
-                    ),
+                    value=str(ticket["ticket_number"]),
                     emoji="🎫",
                     description=(
                         f"فتح {ticket['ticket_name']}"
@@ -1113,12 +1475,12 @@ class TicketMenuSelect(
             min_values=1,
             max_values=1,
             options=options,
-            custom_id="mt_ticket_menu"
+            custom_id=f"mt_ticket_menu_{panel_id}"
         )
 
     async def callback(
         self,
-        interaction: discord.Interaction
+        interaction
     ):
 
         number = int(
@@ -1139,9 +1501,14 @@ class TicketMenuSelect(
 
             return
 
+        panel = get_panel(
+            self.panel_id
+        )
+
         await create_ticket(
             interaction,
-            ticket
+            ticket,
+            panel
         )
 
 
@@ -1151,7 +1518,8 @@ class TicketMenuPanelView(
 
     def __init__(
         self,
-        tickets
+        tickets,
+        panel_id
     ):
 
         super().__init__(
@@ -1159,12 +1527,15 @@ class TicketMenuPanelView(
         )
 
         self.add_item(
-            TicketMenuSelect(tickets)
+            TicketMenuSelect(
+                tickets,
+                panel_id
+            )
         )
 
 
 # =========================================================
-# BUTTON PANEL
+# TICKET BUTTON PANEL
 # =========================================================
 
 class TicketOpenTypeButton(
@@ -1173,8 +1544,15 @@ class TicketOpenTypeButton(
 
     def __init__(
         self,
-        ticket
+        ticket,
+        panel_id
     ):
+
+        self.ticket_number = ticket[
+            "ticket_number"
+        ]
+
+        self.panel_id = panel_id
 
         super().__init__(
             label=ticket["ticket_name"][:80],
@@ -1182,17 +1560,14 @@ class TicketOpenTypeButton(
             emoji="🎫",
             custom_id=(
                 f"mt_ticket_button_"
-                f"{ticket['ticket_number']}"
+                f"{panel_id}_"
+                f"{self.ticket_number}"
             )
         )
 
-        self.ticket_number = ticket[
-            "ticket_number"
-        ]
-
     async def callback(
         self,
-        interaction: discord.Interaction
+        interaction
     ):
 
         ticket = get_ticket(
@@ -1209,9 +1584,14 @@ class TicketOpenTypeButton(
 
             return
 
+        panel = get_panel(
+            self.panel_id
+        )
+
         await create_ticket(
             interaction,
-            ticket
+            ticket,
+            panel
         )
 
 
@@ -1221,7 +1601,8 @@ class TicketButtonsPanelView(
 
     def __init__(
         self,
-        tickets
+        tickets,
+        panel_id
     ):
 
         super().__init__(
@@ -1232,7 +1613,8 @@ class TicketButtonsPanelView(
 
             self.add_item(
                 TicketOpenTypeButton(
-                    ticket
+                    ticket,
+                    panel_id
                 )
             )
 
@@ -1243,7 +1625,8 @@ class TicketButtonsPanelView(
 
 async def create_ticket(
     interaction,
-    ticket
+    ticket,
+    panel
 ):
 
     guild = interaction.guild
@@ -1330,9 +1713,11 @@ async def create_ticket(
             discord.PermissionOverwrite(
                 view_channel=True,
                 send_messages=True,
-                read_message_history=True,
                 manage_channels=True,
-                manage_messages=True
+                manage_messages=True,
+                read_message_history=True,
+                attach_files=True,
+                embed_links=True
             )
     }
 
@@ -1372,31 +1757,57 @@ async def create_ticket(
 
         return
 
-    embed = discord.Embed(
+    save_open_ticket(
+        channel.id,
+        guild.id,
+        user.id,
+        ticket["ticket_number"]
+    )
+
+    ticket_embed = discord.Embed(
         title=f"🎫 {ticket['ticket_name']}",
-        description=(
-            f"مرحبًا {user.mention}\n\n"
-            "تم فتح التذكرة بنجاح.\n"
-            "يرجى كتابة طلبك وانتظار فريق الدعم."
-        ),
         color=discord.Color.blue()
     )
 
-    embed.add_field(
+    ticket_message = (
+        panel["ticket_message"]
+        if panel
+        else
+        "مرحبًا {user}، تم فتح التذكرة بنجاح.\n"
+        "يرجى كتابة طلبك وانتظار فريق الدعم."
+    )
+
+    ticket_message = ticket_message.replace(
+        "{user}",
+        user.mention
+    )
+
+    ticket_message = ticket_message.replace(
+        "{support}",
+        staff_role.mention
+    )
+
+    ticket_embed.description = ticket_message
+
+    ticket_embed.add_field(
         name="👤 صاحب التذكرة",
         value=user.mention,
         inline=True
     )
 
-    embed.add_field(
+    ticket_embed.add_field(
         name="🎫 رقم التذكرة",
-        value=str(
-            ticket["ticket_number"]
-        ),
+        value=str(ticket["ticket_number"]),
         inline=True
     )
 
-    embed.set_footer(
+    ticket_embed.add_field(
+        name="🟢 المستلم",
+        value="لم يتم الاستلام بعد",
+        inline=False
+    )
+
+    ticket_embed.set_footer(
         text="MT Ticket System"
     )
 
@@ -1405,18 +1816,14 @@ async def create_ticket(
             f"{user.mention} "
             f"{staff_role.mention}"
         ),
-        embed=embed,
-        view=TicketClosePersistentView()
+        embed=ticket_embed,
+        view=TicketControlsView()
     )
 
     await interaction.response.send_message(
         f"✅ تم فتح التذكرة: {channel.mention}",
         ephemeral=True
     )
-
-    # =====================================================
-    # OPEN LOG
-    # =====================================================
 
     if log_channel:
 
@@ -1455,6 +1862,348 @@ async def create_ticket(
 
 
 # =========================================================
+# CLAIM TICKET
+# =========================================================
+
+class ClaimTicketButton(
+    discord.ui.Button
+):
+
+    def __init__(
+        self
+    ):
+
+        super().__init__(
+            label="استلام",
+            style=discord.ButtonStyle.success,
+            emoji="🟢",
+            custom_id="mt_claim_ticket"
+        )
+
+    async def callback(
+        self,
+        interaction
+    ):
+
+        channel = interaction.channel
+
+        data = get_open_ticket(
+            channel.id
+        )
+
+        if not data:
+
+            await interaction.response.send_message(
+                "❌ هذا الروم ليس تذكرة مفتوحة.",
+                ephemeral=True
+            )
+
+            return
+
+        if interaction.user.id == data["owner_id"]:
+
+            await interaction.response.send_message(
+                "❌ صاحب التذكرة لا يستطيع استلام التذكرة.",
+                ephemeral=True
+            )
+
+            return
+
+        ticket = get_ticket(
+            interaction.guild.id,
+            data["ticket_number"]
+        )
+
+        if not ticket:
+
+            await interaction.response.send_message(
+                "❌ إعداد التذكرة غير موجود.",
+                ephemeral=True
+            )
+
+            return
+
+        staff_role = interaction.guild.get_role(
+            ticket["staff_role_id"]
+        )
+
+        if not staff_role:
+
+            await interaction.response.send_message(
+                "❌ رتبة الدعم غير موجودة.",
+                ephemeral=True
+            )
+
+            return
+
+        if (
+            staff_role not in interaction.user.roles
+            and
+            not interaction.user.guild_permissions.administrator
+        ):
+
+            await interaction.response.send_message(
+                "❌ لا تملك صلاحية استلام هذه التذكرة.",
+                ephemeral=True
+            )
+
+            return
+
+        if data["claimer_id"]:
+
+            claimer = interaction.guild.get_member(
+                data["claimer_id"]
+            )
+
+            mention = (
+                claimer.mention
+                if claimer
+                else
+                f"<@{data['claimer_id']}>"
+            )
+
+            await interaction.response.send_message(
+                f"❌ التذكرة مستلمة بالفعل من {mention}.",
+                ephemeral=True
+            )
+
+            return
+
+        set_ticket_claimer(
+            channel.id,
+            interaction.user.id
+        )
+
+        await interaction.response.send_message(
+            (
+                f"🟢 تم استلام التذكرة بواسطة "
+                f"{interaction.user.mention}."
+            )
+        )
+
+        async for message in channel.history(
+            limit=20
+        ):
+
+            if (
+                message.author == interaction.client.user
+                and
+                message.embeds
+            ):
+
+                embed = message.embeds[0]
+
+                new_embed = discord.Embed.from_dict(
+                    embed.to_dict()
+                )
+
+                for index, field in enumerate(
+                    new_embed.fields
+                ):
+
+                    if field.name == "🟢 المستلم":
+
+                        new_embed.set_field_at(
+                            index,
+                            name="🟢 المستلم",
+                            value=interaction.user.mention,
+                            inline=False
+                        )
+
+                await message.edit(
+                    embed=new_embed,
+                    view=TicketControlsView(
+                        claimed=True
+                    )
+                )
+
+                break
+
+        log_channel = interaction.guild.get_channel(
+            ticket["log_channel_id"]
+        )
+
+        if log_channel:
+
+            log_embed = discord.Embed(
+                title="🟢 استلام تذكرة",
+                color=discord.Color.green()
+            )
+
+            log_embed.add_field(
+                name="🎫 التذكرة",
+                value=channel.mention,
+                inline=False
+            )
+
+            log_embed.add_field(
+                name="👤 صاحب التذكرة",
+                value=f"<@{data['owner_id']}>",
+                inline=True
+            )
+
+            log_embed.add_field(
+                name="🟢 المستلم",
+                value=interaction.user.mention,
+                inline=True
+            )
+
+            await log_channel.send(
+                embed=log_embed
+            )
+
+
+# =========================================================
+# REMIND OWNER
+# =========================================================
+
+class RemindOwnerButton(
+    discord.ui.Button
+):
+
+    def __init__(
+        self
+    ):
+
+        super().__init__(
+            label="تذكير صاحب التذكرة",
+            style=discord.ButtonStyle.secondary,
+            emoji="🔔",
+            custom_id="mt_remind_owner"
+        )
+
+    async def callback(
+        self,
+        interaction
+    ):
+
+        channel = interaction.channel
+
+        data = get_open_ticket(
+            channel.id
+        )
+
+        if not data:
+
+            await interaction.response.send_message(
+                "❌ هذه ليست تذكرة مفتوحة.",
+                ephemeral=True
+            )
+
+            return
+
+        if not data["claimer_id"]:
+
+            await interaction.response.send_message(
+                "❌ لا يمكن التذكير قبل استلام التذكرة.",
+                ephemeral=True
+            )
+
+            return
+
+        ticket = get_ticket(
+            interaction.guild.id,
+            data["ticket_number"]
+        )
+
+        if not ticket:
+
+            await interaction.response.send_message(
+                "❌ إعداد التذكرة غير موجود.",
+                ephemeral=True
+            )
+
+            return
+
+        staff_role = interaction.guild.get_role(
+            ticket["staff_role_id"]
+        )
+
+        if not staff_role:
+
+            await interaction.response.send_message(
+                "❌ رتبة الدعم غير موجودة.",
+                ephemeral=True
+            )
+
+            return
+
+        if (
+            staff_role not in interaction.user.roles
+            and
+            not interaction.user.guild_permissions.administrator
+        ):
+
+            await interaction.response.send_message(
+                "❌ لا تملك صلاحية تذكير صاحب التذكرة.",
+                ephemeral=True
+            )
+
+            return
+
+        owner = interaction.guild.get_member(
+            data["owner_id"]
+        )
+
+        if owner:
+
+            await channel.send(
+                content=(
+                    f"🔔 {owner.mention}\n"
+                    "يرجى الرد على التذكرة، "
+                    "فريق الدعم بانتظار ردك."
+                )
+            )
+
+        else:
+
+            await channel.send(
+                content=(
+                    f"🔔 <@{data['owner_id']}>\n"
+                    "يرجى الرد على التذكرة."
+                )
+            )
+
+        await interaction.response.send_message(
+            "✅ تم تذكير صاحب التذكرة.",
+            ephemeral=True
+        )
+
+        log_channel = interaction.guild.get_channel(
+            ticket["log_channel_id"]
+        )
+
+        if log_channel:
+
+            log_embed = discord.Embed(
+                title="🔔 تذكير صاحب التذكرة",
+                color=discord.Color.orange()
+            )
+
+            log_embed.add_field(
+                name="🎫 التذكرة",
+                value=channel.mention,
+                inline=True
+            )
+
+            log_embed.add_field(
+                name="👤 صاحب التذكرة",
+                value=f"<@{data['owner_id']}>",
+                inline=True
+            )
+
+            log_embed.add_field(
+                name="🔔 بواسطة",
+                value=interaction.user.mention,
+                inline=True
+            )
+
+            await log_channel.send(
+                embed=log_embed
+            )
+
+
+# =========================================================
 # CLOSE TICKET
 # =========================================================
 
@@ -1462,7 +2211,9 @@ class CloseTicketButton(
     discord.ui.Button
 ):
 
-    def __init__(self):
+    def __init__(
+        self
+    ):
 
         super().__init__(
             label="إغلاق التذكرة",
@@ -1473,12 +2224,16 @@ class CloseTicketButton(
 
     async def callback(
         self,
-        interaction: discord.Interaction
+        interaction
     ):
 
         channel = interaction.channel
 
-        if not channel.topic:
+        data = get_open_ticket(
+            channel.id
+        )
+
+        if not data:
 
             await interaction.response.send_message(
                 "❌ هذا الروم ليس تذكرة.",
@@ -1487,39 +2242,77 @@ class CloseTicketButton(
 
             return
 
-        owner_match = re.search(
-            r"ticket_owner:(\d+)",
-            channel.topic
+        ticket = get_ticket(
+            interaction.guild.id,
+            data["ticket_number"]
         )
 
-        number_match = re.search(
-            r"ticket_number:(\d+)",
-            channel.topic
-        )
-
-        if not owner_match:
+        if not ticket:
 
             await interaction.response.send_message(
-                "❌ تعذر معرفة صاحب التذكرة.",
+                "❌ إعداد التذكرة غير موجود.",
                 ephemeral=True
             )
 
             return
 
-        owner_id = int(
-            owner_match.group(1)
+        staff_role = interaction.guild.get_role(
+            ticket["staff_role_id"]
         )
 
-        number = (
-            int(number_match.group(1))
-            if number_match
-            else 0
+        if not staff_role:
+
+            await interaction.response.send_message(
+                "❌ رتبة المسؤول غير موجودة.",
+                ephemeral=True
+            )
+
+            return
+
+        # -------------------------------------------------
+        # صلاحيات الإغلاق
+        #
+        # 1 - مستلم التذكرة
+        # 2 - المسؤول / Staff Role
+        # 3 - الرتب الأعلى من Staff Role
+        # -------------------------------------------------
+
+        is_claimer = (
+            data["claimer_id"] is not None
+            and
+            interaction.user.id == data["claimer_id"]
         )
 
-        ticket = get_ticket(
-            interaction.guild.id,
-            number
+        is_admin = (
+            interaction.user.guild_permissions.administrator
         )
+
+        is_staff_or_higher = (
+            interaction.user.top_role >= staff_role
+            and
+            interaction.user.top_role != interaction.guild.default_role
+        )
+
+        if not (
+            is_claimer
+            or
+            is_admin
+            or
+            is_staff_or_higher
+        ):
+
+            await interaction.response.send_message(
+                (
+                    "❌ لا تملك صلاحية إغلاق هذه التذكرة.\n\n"
+                    "المسموح لهم بالإغلاق:\n"
+                    "🟢 مستلم التذكرة\n"
+                    "🛡️ المسؤول\n"
+                    "⬆️ الرتب الأعلى من المسؤول"
+                ),
+                ephemeral=True
+            )
+
+            return
 
         await interaction.response.send_message(
             "🔒 سيتم إغلاق التذكرة خلال **5 ثوانٍ**."
@@ -1527,49 +2320,66 @@ class CloseTicketButton(
 
         await asyncio.sleep(5)
 
-        if ticket:
+        # -------------------------------------------------
+        # LOG
+        # -------------------------------------------------
 
-            log_channel = interaction.guild.get_channel(
-                ticket["log_channel_id"]
+        log_channel = interaction.guild.get_channel(
+            ticket["log_channel_id"]
+        )
+
+        if log_channel:
+
+            embed = discord.Embed(
+                title="🔒 إغلاق تذكرة",
+                color=discord.Color.red()
             )
 
-            if log_channel:
+            embed.add_field(
+                name="👤 صاحب التذكرة",
+                value=(
+                    f"<@{data['owner_id']}>\n"
+                    f"`{data['owner_id']}`"
+                ),
+                inline=False
+            )
 
-                embed = discord.Embed(
-                    title="🔒 إغلاق تذكرة",
-                    color=discord.Color.red()
-                )
+            embed.add_field(
+                name="🎫 نوع التذكرة",
+                value=(
+                    f"{ticket['ticket_name']}\n"
+                    f"رقم {data['ticket_number']}"
+                ),
+                inline=True
+            )
 
-                embed.add_field(
-                    name="👤 صاحب التذكرة",
-                    value=(
-                        f"<@{owner_id}>\n"
-                        f"`{owner_id}`"
-                    ),
-                    inline=False
-                )
+            embed.add_field(
+                name="🟢 المستلم",
+                value=(
+                    f"<@{data['claimer_id']}>"
+                    if data["claimer_id"]
+                    else
+                    "لم يتم الاستلام"
+                ),
+                inline=True
+            )
 
-                embed.add_field(
-                    name="🎫 نوع التذكرة",
-                    value=(
-                        f"{ticket['ticket_name']}\n"
-                        f"رقم {number}"
-                    ),
-                    inline=True
-                )
+            embed.add_field(
+                name="🔒 أغلقها",
+                value=(
+                    f"{interaction.user.mention}\n"
+                    f"`{interaction.user.id}`"
+                ),
+                inline=True
+            )
 
-                embed.add_field(
-                    name="🔒 أغلقها",
-                    value=(
-                        f"{interaction.user.mention}\n"
-                        f"`{interaction.user.id}`"
-                    ),
-                    inline=True
-                )
+            await log_channel.send(
+                embed=embed
+            )
 
-                await log_channel.send(
-                    embed=embed
-                )
+        delete_open_ticket(
+            channel.id
+        )
 
         try:
 
@@ -1585,87 +2395,40 @@ class CloseTicketButton(
             )
 
 
-class TicketClosePersistentView(
+# =========================================================
+# TICKET CONTROLS VIEW
+# =========================================================
+
+class TicketControlsView(
     discord.ui.View
 ):
 
-    def __init__(self):
+    def __init__(
+        self,
+        claimed=False
+    ):
 
         super().__init__(
             timeout=None
+        )
+
+        claim_button = ClaimTicketButton()
+
+        if claimed:
+
+            claim_button.disabled = True
+            claim_button.label = "تم الاستلام"
+
+        self.add_item(
+            claim_button
+        )
+
+        self.add_item(
+            RemindOwnerButton()
         )
 
         self.add_item(
             CloseTicketButton()
-        )
-
-
-class TicketOpenPersistentView(
-    discord.ui.View
-):
-
-    def __init__(self):
-
-        super().__init__(
-            timeout=None
-        )
-
-        # هذه النسخة تستخدم Custom Button عام
-        # للبانلات القديمة/المستقبلية.
-        self.add_item(
-            GenericOpenButton()
-        )
-
-
-class GenericOpenButton(
-    discord.ui.Button
-):
-
-    def __init__(self):
-
-        super().__init__(
-            label="فتح تذكرة",
-            style=discord.ButtonStyle.primary,
-            emoji="🎫",
-            custom_id="mt_generic_open_ticket"
-        )
-
-    async def callback(
-        self,
-        interaction: discord.Interaction
-    ):
-
-        tickets = get_all_tickets(
-            interaction.guild.id
-        )
-
-        if not tickets:
-
-            await interaction.response.send_message(
-                "❌ لم يتم إعداد أي تذكرة.",
-                ephemeral=True
-            )
-
-            return
-
-        options = []
-
-        for ticket in tickets[:25]:
-
-            options.append(
-                discord.SelectOption(
-                    label=ticket["ticket_name"][:100],
-                    value=str(
-                        ticket["ticket_number"]
-                    ),
-                    emoji="🎫"
-                )
-            )
-
-        await interaction.response.send_message(
-            "🎫 اختر نوع التذكرة:",
-            view=TicketMenuPanelView(tickets),
-            ephemeral=True
         )
 
 
