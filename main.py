@@ -1039,14 +1039,13 @@ class TicketTypeSelect(
                 ),
 
             interaction.guild.me:
-                discord.PermissionOverwrite(
-                    view_channel=True,
-                    send_messages=True,
-                    read_message_history=True,
-                    manage_channels=True,
-                    manage_messages=True,
-                    read_message_history=True
-                )
+    discord.PermissionOverwrite(
+        view_channel=True,
+        send_messages=True,
+        read_message_history=True,
+        manage_channels=True,
+        manage_messages=True
+    )
         }
 
         # =============================================
