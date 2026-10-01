@@ -21,12 +21,12 @@ MAX_TICKETS = 25
 
 if not TOKEN:
     raise RuntimeError(
-        "❌ DISCORD_TOKEN غير موجود في Environment Variables"
+        "DISCORD_TOKEN is missing from Environment Variables"
     )
 
 
 # =========================================================
-# FLASK - RENDER KEEP ALIVE
+# FLASK - RENDER
 # =========================================================
 
 app = Flask(__name__)
@@ -52,7 +52,6 @@ def keep_alive():
         target=run_flask,
         daemon=True
     )
-
     thread.start()
 
 
@@ -77,8 +76,10 @@ def init_database():
         CREATE TABLE IF NOT EXISTS ticket_setups (
             guild_id INTEGER NOT NULL,
             ticket_number INTEGER NOT NULL,
+            ticket_name TEXT NOT NULL,
             category_id INTEGER NOT NULL,
             staff_role_id INTEGER NOT NULL,
+            log_channel_id INTEGER NOT NULL,
             PRIMARY KEY (guild_id, ticket_number)
         )
     """)
@@ -90,30 +91,37 @@ def init_database():
 def save_ticket_setup(
     guild_id,
     ticket_number,
+    ticket_name,
     category_id,
-    staff_role_id
+    staff_role_id,
+    log_channel_id
 ):
     conn = get_db()
 
     conn.execute("""
-        INSERT INTO ticket_setups
-        (
+        INSERT INTO ticket_setups (
             guild_id,
             ticket_number,
+            ticket_name,
             category_id,
-            staff_role_id
+            staff_role_id,
+            log_channel_id
         )
-        VALUES (?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?)
 
         ON CONFLICT(guild_id, ticket_number)
         DO UPDATE SET
+            ticket_name = excluded.ticket_name,
             category_id = excluded.category_id,
-            staff_role_id = excluded.staff_role_id
+            staff_role_id = excluded.staff_role_id,
+            log_channel_id = excluded.log_channel_id
     """, (
         guild_id,
         ticket_number,
+        ticket_name,
         category_id,
-        staff_role_id
+        staff_role_id,
+        log_channel_id
     ))
 
     conn.commit()
@@ -128,8 +136,11 @@ def get_ticket_setup(
 
     row = conn.execute("""
         SELECT
+            ticket_number,
+            ticket_name,
             category_id,
-            staff_role_id
+            staff_role_id,
+            log_channel_id
 
         FROM ticket_setups
 
@@ -152,8 +163,10 @@ def get_all_ticket_setups(guild_id):
     rows = conn.execute("""
         SELECT
             ticket_number,
+            ticket_name,
             category_id,
-            staff_role_id
+            staff_role_id,
+            log_channel_id
 
         FROM ticket_setups
 
@@ -185,54 +198,54 @@ bot = commands.Bot(
 
 
 # =========================================================
-# FETCH HELPERS
+# HELPER
 # =========================================================
 
-async def fetch_category(
-    guild,
-    category_id
+async def get_channel_safe(
+    channel_id
 ):
-    channel = guild.get_channel(
-        category_id
-    )
-
-    if channel is not None:
-        return channel
-
     try:
         return await bot.fetch_channel(
-            category_id
+            channel_id
         )
-
     except Exception:
         return None
 
 
-async def fetch_role(
+async def send_log(
     guild,
-    role_id
+    log_channel_id,
+    embed
 ):
-    role = guild.get_role(
-        role_id
+    channel = guild.get_channel(
+        log_channel_id
     )
 
-    if role is not None:
-        return role
-
-    try:
-        return await guild.fetch_role(
-            role_id
+    if channel is None:
+        channel = await get_channel_safe(
+            log_channel_id
         )
 
-    except Exception:
-        return None
+    if channel is None:
+        return
+
+    try:
+        await channel.send(
+            embed=embed
+        )
+    except Exception as error:
+        print(
+            f"Log error: {repr(error)}"
+        )
 
 
 # =========================================================
-# TICKET SETUP MODAL
+# TICKET NAME MODAL
 # =========================================================
 
-class TicketSetupModal(discord.ui.Modal):
+class TicketNameModal(
+    discord.ui.Modal
+):
 
     def __init__(
         self,
@@ -244,104 +257,331 @@ class TicketSetupModal(discord.ui.Modal):
 
         self.ticket_number = ticket_number
 
-        self.category_input = discord.ui.TextInput(
-            label="ID التصنيف",
-            placeholder="ضع ID التصنيف هنا",
+        self.ticket_name = discord.ui.TextInput(
+            label="اسم التذكرة",
+            placeholder="مثال: دعم فني",
             required=True,
-            max_length=30
-        )
-
-        self.role_input = discord.ui.TextInput(
-            label="ID رتبة الدعم",
-            placeholder="ضع ID الرتبة هنا",
-            required=True,
-            max_length=30
+            min_length=1,
+            max_length=80
         )
 
         self.add_item(
-            self.category_input
-        )
-
-        self.add_item(
-            self.role_input
+            self.ticket_name
         )
 
     async def on_submit(
         self,
         interaction
     ):
-        try:
-            category_id = int(
-                self.category_input.value.strip()
-            )
 
-            role_id = int(
-                self.role_input.value.strip()
-            )
+        name = self.ticket_name.value.strip()
 
-        except ValueError:
-
-            await interaction.response.send_message(
-                "❌ الـ ID يجب أن يكون أرقام فقط.",
-                ephemeral=True
-            )
-
-            return
-
-        category = await fetch_category(
-            interaction.guild,
-            category_id
+        await interaction.response.send_message(
+            embed=discord.Embed(
+                title="⚙️ إعداد التذكرة",
+                description=(
+                    f"🎫 **رقم التذكرة:** "
+                    f"`{self.ticket_number}`\n\n"
+                    f"📝 **اسم التذكرة:** "
+                    f"`{name}`\n\n"
+                    "اختر الآن من القوائم بالأسفل:\n"
+                    "📁 التصنيف\n"
+                    "🛡️ رتبة الستاف\n"
+                    "📋 روم اللوق"
+                ),
+                color=discord.Color.blue()
+            ),
+            view=TicketConfigurationView(
+                self.ticket_number,
+                name
+            ),
+            ephemeral=True
         )
 
-        if category is None:
 
-            await interaction.response.send_message(
-                "❌ لم أجد التصنيف بهذا الـ ID.",
-                ephemeral=True
-            )
+# =========================================================
+# CATEGORY SELECT
+# =========================================================
 
-            return
+class CategorySelect(
+    discord.ui.ChannelSelect
+):
 
-        if not isinstance(
-            category,
-            discord.CategoryChannel
-        ):
-
-            await interaction.response.send_message(
-                "❌ الـ ID الذي وضعته ليس تصنيفًا.",
-                ephemeral=True
-            )
-
-            return
-
-        role = await fetch_role(
-            interaction.guild,
-            role_id
+    def __init__(
+        self
+    ):
+        super().__init__(
+            placeholder="📁 اختر تصنيف التذاكر",
+            channel_types=[
+                discord.ChannelType.category
+            ],
+            min_values=1,
+            max_values=1
         )
 
-        if role is None:
 
+# =========================================================
+# ROLE SELECT
+# =========================================================
+
+class StaffRoleSelect(
+    discord.ui.RoleSelect
+):
+
+    def __init__(
+        self
+    ):
+        super().__init__(
+            placeholder="🛡️ اختر رتبة الستاف",
+            min_values=1,
+            max_values=1
+        )
+
+
+# =========================================================
+# LOG CHANNEL SELECT
+# =========================================================
+
+class LogChannelSelect(
+    discord.ui.ChannelSelect
+):
+
+    def __init__(
+        self
+    ):
+        super().__init__(
+            placeholder="📋 اختر روم اللوق",
+            channel_types=[
+                discord.ChannelType.text
+            ],
+            min_values=1,
+            max_values=1
+        )
+
+
+# =========================================================
+# SAVE TICKET BUTTON
+# =========================================================
+
+class SaveTicketButton(
+    discord.ui.Button
+):
+
+    def __init__(
+        self
+    ):
+        super().__init__(
+            label="حفظ إعداد التذكرة",
+            style=discord.ButtonStyle.success,
+            emoji="💾"
+        )
+
+    async def callback(
+        self,
+        interaction
+    ):
+
+        view = self.view
+
+        if not view.category:
             await interaction.response.send_message(
-                "❌ لم أجد الرتبة بهذا الـ ID.",
+                "❌ اختر تصنيف التذكرة أولًا.",
                 ephemeral=True
             )
+            return
 
+        if not view.staff_role:
+            await interaction.response.send_message(
+                "❌ اختر رتبة الستاف أولًا.",
+                ephemeral=True
+            )
+            return
+
+        if not view.log_channel:
+            await interaction.response.send_message(
+                "❌ اختر روم اللوق أولًا.",
+                ephemeral=True
+            )
             return
 
         save_ticket_setup(
             interaction.guild.id,
-            self.ticket_number,
-            category.id,
-            role.id
+            view.ticket_number,
+            view.ticket_name,
+            view.category.id,
+            view.staff_role.id,
+            view.log_channel.id
         )
 
+        embed = discord.Embed(
+            title="✅ تم حفظ التذكرة",
+            color=discord.Color.green()
+        )
+
+        embed.add_field(
+            name="🎫 رقم التذكرة",
+            value=str(view.ticket_number),
+            inline=True
+        )
+
+        embed.add_field(
+            name="📝 الاسم",
+            value=view.ticket_name,
+            inline=True
+        )
+
+        embed.add_field(
+            name="📁 التصنيف",
+            value=view.category.mention,
+            inline=True
+        )
+
+        embed.add_field(
+            name="🛡️ الستاف",
+            value=view.staff_role.mention,
+            inline=True
+        )
+
+        embed.add_field(
+            name="📋 اللوق",
+            value=view.log_channel.mention,
+            inline=True
+        )
+
+        await interaction.response.edit_message(
+            embed=embed,
+            view=None
+        )
+
+
+# =========================================================
+# CONFIGURATION VIEW
+# =========================================================
+
+class TicketConfigurationView(
+    discord.ui.View
+):
+
+    def __init__(
+        self,
+        ticket_number,
+        ticket_name
+    ):
+        super().__init__(
+            timeout=300
+        )
+
+        self.ticket_number = ticket_number
+        self.ticket_name = ticket_name
+
+        self.category = None
+        self.staff_role = None
+        self.log_channel = None
+
+        self.category_select = CategorySelect()
+        self.staff_select = StaffRoleSelect()
+        self.log_select = LogChannelSelect()
+
+        self.add_item(
+            self.category_select
+        )
+
+        self.add_item(
+            self.staff_select
+        )
+
+        self.add_item(
+            self.log_select
+        )
+
+        self.add_item(
+            SaveTicketButton()
+        )
+
+    async def interaction_check(
+        self,
+        interaction
+    ):
+
+        return True
+
+
+# =========================================================
+# SELECT CALLBACKS
+# =========================================================
+
+async def category_callback(
+    interaction
+):
+
+    view = interaction.message.components
+
+
+# =========================================================
+# PATCH SELECT CALLBACKS
+# =========================================================
+
+old_category_init = CategorySelect.__init__
+
+
+def category_init(self):
+    old_category_init(self)
+
+    async def callback(interaction):
+        self.view.category = self.values[0]
+
         await interaction.response.send_message(
-            "✅ **تم حفظ إعداد التذكرة**\n\n"
-            f"🎫 رقم التذكرة: **{self.ticket_number}**\n"
-            f"📁 التصنيف: {category.mention}\n"
-            f"🛡️ رتبة الدعم: {role.mention}",
+            f"✅ تم اختيار التصنيف: "
+            f"{self.values[0].mention}",
             ephemeral=True
         )
+
+    self.callback = callback
+
+
+CategorySelect.__init__ = category_init
+
+
+old_role_init = StaffRoleSelect.__init__
+
+
+def role_init(self):
+    old_role_init(self)
+
+    async def callback(interaction):
+        self.view.staff_role = self.values[0]
+
+        await interaction.response.send_message(
+            f"✅ تم اختيار الرتبة: "
+            f"{self.values[0].mention}",
+            ephemeral=True
+        )
+
+    self.callback = callback
+
+
+StaffRoleSelect.__init__ = role_init
+
+
+old_log_init = LogChannelSelect.__init__
+
+
+def log_init(self):
+    old_log_init(self)
+
+    async def callback(interaction):
+        self.view.log_channel = self.values[0]
+
+        await interaction.response.send_message(
+            f"✅ تم اختيار اللوق: "
+            f"{self.values[0].mention}",
+            ephemeral=True
+        )
+
+    self.callback = callback
+
+
+LogChannelSelect.__init__ = log_init
 
 
 # =========================================================
@@ -352,7 +592,9 @@ class TicketNumberSelect(
     discord.ui.Select
 ):
 
-    def __init__(self):
+    def __init__(
+        self
+    ):
 
         options = []
 
@@ -370,7 +612,7 @@ class TicketNumberSelect(
             )
 
         super().__init__(
-            placeholder="اختر رقم التذكرة",
+            placeholder="🎫 اختر رقم التذكرة",
             options=options,
             min_values=1,
             max_values=1
@@ -386,7 +628,7 @@ class TicketNumberSelect(
         )
 
         await interaction.response.send_modal(
-            TicketSetupModal(number)
+            TicketNameModal(number)
         )
 
 
@@ -395,6 +637,7 @@ class TicketSetupView(
 ):
 
     def __init__(self):
+
         super().__init__(
             timeout=300
         )
@@ -412,20 +655,22 @@ class TicketPanelModal(
     discord.ui.Modal
 ):
 
-    def __init__(self):
+    def __init__(
+        self
+    ):
 
         super().__init__(
             title="إرسال بانل التذكرة"
         )
 
-        self.embed_title = discord.ui.TextInput(
+        self.title_input = discord.ui.TextInput(
             label="عنوان الإمبد",
             placeholder="مثال: تذاكر الدعم",
             required=True,
             max_length=256
         )
 
-        self.embed_description = discord.ui.TextInput(
+        self.description_input = discord.ui.TextInput(
             label="وصف الإمبد",
             placeholder="اكتب وصف بانل التذاكر",
             style=discord.TextStyle.paragraph,
@@ -433,14 +678,14 @@ class TicketPanelModal(
             max_length=4000
         )
 
-        self.image = discord.ui.TextInput(
+        self.image_input = discord.ui.TextInput(
             label="رابط الصورة - اختياري",
             placeholder="https://...",
             required=False,
             max_length=500
         )
 
-        self.footer = discord.ui.TextInput(
+        self.footer_input = discord.ui.TextInput(
             label="النص السفلي - اختياري",
             placeholder="MT Ticket System",
             required=False,
@@ -448,19 +693,19 @@ class TicketPanelModal(
         )
 
         self.add_item(
-            self.embed_title
+            self.title_input
         )
 
         self.add_item(
-            self.embed_description
+            self.description_input
         )
 
         self.add_item(
-            self.image
+            self.image_input
         )
 
         self.add_item(
-            self.footer
+            self.footer_input
         )
 
     async def on_submit(
@@ -469,21 +714,21 @@ class TicketPanelModal(
     ):
 
         embed = discord.Embed(
-            title=self.embed_title.value,
-            description=self.embed_description.value,
+            title=self.title_input.value,
+            description=self.description_input.value,
             color=discord.Color.blue()
         )
 
-        if self.image.value.strip():
+        if self.image_input.value.strip():
 
             embed.set_image(
-                url=self.image.value.strip()
+                url=self.image_input.value.strip()
             )
 
-        if self.footer.value.strip():
+        if self.footer_input.value.strip():
 
             embed.set_footer(
-                text=self.footer.value.strip()
+                text=self.footer_input.value.strip()
             )
 
         if interaction.guild.icon:
@@ -552,7 +797,9 @@ class OpenTicketButton(
     discord.ui.Button
 ):
 
-    def __init__(self):
+    def __init__(
+        self
+    ):
 
         super().__init__(
             label="فتح تذكرة",
@@ -605,7 +852,7 @@ class TicketOpenView(
 
 
 # =========================================================
-# TICKET TYPE
+# TICKET TYPE SELECT
 # =========================================================
 
 class TicketTypeSelect(
@@ -624,16 +871,20 @@ class TicketTypeSelect(
         options = []
 
         for (
-            ticket_number,
+            number,
+            name,
             category_id,
-            role_id
+            staff_role_id,
+            log_channel_id
         ) in setups:
 
             options.append(
                 discord.SelectOption(
-                    label=f"التذكرة رقم {ticket_number}",
-                    description="اضغط لفتح هذه التذكرة",
-                    value=str(ticket_number),
+                    label=name[:100],
+                    description=(
+                        f"التذكرة رقم {number}"
+                    ),
+                    value=str(number),
                     emoji="🎫"
                 )
             )
@@ -642,14 +893,14 @@ class TicketTypeSelect(
 
             options.append(
                 discord.SelectOption(
-                    label="لا توجد تذاكر مفعلة",
+                    label="لا توجد تذاكر",
                     value="none",
                     emoji="❌"
                 )
             )
 
         super().__init__(
-            placeholder="اختر نوع التذكرة",
+            placeholder="🎫 اختر نوع التذكرة",
             options=options,
             min_values=1,
             max_values=1
@@ -687,28 +938,45 @@ class TicketTypeSelect(
 
             return
 
-        category_id, role_id = setup
+        (
+            number,
+            ticket_name,
+            category_id,
+            staff_role_id,
+            log_channel_id
+        ) = setup
 
-        category = await fetch_category(
-            interaction.guild,
+        category = interaction.guild.get_channel(
             category_id
         )
 
-        role = await fetch_role(
-            interaction.guild,
-            role_id
+        role = interaction.guild.get_role(
+            staff_role_id
         )
 
-        if (
-            category is None
-            or not isinstance(
-                category,
-                discord.CategoryChannel
+        log_channel = interaction.guild.get_channel(
+            log_channel_id
+        )
+
+        if category is None:
+
+            category = await get_channel_safe(
+                category_id
             )
-        ):
+
+        if role is None:
+
+            try:
+                role = await interaction.guild.fetch_role(
+                    staff_role_id
+                )
+            except Exception:
+                role = None
+
+        if category is None:
 
             await interaction.response.send_message(
-                "❌ التصنيف المرتبط بهذه التذكرة غير موجود.",
+                "❌ التصنيف غير موجود.",
                 ephemeral=True
             )
 
@@ -717,13 +985,15 @@ class TicketTypeSelect(
         if role is None:
 
             await interaction.response.send_message(
-                "❌ رتبة الدعم غير موجودة.",
+                "❌ رتبة الستاف غير موجودة.",
                 ephemeral=True
             )
 
             return
 
-        # منع فتح أكثر من تذكرة لنفس الشخص
+        # =============================================
+        # CHECK EXISTING TICKET
+        # =============================================
 
         for channel in interaction.guild.text_channels:
 
@@ -739,6 +1009,10 @@ class TicketTypeSelect(
 
                 return
 
+        # =============================================
+        # PERMISSIONS
+        # =============================================
+
         overwrites = {
 
             interaction.guild.default_role:
@@ -750,14 +1024,18 @@ class TicketTypeSelect(
                 discord.PermissionOverwrite(
                     view_channel=True,
                     send_messages=True,
-                    read_message_history=True
+                    read_message_history=True,
+                    attach_files=True,
+                    embed_links=True
                 ),
 
             role:
                 discord.PermissionOverwrite(
                     view_channel=True,
                     send_messages=True,
-                    read_message_history=True
+                    read_message_history=True,
+                    attach_files=True,
+                    embed_links=True
                 ),
 
             interaction.guild.me:
@@ -766,37 +1044,101 @@ class TicketTypeSelect(
                     send_messages=True,
                     read_message_history=True,
                     manage_channels=True,
-                    manage_messages=True
+                    manage_messages=True,
+                    read_message_history=True
                 )
         }
 
+        # =============================================
+        # CHANNEL NAME
+        # =============================================
+
         safe_name = (
-            interaction.user.name
+            ticket_name
             .lower()
             .replace(" ", "-")
-        )[:20]
-
-        channel = await interaction.guild.create_text_channel(
-            name=f"ticket-{safe_name}",
-            category=category,
-            topic=f"ticket_owner:{interaction.user.id}",
-            overwrites=overwrites,
-            reason="MT Ticket System"
+            .replace("/", "-")
+            .replace("\\", "-")
         )
 
+        safe_name = "".join(
+            char
+            for char in safe_name
+            if char.isalnum() or char == "-"
+        )
+
+        safe_name = safe_name[:40]
+
+        channel_name = (
+            f"{safe_name}-{interaction.user.name.lower()}"
+        )
+
+        channel_name = "".join(
+            char
+            for char in channel_name
+            if char.isalnum() or char == "-"
+        )[:95]
+
+        # =============================================
+        # CREATE CHANNEL
+        # =============================================
+
+        try:
+
+            channel = await interaction.guild.create_text_channel(
+                name=channel_name,
+                category=category,
+                topic=(
+                    f"ticket_owner:{interaction.user.id}"
+                    f"|ticket_number:{ticket_number}"
+                ),
+                overwrites=overwrites,
+                reason="MT Ticket System"
+            )
+
+        except Exception as error:
+
+            print(
+                f"Create ticket error: {repr(error)}"
+            )
+
+            await interaction.response.send_message(
+                "❌ لم أستطع إنشاء التذكرة. "
+                "تأكد أن البوت يملك Manage Channels.",
+                ephemeral=True
+            )
+
+            return
+
+        # =============================================
+        # TICKET EMBED
+        # =============================================
+
         embed = discord.Embed(
-            title="🎫 تذكرة جديدة",
+            title=f"🎫 {ticket_name}",
             description=(
                 f"مرحبًا {interaction.user.mention}\n\n"
                 "تم فتح تذكرتك بنجاح.\n"
-                "اكتب طلبك هنا وسيقوم فريق الدعم بمساعدتك."
+                "يرجى كتابة طلبك وسيقوم فريق الدعم بمساعدتك."
             ),
             color=discord.Color.blue()
         )
 
         embed.add_field(
-            name="نوع التذكرة",
-            value=f"رقم {ticket_number}",
+            name="👤 صاحب التذكرة",
+            value=interaction.user.mention,
+            inline=True
+        )
+
+        embed.add_field(
+            name="🎫 النوع",
+            value=ticket_name,
+            inline=True
+        )
+
+        embed.add_field(
+            name="🔢 الرقم",
+            value=str(ticket_number),
             inline=True
         )
 
@@ -811,6 +1153,52 @@ class TicketTypeSelect(
             ),
             embed=embed,
             view=CloseTicketView()
+        )
+
+        # =============================================
+        # LOG
+        # =============================================
+
+        log_embed = discord.Embed(
+            title="🎫 فتح تذكرة",
+            color=discord.Color.green()
+        )
+
+        log_embed.add_field(
+            name="👤 العضو",
+            value=(
+                f"{interaction.user.mention}\n"
+                f"`{interaction.user.id}`"
+            ),
+            inline=False
+        )
+
+        log_embed.add_field(
+            name="🎫 نوع التذكرة",
+            value=ticket_name,
+            inline=True
+        )
+
+        log_embed.add_field(
+            name="🔢 الرقم",
+            value=str(ticket_number),
+            inline=True
+        )
+
+        log_embed.add_field(
+            name="📁 التذكرة",
+            value=channel.mention,
+            inline=False
+        )
+
+        log_embed.set_footer(
+            text="MT Ticket Logs"
+        )
+
+        await send_log(
+            interaction.guild,
+            log_channel_id,
+            log_embed
         )
 
         await interaction.response.send_message(
@@ -859,15 +1247,123 @@ class CloseTicketButton(
         interaction
     ):
 
+        channel = interaction.channel
+
+        owner_id = None
+        ticket_number = None
+
+        if channel.topic:
+
+            for part in channel.topic.split("|"):
+
+                if part.startswith(
+                    "ticket_owner:"
+                ):
+
+                    try:
+                        owner_id = int(
+                            part.split(":")[1]
+                        )
+                    except Exception:
+                        pass
+
+                if part.startswith(
+                    "ticket_number:"
+                ):
+
+                    try:
+                        ticket_number = int(
+                            part.split(":")[1]
+                        )
+                    except Exception:
+                        pass
+
+        log_channel_id = None
+
+        if ticket_number is not None:
+
+            setup = get_ticket_setup(
+                interaction.guild.id,
+                ticket_number
+            )
+
+            if setup:
+
+                log_channel_id = setup[4]
+
         await interaction.response.send_message(
             "🔒 سيتم إغلاق التذكرة خلال **5 ثوانٍ**."
         )
+
+        # =============================================
+        # CLOSE LOG
+        # =============================================
+
+        log_embed = discord.Embed(
+            title="🔒 إغلاق تذكرة",
+            color=discord.Color.red()
+        )
+
+        log_embed.add_field(
+            name="👤 أغلق التذكرة",
+            value=(
+                f"{interaction.user.mention}\n"
+                f"`{interaction.user.id}`"
+            ),
+            inline=False
+        )
+
+        if owner_id:
+
+            owner = interaction.guild.get_member(
+                owner_id
+            )
+
+            if owner:
+
+                owner_text = owner.mention
+
+            else:
+
+                owner_text = f"`{owner_id}`"
+
+            log_embed.add_field(
+                name="👤 صاحب التذكرة",
+                value=owner_text,
+                inline=False
+            )
+
+        log_embed.add_field(
+            name="📁 الروم",
+            value=channel.name,
+            inline=True
+        )
+
+        if ticket_number:
+
+            log_embed.add_field(
+                name="🔢 رقم التذكرة",
+                value=str(ticket_number),
+                inline=True
+            )
+
+        log_embed.set_footer(
+            text="MT Ticket Logs"
+        )
+
+        if log_channel_id:
+
+            await send_log(
+                interaction.guild,
+                log_channel_id,
+                log_embed
+            )
 
         await asyncio.sleep(5)
 
         try:
 
-            await interaction.channel.delete(
+            await channel.delete(
                 reason=(
                     f"Ticket closed by "
                     f"{interaction.user}"
@@ -877,6 +1373,12 @@ class CloseTicketButton(
         except discord.Forbidden:
 
             pass
+
+        except Exception as error:
+
+            print(
+                f"Delete ticket error: {repr(error)}"
+            )
 
 
 class CloseTicketView(
@@ -895,12 +1397,12 @@ class CloseTicketView(
 
 
 # =========================================================
-# SLASH COMMAND: TICKET SETUP
+# /ticket_setup
 # =========================================================
 
 @bot.tree.command(
     name="ticket_setup",
-    description="إعداد تذكرة من 1 إلى 25"
+    description="إعداد تذاكر السيرفر"
 )
 @app_commands.checks.has_permissions(
     administrator=True
@@ -910,13 +1412,12 @@ async def ticket_setup(
 ):
 
     embed = discord.Embed(
-        title="🎫 إعداد التذاكر",
+        title="⚙️ إعداد التذاكر",
         description=(
             "اختر رقم التذكرة التي تريد إعدادها.\n\n"
-            "بعد الاختيار سيظهر لك نموذج لإدخال:\n"
-            "📁 ID التصنيف\n"
-            "🛡️ ID رتبة الدعم\n\n"
-            "الحد الأقصى: **25 تذكرة**."
+            "بعد اختيار الرقم سيطلب منك اسم التذكرة، "
+            "ثم تختار التصنيف والرتبة وروم اللوق من القوائم.\n\n"
+            "🎫 الحد الأقصى: **25 تذكرة**"
         ),
         color=discord.Color.blue()
     )
@@ -935,7 +1436,7 @@ async def ticket_setup(
 
 
 # =========================================================
-# SLASH COMMAND: TICKET PANEL
+# /ticket_panel
 # =========================================================
 
 @bot.tree.command(
@@ -972,7 +1473,7 @@ async def ticket_panel(
 
 
 # =========================================================
-# COMMAND ERRORS
+# ERRORS
 # =========================================================
 
 @ticket_setup.error
@@ -990,15 +1491,13 @@ async def ticket_setup_error(
         app_commands.errors.MissingPermissions
     ):
 
-        message = (
-            "❌ هذا الأمر للإدارة فقط."
-        )
+        message = "❌ هذا الأمر للإدارة فقط."
 
     else:
 
         message = (
             "❌ حدث خطأ أثناء إعداد التذاكر.\n"
-            "راجع Console في Render لمعرفة الخطأ."
+            "راجع Console في Render."
         )
 
     try:
@@ -1018,7 +1517,6 @@ async def ticket_setup_error(
             )
 
     except Exception:
-
         pass
 
 
@@ -1037,9 +1535,7 @@ async def ticket_panel_error(
         app_commands.errors.MissingPermissions
     ):
 
-        message = (
-            "❌ هذا الأمر للإدارة فقط."
-        )
+        message = "❌ هذا الأمر للإدارة فقط."
 
     else:
 
@@ -1064,29 +1560,18 @@ async def ticket_panel_error(
             )
 
     except Exception:
-
         pass
 
 
 # =========================================================
-# BOT READY
+# READY
 # =========================================================
 
 @bot.event
 async def on_ready():
 
-    init_database()
-
     print(
-        f"✅ Logged in as: {bot.user}"
-    )
-
-    print(
-        "✅ Database loaded"
-    )
-
-    print(
-        "✅ Flask server is running"
+        f"✅ Logged in as {bot.user}"
     )
 
     try:
@@ -1094,15 +1579,13 @@ async def on_ready():
         synced = await bot.tree.sync()
 
         print(
-            f"✅ Slash commands synced: "
-            f"{len(synced)}"
+            f"✅ Slash commands synced: {len(synced)}"
         )
 
     except Exception as error:
 
         print(
-            f"❌ Slash command sync error: "
-            f"{repr(error)}"
+            f"❌ Sync error: {repr(error)}"
         )
 
 
