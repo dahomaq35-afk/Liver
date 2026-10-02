@@ -2278,10 +2278,10 @@ class CloseTicketButton(
         # -------------------------------------------------
 
         is_claimer = (
-            data["claimer_id"] is not None
-            and
-            interaction.user.id == data["claimer_id"]
-        )
+    data["claimer_id"] is not None
+    and
+    interaction.user.id == data["claimer_id"]
+)
 
         is_admin = (
             interaction.user.guild_permissions.administrator
@@ -2501,6 +2501,2056 @@ async def ticket_panel_error(
 
     print(
         "ticket_panel error:",
+        error
+    )
+
+
+# =========================================================
+# APPLICATION SYSTEM
+# =========================================================
+
+APPLICATION_DB = "mt_ticket_system.db"
+
+
+def app_db():
+    conn = sqlite3.connect(APPLICATION_DB)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def init_application_database():
+    conn = app_db()
+    cur = conn.cursor()
+
+    # إعدادات نظام التقديم
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS application_settings (
+            guild_id INTEGER PRIMARY KEY,
+            review_channel_id INTEGER,
+            reviewer_role_id INTEGER,
+            instructions TEXT,
+            accept_message TEXT,
+            reject_message TEXT,
+            panel_title TEXT,
+            panel_description TEXT,
+            panel_image TEXT
+        )
+    """)
+
+    # رتب القبول
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS application_roles (
+            guild_id INTEGER NOT NULL,
+            role_id INTEGER NOT NULL,
+            PRIMARY KEY (guild_id, role_id)
+        )
+    """)
+
+    # أسئلة التقديم
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS application_questions (
+            guild_id INTEGER NOT NULL,
+            question_number INTEGER NOT NULL,
+            question TEXT NOT NULL,
+            PRIMARY KEY (guild_id, question_number)
+        )
+    """)
+
+    # التقديمات
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS applications (
+            application_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            guild_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            answers TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            review_message_id INTEGER,
+            created_at TEXT NOT NULL
+        )
+    """)
+
+    conn.commit()
+    conn.close()
+
+
+init_application_database()
+
+
+# =========================================================
+# APPLICATION SETTINGS
+# =========================================================
+
+def save_application_settings(
+    guild_id,
+    review_channel_id=None,
+    reviewer_role_id=None,
+    instructions=None,
+    accept_message=None,
+    reject_message=None,
+    panel_title=None,
+    panel_description=None,
+    panel_image=None
+):
+
+    conn = app_db()
+
+    old = conn.execute("""
+        SELECT *
+        FROM application_settings
+        WHERE guild_id = ?
+    """, (guild_id,)).fetchone()
+
+    if old:
+
+        review_channel_id = (
+            review_channel_id
+            if review_channel_id is not None
+            else old["review_channel_id"]
+        )
+
+        reviewer_role_id = (
+            reviewer_role_id
+            if reviewer_role_id is not None
+            else old["reviewer_role_id"]
+        )
+
+        instructions = (
+            instructions
+            if instructions is not None
+            else old["instructions"]
+        )
+
+        accept_message = (
+            accept_message
+            if accept_message is not None
+            else old["accept_message"]
+        )
+
+        reject_message = (
+            reject_message
+            if reject_message is not None
+            else old["reject_message"]
+        )
+
+        panel_title = (
+            panel_title
+            if panel_title is not None
+            else old["panel_title"]
+        )
+
+        panel_description = (
+            panel_description
+            if panel_description is not None
+            else old["panel_description"]
+        )
+
+        panel_image = (
+            panel_image
+            if panel_image is not None
+            else old["panel_image"]
+        )
+
+    conn.execute("""
+        INSERT OR REPLACE INTO application_settings (
+            guild_id,
+            review_channel_id,
+            reviewer_role_id,
+            instructions,
+            accept_message,
+            reject_message,
+            panel_title,
+            panel_description,
+            panel_image
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        guild_id,
+        review_channel_id,
+        reviewer_role_id,
+        instructions,
+        accept_message,
+        reject_message,
+        panel_title,
+        panel_description,
+        panel_image
+    ))
+
+    conn.commit()
+    conn.close()
+
+
+def get_application_settings(guild_id):
+
+    conn = app_db()
+
+    row = conn.execute("""
+        SELECT *
+        FROM application_settings
+        WHERE guild_id = ?
+    """, (guild_id,)).fetchone()
+
+    conn.close()
+
+    return row
+
+
+# =========================================================
+# APPLICATION ROLES
+# =========================================================
+
+def add_application_role(guild_id, role_id):
+
+    conn = app_db()
+
+    conn.execute("""
+        INSERT OR IGNORE INTO application_roles (
+            guild_id,
+            role_id
+        )
+        VALUES (?, ?)
+    """, (
+        guild_id,
+        role_id
+    ))
+
+    conn.commit()
+    conn.close()
+
+
+def remove_application_role(guild_id, role_id):
+
+    conn = app_db()
+
+    conn.execute("""
+        DELETE FROM application_roles
+        WHERE guild_id = ?
+        AND role_id = ?
+    """, (
+        guild_id,
+        role_id
+    ))
+
+    conn.commit()
+    conn.close()
+
+
+def get_application_roles(guild_id):
+
+    conn = app_db()
+
+    rows = conn.execute("""
+        SELECT role_id
+        FROM application_roles
+        WHERE guild_id = ?
+    """, (guild_id,)).fetchall()
+
+    conn.close()
+
+    return [row["role_id"] for row in rows]
+
+
+# =========================================================
+# APPLICATION QUESTIONS
+# =========================================================
+
+def save_application_question(
+    guild_id,
+    number,
+    question
+):
+
+    conn = app_db()
+
+    conn.execute("""
+        INSERT OR REPLACE INTO application_questions (
+            guild_id,
+            question_number,
+            question
+        )
+        VALUES (?, ?, ?)
+    """, (
+        guild_id,
+        number,
+        question
+    ))
+
+    conn.commit()
+    conn.close()
+
+
+def get_application_questions(guild_id):
+
+    conn = app_db()
+
+    rows = conn.execute("""
+        SELECT *
+        FROM application_questions
+        WHERE guild_id = ?
+        ORDER BY question_number ASC
+    """, (guild_id,)).fetchall()
+
+    conn.close()
+
+    return rows
+
+
+# =========================================================
+# APPLICATION DATABASE
+# =========================================================
+
+def create_application(
+    guild_id,
+    user_id,
+    answers
+):
+
+    conn = app_db()
+
+    cur = conn.cursor()
+
+    cur.execute("""
+        INSERT INTO applications (
+            guild_id,
+            user_id,
+            answers,
+            status,
+            created_at
+        )
+        VALUES (?, ?, ?, 'pending', ?)
+    """, (
+        guild_id,
+        user_id,
+        answers,
+        str(asyncio.get_event_loop().time())
+    ))
+
+    application_id = cur.lastrowid
+
+    conn.commit()
+    conn.close()
+
+    return application_id
+
+
+def get_application(application_id):
+
+    conn = app_db()
+
+    row = conn.execute("""
+        SELECT *
+        FROM applications
+        WHERE application_id = ?
+    """, (application_id,)).fetchone()
+
+    conn.close()
+
+    return row
+
+
+def set_application_status(
+    application_id,
+    status,
+    message_id=None
+):
+
+    conn = app_db()
+
+    if message_id is not None:
+
+        conn.execute("""
+            UPDATE applications
+            SET status = ?,
+                review_message_id = ?
+            WHERE application_id = ?
+        """, (
+            status,
+            message_id,
+            application_id
+        ))
+
+    else:
+
+        conn.execute("""
+            UPDATE applications
+            SET status = ?
+            WHERE application_id = ?
+        """, (
+            status,
+            application_id
+        ))
+
+    conn.commit()
+    conn.close()
+
+
+# =========================================================
+# APPLICATION SETUP SELECTS
+# =========================================================
+
+class ApplicationReviewChannelSelect(
+    discord.ui.ChannelSelect
+):
+
+    def __init__(self):
+
+        super().__init__(
+            placeholder="اختر روم استقبال التقديمات",
+            channel_types=[
+                discord.ChannelType.text
+            ],
+            min_values=1,
+            max_values=1
+        )
+
+    async def callback(self, interaction):
+
+        save_application_settings(
+            interaction.guild.id,
+            review_channel_id=self.values[0].id
+        )
+
+        await interaction.response.send_message(
+            f"✅ تم تحديد روم التقديمات: {self.values[0].mention}",
+            ephemeral=True
+        )
+
+
+class ApplicationReviewChannelView(
+    discord.ui.View
+):
+
+    def __init__(self):
+
+        super().__init__(timeout=300)
+
+        self.add_item(
+            ApplicationReviewChannelSelect()
+        )
+
+
+@bot.tree.command(
+    name="تقديم_روم",
+    description="تحديد روم استقبال التقديمات"
+)
+@app_commands.checks.has_permissions(
+    administrator=True
+)
+async def application_channel(
+    interaction
+):
+
+    embed = discord.Embed(
+        title="📥 روم التقديمات",
+        description=(
+            "اختر الروم الذي سيتم إرسال التقديمات إليه."
+        ),
+        color=discord.Color.blue()
+    )
+
+    await interaction.response.send_message(
+        embed=embed,
+        view=ApplicationReviewChannelView(),
+        ephemeral=True
+    )
+
+
+# =========================================================
+# REVIEW ROLE
+# =========================================================
+
+class ApplicationReviewerRoleSelect(
+    discord.ui.RoleSelect
+):
+
+    def __init__(self):
+
+        super().__init__(
+            placeholder="اختر رتبة مراجعة التقديمات",
+            min_values=1,
+            max_values=1
+        )
+
+    async def callback(self, interaction):
+
+        save_application_settings(
+            interaction.guild.id,
+            reviewer_role_id=self.values[0].id
+        )
+
+        await interaction.response.send_message(
+            f"✅ تم تحديد رتبة المراجعة: {self.values[0].mention}",
+            ephemeral=True
+        )
+
+
+class ApplicationReviewerRoleView(
+    discord.ui.View
+):
+
+    def __init__(self):
+
+        super().__init__(timeout=300)
+
+        self.add_item(
+            ApplicationReviewerRoleSelect()
+        )
+
+
+@bot.tree.command(
+    name="تقديم_مراجعين",
+    description="تحديد رتبة الأشخاص المسموح لهم بقبول ورفض التقديمات"
+)
+@app_commands.checks.has_permissions(
+    administrator=True
+)
+async def application_reviewer_role(
+    interaction
+):
+
+    await interaction.response.send_message(
+        "👮 اختر رتبة مراجعة التقديمات:",
+        view=ApplicationReviewerRoleView(),
+        ephemeral=True
+    )
+
+
+# =========================================================
+# ACCEPT ROLES
+# =========================================================
+
+class ApplicationAcceptRolesSelect(
+    discord.ui.RoleSelect
+):
+
+    def __init__(self):
+
+        super().__init__(
+            placeholder="اختر الرتب التي تعطى عند القبول",
+            min_values=1,
+            max_values=10
+        )
+
+    async def callback(self, interaction):
+
+        conn = app_db()
+
+        conn.execute("""
+            DELETE FROM application_roles
+            WHERE guild_id = ?
+        """, (interaction.guild.id,))
+
+        for role in self.values:
+
+            conn.execute("""
+                INSERT OR IGNORE INTO application_roles (
+                    guild_id,
+                    role_id
+                )
+                VALUES (?, ?)
+            """, (
+                interaction.guild.id,
+                role.id
+            ))
+
+        conn.commit()
+        conn.close()
+
+        roles_text = "\n".join(
+            f"• {role.mention}"
+            for role in self.values
+        )
+
+        await interaction.response.send_message(
+            (
+                "✅ تم تحديد رتب القبول:\n\n"
+                f"{roles_text}"
+            ),
+            ephemeral=True
+        )
+
+
+class ApplicationAcceptRolesView(
+    discord.ui.View
+):
+
+    def __init__(self):
+
+        super().__init__(timeout=300)
+
+        self.add_item(
+            ApplicationAcceptRolesSelect()
+        )
+
+
+@bot.tree.command(
+    name="تقديم_رتب",
+    description="تحديد الرتب التي يحصل عليها المقبول"
+)
+@app_commands.checks.has_permissions(
+    administrator=True
+)
+async def application_roles(
+    interaction
+):
+
+    await interaction.response.send_message(
+        (
+            "🏷️ اختر الرتب التي تريد إعطاءها للمتقدم "
+            "عند القبول.\n\n"
+            "يمكن اختيار أكثر من رتبة."
+        ),
+        view=ApplicationAcceptRolesView(),
+        ephemeral=True
+    )
+
+
+# =========================================================
+# APPLICATION MESSAGES
+# =========================================================
+
+class ApplicationMessagesModal(
+    discord.ui.Modal
+):
+
+    def __init__(self):
+
+        super().__init__(
+            title="رسائل نظام التقديم"
+        )
+
+        self.instructions = discord.ui.TextInput(
+            label="رسالة التعليمات",
+            placeholder="اكتب التعليمات التي تظهر للمتقدم قبل التقديم...",
+            style=discord.TextStyle.paragraph,
+            required=True,
+            max_length=4000
+        )
+
+        self.accept = discord.ui.TextInput(
+            label="رسالة القبول",
+            placeholder="اكتب رسالة القبول التي تصل للمتقدم خاص...",
+            style=discord.TextStyle.paragraph,
+            required=True,
+            max_length=4000
+        )
+
+        self.reject = discord.ui.TextInput(
+            label="رسالة الرفض",
+            placeholder="اكتب رسالة الرفض التي تصل للمتقدم خاص...",
+            style=discord.TextStyle.paragraph,
+            required=True,
+            max_length=4000
+        )
+
+        self.add_item(self.instructions)
+        self.add_item(self.accept)
+        self.add_item(self.reject)
+
+    async def on_submit(self, interaction):
+
+        save_application_settings(
+            interaction.guild.id,
+            instructions=str(
+                self.instructions.value
+            ),
+            accept_message=str(
+                self.accept.value
+            ),
+            reject_message=str(
+                self.reject.value
+            )
+        )
+
+        await interaction.response.send_message(
+            "✅ تم حفظ رسائل التعليمات والقبول والرفض.",
+            ephemeral=True
+        )
+
+
+@bot.tree.command(
+    name="تقديم_رسائل",
+    description="تحديد رسائل التعليمات والقبول والرفض"
+)
+@app_commands.checks.has_permissions(
+    administrator=True
+)
+async def application_messages(
+    interaction
+):
+
+    await interaction.response.send_modal(
+        ApplicationMessagesModal()
+    )
+
+
+# =========================================================
+# APPLICATION QUESTIONS
+# =========================================================
+
+class ApplicationQuestionModal(
+    discord.ui.Modal
+):
+
+    def __init__(
+        self,
+        number
+    ):
+
+        super().__init__(
+            title=f"إضافة سؤال رقم {number}"
+        )
+
+        self.number = number
+
+        self.question = discord.ui.TextInput(
+            label="السؤال",
+            placeholder="اكتب سؤال التقديم...",
+            style=discord.TextStyle.paragraph,
+            required=True,
+            max_length=1000
+        )
+
+        self.add_item(
+            self.question
+        )
+
+    async def on_submit(self, interaction):
+
+        save_application_question(
+            interaction.guild.id,
+            self.number,
+            str(self.question.value)
+        )
+
+        await interaction.response.send_message(
+            (
+                f"✅ تم حفظ السؤال رقم **{self.number}**.\n\n"
+                f"**السؤال:** {self.question.value}"
+            ),
+            ephemeral=True
+        )
+
+
+class ApplicationQuestionNumberSelect(
+    discord.ui.Select
+):
+
+    def __init__(self):
+
+        options = []
+
+        for number in range(1, 11):
+
+            options.append(
+                discord.SelectOption(
+                    label=f"السؤال {number}",
+                    value=str(number),
+                    emoji="📝"
+                )
+            )
+
+        super().__init__(
+            placeholder="اختر رقم السؤال",
+            options=options,
+            min_values=1,
+            max_values=1
+        )
+
+    async def callback(self, interaction):
+
+        number = int(
+            self.values[0]
+        )
+
+        await interaction.response.send_modal(
+            ApplicationQuestionModal(number)
+        )
+
+
+class ApplicationQuestionView(
+    discord.ui.View
+):
+
+    def __init__(self):
+
+        super().__init__(timeout=300)
+
+        self.add_item(
+            ApplicationQuestionNumberSelect()
+        )
+
+
+@bot.tree.command(
+    name="تقديم_سؤال",
+    description="إضافة أو تعديل سؤال في التقديم"
+)
+@app_commands.checks.has_permissions(
+    administrator=True
+)
+async def application_question(
+    interaction
+):
+
+    await interaction.response.send_message(
+        (
+            "📝 اختر رقم السؤال الذي تريد إضافته "
+            "أو تعديله."
+        ),
+        view=ApplicationQuestionView(),
+        ephemeral=True
+    )
+
+
+# =========================================================
+# APPLICATION PANEL
+# =========================================================
+
+class ApplicationPanelModal(
+    discord.ui.Modal
+):
+
+    def __init__(self):
+
+        super().__init__(
+            title="إعداد بانل التقديم"
+        )
+
+        self.title_input = discord.ui.TextInput(
+            label="عنوان البانل",
+            placeholder="التقديم على الإدارة",
+            required=True,
+            max_length=256
+        )
+
+        self.description = discord.ui.TextInput(
+            label="وصف البانل",
+            placeholder="اضغط على الزر بالأسفل للتقديم.",
+            style=discord.TextStyle.paragraph,
+            required=True,
+            max_length=4000
+        )
+
+        self.image = discord.ui.TextInput(
+            label="رابط الصورة - اختياري",
+            placeholder="https://...",
+            required=False,
+            max_length=1000
+        )
+
+        self.add_item(self.title_input)
+        self.add_item(self.description)
+        self.add_item(self.image)
+
+    async def on_submit(self, interaction):
+
+        image = str(
+            self.image.value
+        ).strip()
+
+        if image and not valid_image_url(image):
+
+            await interaction.response.send_message(
+                "❌ رابط الصورة غير صحيح.",
+                ephemeral=True
+            )
+
+            return
+
+        save_application_settings(
+            interaction.guild.id,
+            panel_title=str(
+                self.title_input.value
+            ),
+            panel_description=str(
+                self.description.value
+            ),
+            panel_image=image
+        )
+
+        embed = discord.Embed(
+            title=str(
+                self.title_input.value
+            ),
+            description=str(
+                self.description.value
+            ),
+            color=discord.Color.blue()
+        )
+
+        if interaction.guild.icon:
+
+            embed.set_author(
+                name=interaction.guild.name,
+                icon_url=interaction.guild.icon.url
+            )
+
+        else:
+
+            embed.set_author(
+                name=interaction.guild.name
+            )
+
+        if image:
+
+            embed.set_thumbnail(
+                url=image
+            )
+
+        await interaction.channel.send(
+            embed=embed,
+            view=ApplicationPanelView()
+        )
+
+        await interaction.response.send_message(
+            "✅ تم إرسال بانل التقديم.",
+            ephemeral=True
+        )
+
+
+@bot.tree.command(
+    name="تقديم_بانل",
+    description="إرسال بانل التقديم"
+)
+@app_commands.checks.has_permissions(
+    administrator=True
+)
+async def application_panel(
+    interaction
+):
+
+    await interaction.response.send_modal(
+        ApplicationPanelModal()
+    )
+
+
+# =========================================================
+# APPLICATION START BUTTON
+# =========================================================
+
+class StartApplicationButton(
+    discord.ui.Button
+):
+
+    def __init__(self):
+
+        super().__init__(
+            label="تقديم",
+            emoji="📝",
+            style=discord.ButtonStyle.primary,
+            custom_id="mt_application_start"
+        )
+
+    async def callback(self, interaction):
+
+        settings = get_application_settings(
+            interaction.guild.id
+        )
+
+        if not settings:
+
+            await interaction.response.send_message(
+                "❌ لم يتم إعداد نظام التقديم.",
+                ephemeral=True
+            )
+
+            return
+
+        if not settings["review_channel_id"]:
+
+            await interaction.response.send_message(
+                "❌ لم يتم تحديد روم استقبال التقديمات.",
+                ephemeral=True
+            )
+
+            return
+
+        questions = get_application_questions(
+            interaction.guild.id
+        )
+
+        if not questions:
+
+            await interaction.response.send_message(
+                "❌ لم يتم إضافة أسئلة للتقديم.",
+                ephemeral=True
+            )
+
+            return
+
+        instructions = settings["instructions"]
+
+        if instructions:
+
+            embed = discord.Embed(
+                title="📋 تعليمات التقديم",
+                description=instructions,
+                color=discord.Color.blue()
+            )
+
+            view = ApplicationConfirmView()
+
+            await interaction.response.send_message(
+                embed=embed,
+                view=view,
+                ephemeral=True
+            )
+
+            return
+
+        await show_application_modal(
+            interaction
+        )
+
+
+class ApplicationPanelView(
+    discord.ui.View
+):
+
+    def __init__(self):
+
+        super().__init__(
+            timeout=None
+        )
+
+        self.add_item(
+            StartApplicationButton()
+        )
+
+
+# =========================================================
+# CONFIRM APPLICATION
+# =========================================================
+
+class ApplicationConfirmButton(
+    discord.ui.Button
+):
+
+    def __init__(self):
+
+        super().__init__(
+            label="بدء التقديم",
+            emoji="📝",
+            style=discord.ButtonStyle.success
+        )
+
+    async def callback(self, interaction):
+
+        await show_application_modal(
+            interaction
+        )
+
+
+class ApplicationCancelButton(
+    discord.ui.Button
+):
+
+    def __init__(self):
+
+        super().__init__(
+            label="إلغاء",
+            emoji="❌",
+            style=discord.ButtonStyle.danger
+        )
+
+    async def callback(self, interaction):
+
+        await interaction.response.edit_message(
+            content="❌ تم إلغاء التقديم.",
+            embed=None,
+            view=None
+        )
+
+
+class ApplicationConfirmView(
+    discord.ui.View
+):
+
+    def __init__(self):
+
+        super().__init__(
+            timeout=300
+        )
+
+        self.add_item(
+            ApplicationConfirmButton()
+        )
+
+        self.add_item(
+            ApplicationCancelButton()
+        )
+
+
+# =========================================================
+# APPLICATION FORM
+# =========================================================
+
+async def show_application_modal(
+    interaction
+):
+
+    questions = get_application_questions(
+        interaction.guild.id
+    )
+
+    if not questions:
+
+        await interaction.response.send_message(
+            "❌ لا توجد أسئلة للتقديم.",
+            ephemeral=True
+        )
+
+        return
+
+    # Discord Modal يسمح بخمسة عناصر فقط.
+    # لذلك نقسم الأسئلة على صفحات إذا زادت عن 5.
+
+    first_questions = questions[:5]
+
+    await interaction.response.send_modal(
+        ApplicationFormModal(
+            first_questions,
+            0
+        )
+    )
+
+
+class ApplicationFormModal(
+    discord.ui.Modal
+):
+
+    def __init__(
+        self,
+        questions,
+        page
+    ):
+
+        super().__init__(
+            title=f"تقديم - صفحة {page + 1}"
+        )
+
+        self.questions = questions
+        self.page = page
+
+        self.inputs = []
+
+        for question in questions:
+
+            text = discord.ui.TextInput(
+                label=(
+                    f"{question['question_number']}. "
+                    f"{question['question']}"
+                )[:45],
+                style=discord.TextStyle.paragraph,
+                required=True,
+                max_length=1000
+            )
+
+            self.inputs.append(text)
+
+            self.add_item(text)
+
+    async def on_submit(self, interaction):
+
+        all_questions = get_application_questions(
+            interaction.guild.id
+        )
+
+        answers = {}
+
+        for index, question in enumerate(
+            self.questions
+        ):
+
+            answers[
+                str(question["question_number"])
+            ] = str(
+                self.inputs[index].value
+            )
+
+        # إذا فيه أسئلة أكثر من 5
+        next_questions = all_questions[
+            (self.page + 1) * 5:
+            (self.page + 2) * 5
+        ]
+
+        if next_questions:
+
+            await interaction.response.send_modal(
+                ApplicationFormNextModal(
+                    all_questions,
+                    answers,
+                    self.page + 1
+                )
+            )
+
+            return
+
+        await finish_application(
+            interaction,
+            answers
+        )
+
+
+class ApplicationFormNextModal(
+    discord.ui.Modal
+):
+
+    def __init__(
+        self,
+        all_questions,
+        previous_answers,
+        page
+    ):
+
+        super().__init__(
+            title=f"تقديم - صفحة {page + 1}"
+        )
+
+        self.all_questions = all_questions
+        self.previous_answers = previous_answers
+        self.page = page
+
+        self.questions = all_questions[
+            page * 5:
+            (page + 1) * 5
+        ]
+
+        self.inputs = []
+
+        for question in self.questions:
+
+            text = discord.ui.TextInput(
+                label=(
+                    f"{question['question_number']}. "
+                    f"{question['question']}"
+                )[:45],
+                style=discord.TextStyle.paragraph,
+                required=True,
+                max_length=1000
+            )
+
+            self.inputs.append(text)
+
+            self.add_item(text)
+
+    async def on_submit(self, interaction):
+
+        answers = dict(
+            self.previous_answers
+        )
+
+        for index, question in enumerate(
+            self.questions
+        ):
+
+            answers[
+                str(question["question_number"])
+            ] = str(
+                self.inputs[index].value
+            )
+
+        next_questions = self.all_questions[
+            (self.page + 1) * 5:
+            (self.page + 2) * 5
+        ]
+
+        if next_questions:
+
+            await interaction.response.send_modal(
+                ApplicationFormNextModal(
+                    self.all_questions,
+                    answers,
+                    self.page + 1
+                )
+            )
+
+            return
+
+        await finish_application(
+            interaction,
+            answers
+        )
+
+
+# =========================================================
+# FINISH APPLICATION
+# =========================================================
+
+async def finish_application(
+    interaction,
+    answers
+):
+
+    settings = get_application_settings(
+        interaction.guild.id
+    )
+
+    review_channel = interaction.guild.get_channel(
+        settings["review_channel_id"]
+    )
+
+    if not review_channel:
+
+        await interaction.response.send_message(
+            "❌ روم استقبال التقديمات غير موجود.",
+            ephemeral=True
+        )
+
+        return
+
+    application_id = create_application(
+        interaction.guild.id,
+        interaction.user.id,
+        str(answers)
+    )
+
+    embed = discord.Embed(
+        title="📥 تقديم جديد",
+        color=discord.Color.blue()
+    )
+
+    embed.set_author(
+        name=interaction.user,
+        icon_url=interaction.user.display_avatar.url
+    )
+
+    embed.add_field(
+        name="👤 المتقدم",
+        value=(
+            f"{interaction.user.mention}\n"
+            f"`{interaction.user.id}`"
+        ),
+        inline=False
+    )
+
+    for question in get_application_questions(
+        interaction.guild.id
+    ):
+
+        answer = answers.get(
+            str(question["question_number"]),
+            "—"
+        )
+
+        embed.add_field(
+            name=(
+                f"📝 {question['question_number']}. "
+                f"{question['question']}"
+            )[:256],
+            value=answer[:1024],
+            inline=False
+        )
+
+    embed.set_footer(
+        text=f"Application ID: {application_id}"
+    )
+
+    message = await review_channel.send(
+        content=(
+            f"📥 **تقديم جديد**\n"
+            f"المتقدم: {interaction.user.mention}"
+        ),
+        embed=embed,
+        view=ApplicationReviewView(
+            application_id
+        )
+    )
+
+    set_application_status(
+        application_id,
+        "pending",
+        message.id
+    )
+
+    await interaction.response.send_message(
+        (
+            "✅ تم إرسال تقديمك بنجاح.\n"
+            "انتظر مراجعة الإدارة."
+        ),
+        ephemeral=True
+    )
+
+
+# =========================================================
+# ACCEPT / REJECT BUTTONS
+# =========================================================
+
+def can_review_application(
+    interaction
+):
+
+    settings = get_application_settings(
+        interaction.guild.id
+    )
+
+    if not settings:
+        return False
+
+    if interaction.user.guild_permissions.administrator:
+        return True
+
+    role_id = settings["reviewer_role_id"]
+
+    if not role_id:
+        return False
+
+    role = interaction.guild.get_role(
+        role_id
+    )
+
+    if not role:
+        return False
+
+    return role in interaction.user.roles
+
+
+class AcceptApplicationButton(
+    discord.ui.Button
+):
+
+    def __init__(
+        self,
+        application_id
+    ):
+
+        self.application_id = application_id
+
+        super().__init__(
+            label="قبول",
+            emoji="🟢",
+            style=discord.ButtonStyle.success,
+            custom_id=(
+                f"mt_application_accept_"
+                f"{application_id}"
+            )
+        )
+
+    async def callback(self, interaction):
+
+        if not can_review_application(
+            interaction
+        ):
+
+            await interaction.response.send_message(
+                "❌ لا تملك صلاحية قبول التقديمات.",
+                ephemeral=True
+            )
+
+            return
+
+        application = get_application(
+            self.application_id
+        )
+
+        if not application:
+
+            await interaction.response.send_message(
+                "❌ التقديم غير موجود.",
+                ephemeral=True
+            )
+
+            return
+
+        if application["status"] != "pending":
+
+            await interaction.response.send_message(
+                (
+                    "❌ تمت معالجة هذا التقديم مسبقًا.\n"
+                    f"الحالة: **{application['status']}**"
+                ),
+                ephemeral=True
+            )
+
+            return
+
+        member = interaction.guild.get_member(
+            application["user_id"]
+        )
+
+        if not member:
+
+            await interaction.response.send_message(
+                "❌ المتقدم غير موجود في السيرفر.",
+                ephemeral=True
+            )
+
+            return
+
+        role_ids = get_application_roles(
+            interaction.guild.id
+        )
+
+        added_roles = []
+
+        for role_id in role_ids:
+
+            role = interaction.guild.get_role(
+                role_id
+            )
+
+            if not role:
+                continue
+
+            try:
+
+                await member.add_roles(
+                    role,
+                    reason="Application accepted"
+                )
+
+                added_roles.append(
+                    role.mention
+                )
+
+            except discord.Forbidden:
+
+                print(
+                    f"Cannot add role {role_id}"
+                )
+
+        settings = get_application_settings(
+            interaction.guild.id
+        )
+
+        message_text = (
+            settings["accept_message"]
+            or
+            "مبروك! تم قبول تقديمك."
+        )
+
+        message_text = message_text.replace(
+            "{user}",
+            member.mention
+        )
+
+        message_text = message_text.replace(
+            "{server}",
+            interaction.guild.name
+        )
+
+        try:
+
+            await member.send(
+                message_text
+            )
+
+            dm_status = "📩 تم إرسال رسالة القبول في الخاص."
+
+        except discord.Forbidden:
+
+            dm_status = "⚠️ تعذر إرسال رسالة القبول في الخاص."
+
+        set_application_status(
+            self.application_id,
+            "accepted"
+        )
+
+        await interaction.response.edit_message(
+            content=(
+                f"🟢 **تم قبول التقديم**\n"
+                f"المتقدم: {member.mention}\n"
+                f"بواسطة: {interaction.user.mention}\n\n"
+                f"{dm_status}"
+            ),
+            embed=interaction.message.embeds[0]
+            if interaction.message.embeds
+            else None,
+            view=None
+        )
+
+
+class RejectApplicationButton(
+    discord.ui.Button
+):
+
+    def __init__(
+        self,
+        application_id
+    ):
+
+        self.application_id = application_id
+
+        super().__init__(
+            label="رفض",
+            emoji="🔴",
+            style=discord.ButtonStyle.danger,
+            custom_id=(
+                f"mt_application_reject_"
+                f"{application_id}"
+            )
+        )
+
+    async def callback(self, interaction):
+
+        if not can_review_application(
+            interaction
+        ):
+
+            await interaction.response.send_message(
+                "❌ لا تملك صلاحية رفض التقديمات.",
+                ephemeral=True
+            )
+
+            return
+
+        application = get_application(
+            self.application_id
+        )
+
+        if not application:
+
+            await interaction.response.send_message(
+                "❌ التقديم غير موجود.",
+                ephemeral=True
+            )
+
+            return
+
+        if application["status"] != "pending":
+
+            await interaction.response.send_message(
+                (
+                    "❌ تمت معالجة هذا التقديم مسبقًا.\n"
+                    f"الحالة: **{application['status']}**"
+                ),
+                ephemeral=True
+            )
+
+            return
+
+        member = interaction.guild.get_member(
+            application["user_id"]
+        )
+
+        if not member:
+
+            await interaction.response.send_message(
+                "❌ المتقدم غير موجود في السيرفر.",
+                ephemeral=True
+            )
+
+            return
+
+        settings = get_application_settings(
+            interaction.guild.id
+        )
+
+        message_text = (
+            settings["reject_message"]
+            or
+            "نعتذر، لم يتم قبول تقديمك."
+        )
+
+        message_text = message_text.replace(
+            "{user}",
+            member.mention
+        )
+
+        message_text = message_text.replace(
+            "{server}",
+            interaction.guild.name
+        )
+
+        try:
+
+            await member.send(
+                message_text
+            )
+
+            dm_status = "📩 تم إرسال رسالة الرفض في الخاص."
+
+        except discord.Forbidden:
+
+            dm_status = "⚠️ تعذر إرسال رسالة الرفض في الخاص."
+
+        set_application_status(
+            self.application_id,
+            "rejected"
+        )
+
+        await interaction.response.edit_message(
+            content=(
+                f"🔴 **تم رفض التقديم**\n"
+                f"المتقدم: {member.mention}\n"
+                f"بواسطة: {interaction.user.mention}\n\n"
+                f"{dm_status}"
+            ),
+            embed=interaction.message.embeds[0]
+            if interaction.message.embeds
+            else None,
+            view=None
+        )
+
+
+class ApplicationReviewView(
+    discord.ui.View
+):
+
+    def __init__(
+        self,
+        application_id
+    ):
+
+        super().__init__(
+            timeout=None
+        )
+
+        self.add_item(
+            AcceptApplicationButton(
+                application_id
+            )
+        )
+
+        self.add_item(
+            RejectApplicationButton(
+                application_id
+            )
+        )
+
+
+# =========================================================
+# APPLICATION STATUS
+# =========================================================
+
+@bot.tree.command(
+    name="تقديم_الحالة",
+    description="عرض إعدادات نظام التقديم"
+)
+@app_commands.checks.has_permissions(
+    administrator=True
+)
+async def application_status(
+    interaction
+):
+
+    settings = get_application_settings(
+        interaction.guild.id
+    )
+
+    if not settings:
+
+        await interaction.response.send_message(
+            "❌ لم يتم إعداد نظام التقديم.",
+            ephemeral=True
+        )
+
+        return
+
+    review_channel = (
+        interaction.guild.get_channel(
+            settings["review_channel_id"]
+        )
+        if settings["review_channel_id"]
+        else None
+    )
+
+    reviewer_role = (
+        interaction.guild.get_role(
+            settings["reviewer_role_id"]
+        )
+        if settings["reviewer_role_id"]
+        else None
+    )
+
+    roles = get_application_roles(
+        interaction.guild.id
+    )
+
+    role_text = "\n".join(
+        f"• <@&{role_id}>"
+        for role_id in roles
+    ) or "لا توجد رتب"
+
+    questions = get_application_questions(
+        interaction.guild.id
+    )
+
+    embed = discord.Embed(
+        title="⚙️ إعدادات نظام التقديم",
+        color=discord.Color.blue()
+    )
+
+    embed.add_field(
+        name="📥 روم التقديمات",
+        value=(
+            review_channel.mention
+            if review_channel
+            else
+            "غير محدد"
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="👮 رتبة المراجعة",
+        value=(
+            reviewer_role.mention
+            if reviewer_role
+            else
+            "غير محددة"
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="🏷️ رتب القبول",
+        value=role_text,
+        inline=False
+    )
+
+    embed.add_field(
+        name="📝 عدد الأسئلة",
+        value=str(len(questions)),
+        inline=False
+    )
+
+    await interaction.response.send_message(
+        embed=embed,
+        ephemeral=True
+    )
+
+
+# =========================================================
+# CLEAR APPLICATION QUESTIONS
+# =========================================================
+
+@bot.tree.command(
+    name="تقديم_مسح_الاسئلة",
+    description="مسح جميع أسئلة التقديم"
+)
+@app_commands.checks.has_permissions(
+    administrator=True
+)
+async def application_clear_questions(
+    interaction
+):
+
+    conn = app_db()
+
+    conn.execute("""
+        DELETE FROM application_questions
+        WHERE guild_id = ?
+    """, (
+        interaction.guild.id,
+    ))
+
+    conn.commit()
+    conn.close()
+
+    await interaction.response.send_message(
+        "🗑️ تم مسح جميع أسئلة التقديم.",
+        ephemeral=True
+    )
+
+
+# =========================================================
+# APPLICATION ERROR HANDLERS
+# =========================================================
+
+@application_channel.error
+async def application_channel_error(
+    interaction,
+    error
+):
+
+    if isinstance(
+        error,
+        app_commands.errors.MissingPermissions
+    ):
+
+        if not interaction.response.is_done():
+
+            await interaction.response.send_message(
+                "❌ هذا الأمر للإدارة فقط.",
+                ephemeral=True
+            )
+
+        return
+
+    print(
+        "application_channel error:",
+        error
+    )
+
+
+@application_reviewer_role.error
+async def application_reviewer_role_error(
+    interaction,
+    error
+):
+
+    if isinstance(
+        error,
+        app_commands.errors.MissingPermissions
+    ):
+
+        if not interaction.response.is_done():
+
+            await interaction.response.send_message(
+                "❌ هذا الأمر للإدارة فقط.",
+                ephemeral=True
+            )
+
+        return
+
+    print(
+        "application_reviewer_role error:",
+        error
+    )
+
+
+@application_roles.error
+async def application_roles_error(
+    interaction,
+    error
+):
+
+    if isinstance(
+        error,
+        app_commands.errors.MissingPermissions
+    ):
+
+        if not interaction.response.is_done():
+
+            await interaction.response.send_message(
+                "❌ هذا الأمر للإدارة فقط.",
+                ephemeral=True
+            )
+
+        return
+
+    print(
+        "application_roles error:",
+        error
+    )
+
+
+@application_messages.error
+async def application_messages_error(
+    interaction,
+    error
+):
+
+    if isinstance(
+        error,
+        app_commands.errors.MissingPermissions
+    ):
+
+        if not interaction.response.is_done():
+
+            await interaction.response.send_message(
+                "❌ هذا الأمر للإدارة فقط.",
+                ephemeral=True
+            )
+
+        return
+
+    print(
+        "application_messages error:",
+        error
+    )
+
+
+@application_question.error
+async def application_question_error(
+    interaction,
+    error
+):
+
+    if isinstance(
+        error,
+        app_commands.errors.MissingPermissions
+    ):
+
+        if not interaction.response.is_done():
+
+            await interaction.response.send_message(
+                "❌ هذا الأمر للإدارة فقط.",
+                ephemeral=True
+            )
+
+        return
+
+    print(
+        "application_question error:",
+        error
+    )
+
+
+@application_panel.error
+async def application_panel_error(
+    interaction,
+    error
+):
+
+    if isinstance(
+        error,
+        app_commands.errors.MissingPermissions
+    ):
+
+        if not interaction.response.is_done():
+
+            await interaction.response.send_message(
+                "❌ هذا الأمر للإدارة فقط.",
+                ephemeral=True
+            )
+
+        return
+
+    print(
+        "application_panel error:",
+        error
+    )
+
+
+@application_status.error
+async def application_status_error(
+    interaction,
+    error
+):
+
+    if isinstance(
+        error,
+        app_commands.errors.MissingPermissions
+    ):
+
+        if not interaction.response.is_done():
+
+            await interaction.response.send_message(
+                "❌ هذا الأمر للإدارة فقط.",
+                ephemeral=True
+            )
+
+        return
+
+    print(
+        "application_status error:",
+        error
+    )
+
+
+@application_clear_questions.error
+async def application_clear_questions_error(
+    interaction,
+    error
+):
+
+    if isinstance(
+        error,
+        app_commands.errors.MissingPermissions
+    ):
+
+        if not interaction.response.is_done():
+
+            await interaction.response.send_message(
+                "❌ هذا الأمر للإدارة فقط.",
+                ephemeral=True
+            )
+
+        return
+
+    print(
+        "application_clear_questions error:",
         error
     )
 
